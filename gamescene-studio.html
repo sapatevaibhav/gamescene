@@ -169,6 +169,10 @@ body.recording #btnHome,body.recording .dock,body.recording #toolbar,body.record
 body.recording .slate{box-shadow:0 0 0 3px rgba(239,68,68,.55),0 8px 22px rgba(0,0,0,.4)}
 body.at-home #studio{display:none}
 @media (pointer:fine){.pad{display:none}}
+#xhair{position:fixed;z-index:4;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;background:linear-gradient(#fff,#fff) center/2px 100% no-repeat,linear-gradient(#fff,#fff) center/100% 2px no-repeat;filter:drop-shadow(0 0 1px rgba(0,0,0,.8))}
+#lockHint{position:fixed;z-index:6;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 16px);padding:9px 14px;border-radius:12px;font-size:13px;pointer-events:none;white-space:nowrap}
+body.locked .dock,body.locked .slate{opacity:.55}
+body.clean #xhair,body.clean #lockHint,body.recording #xhair{visibility:hidden}
 @media (max-width:370px){.dock button{min-width:54px}.slate{width:92px}}
 </style>
 </head>
@@ -193,6 +197,8 @@ body.at-home #studio{display:none}
   <button class="iconbtn glass" id="btnHome" aria-label="Home"><svg class="i" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg></button>
   <button class="iconbtn glass" id="btnClean" aria-label="Clean view" title="Clean view (H)"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
   <span id="fps" hidden></span>
+  <div id="xhair" hidden></div>
+  <div id="lockHint" class="glass" hidden></div>
   <div id="joy" class="glass" hidden><div id="joyKnob"></div></div>
   <div class="pad">
     <button class="glass" id="btnUp" aria-label="Fly up" hidden><svg class="i" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
@@ -270,7 +276,7 @@ function speckle(c, hex, vari, seed, x0 = 0, y0 = 0, w = 16, h = 16) {
   const r = rng(seed), [R, G, B] = hex2rgb(hex);
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { const n = 1 + (r() - .5) * 2 * vari; rect(c, x, y, 1, 1, rgbStr(R * n, G * n, B * n)); }
 }
-const TILE = 16, ATLAS_N = 16;
+const TILE = 16, ATLAS_N = 32;
 const atlas = document.createElement('canvas'); atlas.width = atlas.height = TILE * ATLAS_N;
 const actx = atlas.getContext('2d');
 let nextTile = 0;
@@ -341,7 +347,7 @@ function defBlock(o) {
   b.see = b.kind === 'glass' || b.kind === 'water';
   const top = o.topC, side = o.sideC || o.topC, bottom = o.bottomC || side;
   b.top = addTile(top); b.side = side === top ? b.top : addTile(side); b.bottom = bottom === side ? b.side : bottom === top ? b.top : addTile(bottom);
-  b.icon = isoIcon(top, side).toDataURL();
+  let icon = null; Object.defineProperty(b, 'icon', { get() { if (!icon) icon = isoIcon(top, side).toDataURL(); return icon; } });
   b.id = BLOCKS.length; BLOCKS.push(b);
   if (o.key) ID[o.key] = b.id;
   return b;
@@ -356,9 +362,9 @@ function builtins() {
   defBlock({ key: 'cobble', name: 'Cobble', topC: tc(P.cobble) });
   defBlock({ key: 'sand', name: 'Sand', topC: tc(P.sand) });
   defBlock({ key: 'sandstone', name: 'Sandstone', topC: tc(P.sandstone) });
-  defBlock({ key: 'planks', name: 'Planks', topC: tc(P.planks) });
-  defBlock({ key: 'log', name: 'Log', topC: tc(P.logTop), sideC: tc(P.logSide) });
-  defBlock({ key: 'leaves', name: 'Leaves', topC: tc(P.leaves) });
+  defBlock({ key: 'planks', name: 'Oak planks', topC: tc(P.planks) });
+  defBlock({ key: 'log', name: 'Oak log', topC: tc(P.logTop), sideC: tc(P.logSide) });
+  defBlock({ key: 'leaves', name: 'Oak leaves', topC: tc(P.leaves) });
   defBlock({ key: 'brick', name: 'Brick', topC: tc(P.brick) });
   defBlock({ key: 'glass', name: 'Glass', topC: tc(P.glass), kind: 'glass' });
   defBlock({ key: 'water', name: 'Water', topC: tc(P.water), kind: 'water' });
@@ -372,6 +378,7 @@ function builtins() {
     .forEach(([k, n, col]) => defBlock({ key: k, name: n, topC: tc(P.cloth(col)) }));
 }
 builtins();
+moreBlocks();
 const BUILTIN_COUNT = BLOCKS.length;
 const BUILTIN_TILES = nextTile;
 
@@ -381,9 +388,9 @@ async function customBlock(src) {
   let top, side;
   if (src.mode === 'image') { side = await imageTile(src.side); top = src.top ? await imageTile(src.top) : side; }
   else { top = patternTile(src.pattern, src.top, 91); side = src.top === src.side ? top : patternTile(src.pattern, src.side, 92); }
-  if (nextTile + 2 > ATLAS_N * ATLAS_N) throw new Error('Block limit reached for this project.');
+  if (nextTile + 2 > ATLAS_N * ATLAS_N || BLOCKS.length >= 255) throw new Error('Block limit reached for this project.');
   const b = defBlock({ name: src.name || 'Custom', topC: top, sideC: side, kind: src.kind || 'solid' });
-  b.src = src; b.custom = true; return b;
+  b.src = src; b.custom = true; b.cat = 'mine'; return b;
 }
 
 /* ---------------- world ---------------- */
@@ -602,6 +609,123 @@ function updateWeather(dt) {
 }
 
 
+/* ================= extended block library (original textures) ================= */
+const BLOCK_CATS = [['nature', 'Nature'], ['stone', 'Stone'], ['wood', 'Wood'], ['ores', 'Ores & metal'], ['colors', 'Colors'], ['glass', 'Glass & light'], ['decor', 'Decor'], ['mine', 'Yours']];
+function moreBlocks() {
+  const OLD = { grass: 'nature', dirt: 'nature', path: 'nature', stone: 'stone', cobble: 'stone', sand: 'nature', sandstone: 'stone', planks: 'wood', log: 'wood', leaves: 'wood', brick: 'stone', glass: 'glass', water: 'nature', snow: 'nature', ice: 'nature', lamp: 'glass', cactus: 'nature', gold: 'ores', basalt: 'stone', red: 'colors', blue: 'colors', yellow: 'colors', green: 'colors', pink: 'colors', white: 'colors', black: 'colors' };
+  BLOCKS.forEach(b => { if (b && b.key) b.cat = OLD[b.key] || 'decor'; });
+  let seed = 300; const nx = () => seed++;
+  const SH = (h, f) => shadeHex(h, f);
+  const S = (col, v = .08) => tc(c => speckle(c, col, v, nx()));
+  const stoneT = (base, dark, n = 12) => tc(c => { speckle(c, base, .07, nx()); const r = rng(nx()); for (let i = 0; i < n; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 1 + (r() * 2 | 0), 1, dark); });
+  const bricksT = (col, mortar, h = 4) => tc(c => { rect(c, 0, 0, 16, 16, mortar); const s0 = nx(); for (let row = 0; row < 16 / h; row++) { const off = row % 2 ? 4 : 0; for (let bx = -1; bx < 3; bx++) { const x = bx * 8 + off, x0 = Math.max(0, x), w = Math.min(16 - x0, x + 7 - x0); if (w > 0) speckle(c, col, .07, s0 + row * 4 + bx, x0, row * h, w, h - 1); } } });
+  const tilesT = (col, k = 8) => tc(c => { speckle(c, col, .05, nx()); c.fillStyle = SH(col, .7); for (let i = 0; i < 16; i += k) { c.fillRect(i, 0, 1, 16); c.fillRect(0, i, 16, 1); } });
+  const planksT = col => tc(c => { speckle(c, col, .06, nx()); const dk = SH(col, .68); [3, 7, 11, 15].forEach(y => rect(c, 0, y, 16, 1, dk)); [[6, 0], [12, 4], [3, 8], [10, 12]].forEach(([x, y]) => rect(c, x, y, 1, 3, dk)); });
+  const barkT = (col, mark) => tc(c => { speckle(c, col, .1, nx()); const r = rng(nx()); for (let i = 0; i < 7; i++) rect(c, r() * 16 | 0, r() * 12 | 0, 1 + (r() < .3 ? 1 : 0), 3 + (r() * 8 | 0), mark); });
+  const ringT = (inner, bark) => tc(c => { speckle(c, inner, .05, nx()); c.lineWidth = 1; c.strokeStyle = SH(inner, .75); c.strokeRect(2.5, 2.5, 11, 11); c.strokeRect(5.5, 5.5, 5, 5); c.strokeStyle = bark; c.strokeRect(.5, .5, 15, 15); });
+  const leavesT = (col, dots) => tc(c => { speckle(c, col, .25, nx()); const r = rng(nx()); for (let i = 0; i < 18; i++) rect(c, r() * 16 | 0, r() * 16 | 0, 1, 1, SH(col, .6)); if (dots) for (let i = 0; i < 9; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 2, 2, dots); });
+  const oreT = (stone, ore) => tc(c => { speckle(c, stone, .07, nx()); const r = rng(nx()); for (let k = 0; k < 5; k++) { const x = 1 + (r() * 12 | 0), y = 1 + (r() * 12 | 0); rect(c, x, y, 2, 2, ore); rect(c, x, y, 1, 1, SH(ore, 1.35)); if (r() < .5) rect(c, x + 2, y + 1, 1, 1, SH(ore, .8)); } });
+  const metalT = col => tc(c => { speckle(c, col, .04, nx()); rect(c, 0, 0, 16, 1, SH(col, 1.25)); rect(c, 0, 0, 1, 16, SH(col, 1.25)); rect(c, 0, 15, 16, 1, SH(col, .7)); rect(c, 15, 0, 1, 16, SH(col, .7)); c.strokeStyle = SH(col, .88); c.strokeRect(3.5, 3.5, 9, 9); });
+  const gemT = col => tc(c => { speckle(c, col, .07, nx()); for (let k = 0; k < 4; k++) rect(c, 2 + k * 3, 2 + k * 3, 3, 1, SH(col, 1.45)); rect(c, 0, 15, 16, 1, SH(col, .65)); rect(c, 15, 0, 1, 16, SH(col, .65)); rect(c, 0, 0, 16, 1, SH(col, 1.2)); });
+  const glassT = (col, op = .42) => tc(c => { const [r, g, b] = hex2rgb(col); rect(c, 0, 0, 16, 16, `rgba(${r},${g},${b},${op})`); c.strokeStyle = `rgba(${r},${g},${b},.95)`; c.lineWidth = 1; c.strokeRect(.5, .5, 15, 15); [[3, 3], [4, 4], [5, 5]].forEach(([x, y]) => rect(c, x, y, 1, 1, 'rgba(255,255,255,.75)')); });
+  const glowT = (col, line) => tc(c => { speckle(c, col, .1, nx()); const r = rng(nx()); for (let i = 0; i < 7; i++) { const x = r() * 13 | 0, y = r() * 13 | 0; rect(c, x, y, 3, 1, line); rect(c, x + 1, y - 1, 1, 3, line); } });
+  const crackT = (dark, hot) => tc(c => { speckle(c, dark, .1, nx()); const r = rng(nx()); for (let i = 0; i < 5; i++) { let x = r() * 16 | 0, y = r() * 16 | 0; for (let k = 0; k < 6; k++) { rect(c, x, y, 1, 1, hot); x = (x + (r() < .5 ? 1 : -1) + 16) % 16; y = (y + 1) % 16; } } });
+  const D = (key, name, cat, topC, sideC, bottomC, kind) => defBlock({ key, name, cat, topC, sideC: sideC || topC, bottomC: bottomC || sideC || topC, kind: kind || 'solid' });
+  const dirt = tc(P.dirt);
+  /* nature */
+  D('coarse', 'Coarse dirt', 'nature', tc(c => { speckle(c, '#7a5236', .16, nx()); const r = rng(nx()); for (let i = 0; i < 14; i++) rect(c, r() * 16 | 0, r() * 16 | 0, 1, 1, '#5a5048'); }));
+  D('forestfloor', 'Forest floor', 'nature', tc(c => { speckle(c, '#7d5424', .2, nx()); const r = rng(nx()); for (let i = 0; i < 16; i++) rect(c, r() * 15 | 0, r() * 16 | 0, 2, 1, '#a06a2a'); }), tc(c => { speckle(c, '#8a5a3b', .12, nx()); speckle(c, '#7d5424', .18, nx(), 0, 0, 16, 3); }), dirt);
+  D('mud', 'Mud', 'nature', S('#3e3530', .1));
+  D('moss', 'Moss', 'nature', S('#5a8a3a', .2));
+  D('gravel', 'Gravel', 'nature', tc(c => { speckle(c, '#8c8580', .1, nx()); const r = rng(nx()); for (let i = 0; i < 26; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 2, 1 + (r() < .5 ? 1 : 0), ['#6b6560', '#a8a29c', '#7d7570'][i % 3]); }));
+  D('clay', 'Clay', 'nature', S('#a3aab8', .04));
+  D('redsand', 'Red sand', 'nature', S('#c4692e', .07));
+  D('packedice', 'Packed ice', 'nature', tc(c => { speckle(c, '#8fb8e8', .05, nx()); [[2, 3, 7], [8, 9, 6], [4, 13, 5]].forEach(([x, y, w]) => rect(c, x, y, w, 1, '#c6dcf6')); }));
+  D('lava', 'Lava', 'nature', glowT('#f0801e', '#ffd040'), null, null, 'glow');
+  D('magma', 'Magma', 'nature', crackT('#4a2418', '#ff8a2a'), null, null, 'glow');
+  D('snowgrass', 'Snowy grass', 'nature', tc(P.snow), tc(c => { speckle(c, '#8a5a3b', .12, nx()); speckle(c, '#f2f6fa', .03, nx(), 0, 0, 16, 3); }), dirt);
+  [['coralred', 'Red coral', '#d8443f'], ['coralpink', 'Pink coral', '#e77fb3'], ['coralyellow', 'Yellow coral', '#e8c33a'], ['coralblue', 'Blue coral', '#3a6fd8'], ['coralpurple', 'Purple coral', '#9a4ad0']].forEach(([k, n, col]) => D(k, n, 'nature', tc(c => { speckle(c, col, .12, nx()); const r = rng(nx()); for (let i = 0; i < 14; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 1, 1, SH(col, 1.35)); for (let i = 0; i < 8; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 1, 1, SH(col, .6)); })));
+  /* stone */
+  D('smoothstone', 'Smooth stone', 'stone', tc(c => { speckle(c, '#a0a3a8', .03, nx()); rect(c, 0, 0, 16, 1, '#b8bbc0'); rect(c, 0, 15, 16, 1, '#7d8085'); }));
+  D('stonebricks', 'Stone bricks', 'stone', bricksT('#8f9297', '#6a6d72', 8));
+  D('mossybricks', 'Mossy stone bricks', 'stone', tc(c => { const b = bricksT('#8f9297', '#6a6d72', 8); c.drawImage(b, 0, 0); const r = rng(nx()); for (let i = 0; i < 30; i++) rect(c, r() * 16 | 0, r() * 16 | 0, 1 + (r() < .4 ? 1 : 0), 1, r() < .5 ? '#5e8a3e' : '#4a7a32'); }));
+  D('crackedbricks', 'Cracked stone bricks', 'stone', tc(c => { c.drawImage(bricksT('#8f9297', '#6a6d72', 8), 0, 0); const r = rng(nx()); let x = 3, y = 0; for (let k = 0; k < 16; k++) { rect(c, x, y, 1, 1, '#55585c'); x = clamp(x + (r() < .5 ? 1 : 0), 0, 15); y++; } }));
+  D('mossycobble', 'Mossy cobble', 'stone', tc(c => { c.drawImage(tc(P.cobble), 0, 0); const r = rng(nx()); for (let i = 0; i < 26; i++) rect(c, r() * 16 | 0, r() * 16 | 0, 1 + (r() < .4 ? 1 : 0), 1, r() < .5 ? '#5e8a3e' : '#4a7a32'); }));
+  D('granite', 'Granite', 'stone', stoneT('#a86f5a', '#7d4a3a', 18));
+  D('polgranite', 'Polished granite', 'stone', metalT('#a86f5a'));
+  D('diorite', 'Diorite', 'stone', stoneT('#c9c7c3', '#8e8c88', 20));
+  D('andesite', 'Andesite', 'stone', stoneT('#88898a', '#6a6b6c', 16));
+  D('tuff', 'Tuff', 'stone', stoneT('#6c6d62', '#535448', 14));
+  D('calcite', 'Calcite', 'stone', stoneT('#e3e3df', '#c4c4bf', 10));
+  D('slate', 'Slate', 'stone', tc(c => { speckle(c, '#4c4c52', .07, nx()); [4, 9, 13].forEach(y => rect(c, 0, y, 16, 1, '#3c3c42')); }));
+  D('cobbledslate', 'Cobbled slate', 'stone', tc(c => { rect(c, 0, 0, 16, 16, '#2e2e33'); [[0, 0, 6, 5], [6, 0, 5, 4], [11, 0, 5, 6], [0, 5, 4, 6], [4, 4, 7, 6], [11, 6, 5, 5], [0, 11, 7, 5], [7, 10, 5, 6], [12, 11, 4, 5]].forEach(([x, y, w, h], i) => speckle(c, ['#55555b', '#4a4a50', '#606066'][i % 3], .07, nx(), x, y, w - 1, h - 1)); }));
+  D('slatebricks', 'Slate bricks', 'stone', bricksT('#505056', '#333338', 4));
+  D('slatetiles', 'Slate tiles', 'stone', tilesT('#46464c', 4));
+  D('redsandstone', 'Red sandstone', 'stone', tc(c => { speckle(c, '#b8602c', .05, nx()); [3, 9, 13].forEach(y => rect(c, 0, y, 16, 1, '#9a4c22')); }));
+  D('obsidian', 'Obsidian', 'stone', tc(c => { speckle(c, '#1d1626', .14, nx()); const r = rng(nx()); for (let i = 0; i < 8; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 2, 1, '#4a3366'); }));
+  D('blackstone', 'Black stone', 'stone', stoneT('#2c2a30', '#45424a', 16));
+  D('quartz', 'Quartz', 'stone', tc(c => { speckle(c, '#ece8e2', .03, nx()); rect(c, 0, 15, 16, 1, '#cfcac3'); rect(c, 15, 0, 1, 16, '#cfcac3'); }));
+  D('quartzbricks', 'Quartz bricks', 'stone', bricksT('#ece8e2', '#c9c4bc', 8));
+  D('mudbricks', 'Mud bricks', 'stone', bricksT('#8c6a50', '#6a4e3a', 4));
+  D('packedmud', 'Packed mud', 'stone', S('#8e6a50', .1));
+  D('terracotta', 'Terracotta', 'stone', S('#a0614a', .05));
+  D('seastone', 'Sea stone', 'stone', tc(c => { speckle(c, '#5aa596', .14, nx()); const r = rng(nx()); for (let i = 0; i < 16; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 2, 1, i % 2 ? '#3f7f74' : '#86c8b6'); }));
+  D('seabricks', 'Sea bricks', 'stone', bricksT('#5aa596', '#3f7f74', 8));
+  /* wood */
+  [['spruce', 'Spruce', '#7a5a36', '#3f2c1c', '#2e1f14'], ['birch', 'Birch', '#d8c58a', '#e6e2d6', '#2a2a2a'], ['jungle', 'Jungle', '#b07a50', '#5b4a28', '#3f3418'], ['acacia', 'Acacia', '#c06a3a', '#6a6158', '#4a443e'], ['darkoak', 'Dark oak', '#4f3520', '#3a2a1a', '#22180e'], ['mangrove', 'Mangrove', '#7a3a32', '#4a3a2e', '#2e241c'], ['cherry', 'Cherry', '#e3b6ad', '#3a2228', '#24141a'], ['bamboo', 'Bamboo', '#d8c060', '#7aa03a', '#55782a']]
+    .forEach(([k, n, plank, bark, mark]) => {
+      D(k + 'planks', n + ' planks', 'wood', planksT(plank));
+      if (k === 'bamboo') D(k + 'log', 'Bamboo stalks', 'wood', ringT('#c9d080', '#55782a'), tc(c => { speckle(c, bark, .06, nx()); [0, 5, 10].forEach(x => rect(c, x, 0, 1, 16, mark)); [4, 11].forEach(y => rect(c, 0, y, 16, 1, '#a8c860')); }));
+      else D(k + 'log', n + ' log', 'wood', ringT(plank, bark), barkT(bark, mark));
+    });
+  D('spruceleaves', 'Spruce leaves', 'wood', leavesT('#2f5a32'));
+  D('birchleaves', 'Birch leaves', 'wood', leavesT('#6fa04a'));
+  D('jungleleaves', 'Jungle leaves', 'wood', leavesT('#3a8a2a'));
+  D('cherryleaves', 'Cherry leaves', 'wood', leavesT('#e9a2c2', '#fbd0e2'));
+  D('flowerleaves', 'Flowering leaves', 'wood', leavesT('#4f8a3a', '#e77fb3'));
+  /* ores & metal */
+  const st = '#8d9096', sl = '#4c4c52';
+  [['coal', 'Coal', '#2a2a2a'], ['iron', 'Iron', '#d8b89a'], ['copper', 'Copper', '#d8744a'], ['gold', 'Gold', '#f2cf3a'], ['diamond', 'Diamond', '#5ee8e0'], ['emerald', 'Emerald', '#2ecc71'], ['lapis', 'Lapis', '#2a4fc8'], ['ruby', 'Ruby', '#d0283a']]
+    .forEach(([k, n, col]) => { D(k + 'ore', n + ' ore', 'ores', oreT(st, col)); D(k + 'slateore', n + ' ore, deep', 'ores', oreT(sl, col)); });
+  D('coalblock', 'Coal block', 'ores', tc(c => { speckle(c, '#1f1f22', .12, nx()); const r = rng(nx()); for (let i = 0; i < 10; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 1, 1, '#4a4a52'); }));
+  D('ironblock', 'Iron block', 'ores', metalT('#d6d8da'));
+  D('copperblock', 'Copper block', 'ores', metalT('#c96a42'));
+  D('weathered', 'Weathered copper', 'ores', tc(c => { c.drawImage(metalT('#a8794a'), 0, 0); const r = rng(nx()); for (let i = 0; i < 22; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 2, 1, '#5a9a80'); }));
+  D('oxidized', 'Oxidized copper', 'ores', metalT('#4fa088'));
+  D('diamondblock', 'Diamond block', 'ores', gemT('#6fe6e0'));
+  D('emeraldblock', 'Emerald block', 'ores', gemT('#2ecc71'));
+  D('lapisblock', 'Lapis block', 'ores', gemT('#2a4fc8'));
+  D('rubyblock', 'Ruby block', 'ores', gemT('#d0283a'));
+  D('amethyst', 'Amethyst', 'ores', gemT('#9a63d6'));
+  D('netheritelike', 'Dark alloy', 'ores', metalT('#3d3a3c'));
+  /* colors */
+  const DYES = [['white', 'White', '#e9ecef'], ['lightgray', 'Light gray', '#a8acb0'], ['gray', 'Gray', '#5a5e63'], ['black', 'Black', '#24262b'], ['brown', 'Brown', '#7a5230'], ['red', 'Red', '#c8413b'], ['orange', 'Orange', '#e8862a'], ['yellow', 'Yellow', '#e6c13b'], ['lime', 'Lime', '#86c83a'], ['green', 'Green', '#3f7a2e'], ['cyan', 'Cyan', '#2a9aa0'], ['lightblue', 'Light blue', '#5ab4e6'], ['blue', 'Blue', '#3b5bc8'], ['purple', 'Purple', '#7b3fb0'], ['magenta', 'Magenta', '#c24ab8'], ['pink', 'Pink', '#e07aa8']];
+  DYES.forEach(([k, n, col]) => { if (!ID[k]) D(k, n + ' cloth', 'colors', tc(P.cloth(col))); });
+  DYES.forEach(([k, n, col]) => D('concrete-' + k, n + ' concrete', 'colors', S(col, .025)));
+  DYES.forEach(([k, n, col]) => D('terra-' + k, n + ' terracotta', 'colors', S(SH(col, .78), .06)));
+  /* glass & light */
+  DYES.forEach(([k, n, col]) => D('glass-' + k, n + ' glass', 'glass', glassT(col), null, null, 'glass'));
+  D('glowcrystal', 'Glow crystal', 'glass', glowT('#f2c65a', '#fff2a0'), null, null, 'glow');
+  D('sealamp', 'Sea lamp', 'glass', tc(c => { speckle(c, '#bfe8e0', .06, nx()); c.strokeStyle = '#7fc8b8'; c.strokeRect(.5, .5, 15, 15); c.strokeRect(4.5, 4.5, 7, 7); }), null, null, 'glow');
+  D('jack', 'Jack-o’-lantern', 'glass', tc(c => { speckle(c, '#d9822b', .06, nx()); rect(c, 7, 0, 2, 3, '#5a7a2a'); }), tc(c => { speckle(c, '#d9822b', .06, nx()); [0, 5, 10, 15].forEach(x => rect(c, x, 0, 1, 16, '#b8681e')); rect(c, 3, 4, 3, 3, '#ffd24a'); rect(c, 10, 4, 3, 3, '#ffd24a'); rect(c, 3, 10, 10, 2, '#ffd24a'); rect(c, 5, 12, 2, 1, '#ffd24a'); rect(c, 9, 12, 2, 1, '#ffd24a'); }), null, 'glow');
+  D('slimeblock', 'Slime block', 'glass', glassT('#6fd06a', .6), null, null, 'glass');
+  /* decor */
+  D('bookshelf', 'Bookshelf', 'decor', planksT('#b07f47'), tc(c => { speckle(c, '#b07f47', .06, nx()); rect(c, 0, 0, 16, 1, '#7d5530'); rect(c, 0, 7, 16, 2, '#7d5530'); rect(c, 0, 15, 16, 1, '#7d5530'); const r = rng(nx()), cols = ['#b33a3a', '#3b5bc8', '#3f7a2e', '#e6c13b', '#7b3fb0', '#d9822b']; for (let row of [1, 9]) for (let x = 1; x < 15; x += 2) rect(c, x, row, 2, 6 - (r() * 2 | 0), cols[(r() * cols.length) | 0]); }));
+  D('workbench', 'Workbench', 'decor', tc(c => { c.drawImage(planksT('#b58a55'), 0, 0); c.strokeStyle = '#6b4a2b'; c.strokeRect(1.5, 1.5, 13, 13); rect(c, 7, 2, 1, 12, '#6b4a2b'); rect(c, 2, 7, 12, 1, '#6b4a2b'); }), tc(c => { c.drawImage(planksT('#a07040'), 0, 0); rect(c, 3, 4, 2, 7, '#8c8f94'); rect(c, 2, 4, 4, 2, '#8c8f94'); rect(c, 10, 3, 2, 9, '#6b4a2b'); rect(c, 9, 3, 4, 2, '#8c8f94'); }), planksT('#b07f47'));
+  D('furnace', 'Furnace', 'decor', S('#8d9096', .07), tc(c => { speckle(c, '#7d8085', .07, nx()); rect(c, 3, 7, 10, 6, '#2a2a2e'); rect(c, 4, 10, 8, 2, '#e8862a'); rect(c, 3, 3, 10, 2, '#5a5d62'); }));
+  D('barrelblock', 'Barrel', 'decor', tc(c => { speckle(c, '#8b5a2b', .06, nx()); c.strokeStyle = '#3a3530'; c.strokeRect(.5, .5, 15, 15); c.strokeRect(4.5, 4.5, 7, 7); }), tc(c => { speckle(c, '#8b5a2b', .06, nx()); [2, 13].forEach(y => rect(c, 0, y, 16, 1, '#3a3530')); [3, 8, 12].forEach(x => rect(c, x, 0, 1, 16, '#6e4520')); }));
+  D('hay', 'Hay bale', 'decor', tc(c => { speckle(c, '#d8b440', .08, nx()); c.strokeStyle = '#a8862a'; c.strokeRect(2.5, 2.5, 11, 11); }), tc(c => { speckle(c, '#d8b440', .1, nx()); [1, 4, 7, 10, 13].forEach(x => rect(c, x, 0, 1, 16, '#b8962e')); [4, 11].forEach(y => rect(c, 0, y, 16, 1, '#8a3a2a')); }));
+  D('pumpkin', 'Pumpkin', 'decor', tc(c => { speckle(c, '#d9822b', .06, nx()); rect(c, 7, 6, 2, 3, '#5a7a2a'); }), tc(c => { speckle(c, '#d9822b', .06, nx()); [0, 5, 10, 15].forEach(x => rect(c, x, 0, 1, 16, '#b8681e')); }));
+  D('melon', 'Melon', 'decor', tc(c => { speckle(c, '#6ab83a', .08, nx()); [1, 5, 9, 13].forEach(x => rect(c, x, 0, 2, 16, '#3f7a2e')); }));
+  D('sponge', 'Sponge', 'decor', tc(c => { speckle(c, '#d8cc4a', .06, nx()); const r = rng(nx()); for (let i = 0; i < 14; i++) rect(c, r() * 15 | 0, r() * 15 | 0, 2, 2, '#a89a2a'); }));
+  D('honeycomb', 'Honeycomb', 'decor', tc(c => { rect(c, 0, 0, 16, 16, '#b8761e'); for (let y = 0; y < 16; y += 4) for (let x = (y / 4) % 2 ? 2 : 0; x < 16; x += 4) rect(c, x, y, 3, 3, '#e8a83a'); }));
+  D('mushred', 'Red mushroom block', 'decor', tc(c => { speckle(c, '#c8302c', .06, nx()); [[2, 2], [9, 3], [5, 9], [11, 11], [2, 12]].forEach(([x, y]) => rect(c, x, y, 3, 2, '#f2ece0')); }));
+  D('mushbrown', 'Brown mushroom block', 'decor', S('#946a4a', .06));
+  D('mushstem', 'Mushroom stem', 'decor', tc(c => { speckle(c, '#e6dccb', .04, nx()); [3, 8, 12].forEach(x => rect(c, x, 0, 1, 16, '#cfc4b0')); }));
+  D('dynamite', 'Dynamite crate', 'decor', tc(c => { c.drawImage(planksT('#a07a46'), 0, 0); c.strokeStyle = '#b33a3a'; c.strokeRect(2.5, 2.5, 11, 11); }), tc(c => { c.drawImage(planksT('#a07a46'), 0, 0); for (let x = 2; x < 14; x += 3) rect(c, x, 3, 2, 10, '#c8413b'); rect(c, 0, 7, 16, 2, '#2a2a2a'); }));
+  D('target', 'Target', 'decor', tc(c => { rect(c, 0, 0, 16, 16, '#efe6d8'); c.fillStyle = '#c8413b'; c.beginPath(); c.arc(8, 8, 7, 0, 7); c.fill(); c.fillStyle = '#efe6d8'; c.beginPath(); c.arc(8, 8, 5, 0, 7); c.fill(); c.fillStyle = '#c8413b'; c.beginPath(); c.arc(8, 8, 2.5, 0, 7); c.fill(); }));
+}
+
 /* ---------------- characters ---------------- */
 const PX = .9 / 16;
 const PARTS = {
@@ -710,6 +834,7 @@ function paintSkin(cfg) {
     else if (cfg.hat.type === 'chef') sides(4);
     else if (cfg.hat.type === 'hood') { ['right', 'left', 'back'].forEach(k => { const [x, y, w] = F[k]; rect(c, x, y, w, 8, col); }); rect(c, F.front[0], F.front[1], 8, 2, col); rect(c, F.front[0], F.front[1] + 2, 1, 6, col); rect(c, F.front[0] + 7, F.front[1] + 2, 1, 6, col); }
   }
+  paintMobExtras(c, cfg);
   const id = c.getImageData(0, 0, 64, 64), d = id.data, r = rng(cfg.seed || 7);
   for (let i = 0; i < d.length; i += 4) if (d[i + 3]) { const n = 1 + (r() - .5) * .12; d[i] = clamp(d[i] * n, 0, 255); d[i + 1] = clamp(d[i + 1] * n, 0, 255); d[i + 2] = clamp(d[i + 2] * n, 0, 255); }
   c.putImageData(id, 0, 0);
@@ -1061,14 +1186,20 @@ function randomCfg(style) {
   if (style === 'tactical') { const camo = pick(R.drab); return { skin: pick(R.skins), eyes: pick(['#4a3a2a', '#2e7d4f', '#3a5f8a']), head: pick(['helmet', 'cap', 'beret', 'hood', 'hair']), hatC: pick(R.drab), hair: pick(R.hairs.slice(0, 6)), shirt: camo, vest: Math.random() < .7 ? shadeHex(camo, .8) : null, pack: Math.random() < .6, pants: pick(R.drab), shoes: '#2b2b24', gun: pick([null, 'rifle', 'rifle', 'sniper']), mask: Math.random() < .2 ? shadeHex(camo, .7) : null }; }
   return { skin: pick(R.skins), hair: pick(R.hairs.slice(0, 7)), hairStyle: pick(['short', 'long']), hat: pick([null, null, 'straw', 'chef', 'ranger', 'hood']), hatC: pick(R.cloth), shirt: pick(R.cloth), pants: pick(['#5b4a3a', '#4a6fa5', '#34495e', '#6b5a4a']), shoes: '#3a2a20', apron: Math.random() < .25 ? '#f6f4ef' : null, beard: Math.random() < .15 ? '#ecebe7' : null };
 }
-function presetsFor(style) { if (style === 'blocky') return SKIN_PRESETS; return CHAR_PRESETS[style] || {}; }
+let blockyPresets = null;
+function presetsFor(style) { if (style === 'blocky') return blockyPresets || (blockyPresets = Object.assign({}, SKIN_PRESETS, MOB_SKINS, ANIMALS)); return CHAR_PRESETS[style] || {}; }
 function cfgFor(look, style) { if (look.cfg) return look.cfg; const P = presetsFor(style); return P[look.preset] || Object.values(P)[0]; }
 async function buildRig(look, style) {
   if (style === 'blocky') {
-    let canvas, legacy = false;
+    if (look.preset && ANIMALS[look.preset]) return buildCreature(look.preset);
+    let canvas, legacy = false; const cfg = look.png ? null : cfgFor(look, style);
     if (look.png) { try { ({ canvas, legacy } = await loadSkin(look.png)); } catch (e) { toast(e.message); canvas = paintSkin(SKIN_PRESETS.hero); } }
-    else canvas = paintSkin(cfgFor(look, style));
-    const m = buildModel(canvas, legacy, !!look.slim); m.skinCanvas = canvas; return m;
+    else canvas = paintSkin(cfg);
+    const m = buildModel(canvas, legacy, !!look.slim || !!(cfg && cfg.slim)); m.skinCanvas = canvas;
+    if (cfg && cfg.witchHat) addWitchHat(m);
+    if (cfg && cfg.scale) { m.root.scale.setScalar(cfg.scale); m.scale = cfg.scale; }
+    if (cfg && cfg.pose) m.pose = cfg.pose;
+    return m;
   }
   const cfg = cfgFor(look, style);
   const rig = style === 'anime' ? buildAnime(cfg) : style === 'tactical' ? buildTactical(cfg) : buildLowpoly(cfg);
@@ -1084,6 +1215,118 @@ function disposeRig(m) {
   });
   if (m.mats) m.mats.forEach(x => x.dispose()); if (m.tex) m.tex.dispose();
 }
+
+/* ================= blocky creatures & monsters (original designs) ================= */
+const crCache = new Map();
+function crMat(col, opt = {}) {
+  const key = col + '|' + (opt.glow ? 'g' : '') + '|' + (opt.op || '') + '|' + (opt.patch || '') + '|' + (opt.stripe || '') + '|' + (opt.v || '');
+  if (crCache.has(key)) return crCache.get(key);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 8; const c = cv.getContext('2d');
+  let sd = 0; for (const ch of key) sd = (sd * 31 + ch.charCodeAt(0)) | 0;
+  speckle(c, col, opt.v == null ? .08 : opt.v, sd, 0, 0, 8, 8);
+  if (opt.patch) { const r = rng(sd + 1); for (let i = 0; i < 3; i++) rect(c, r() * 6 | 0, r() * 6 | 0, 2 + (r() * 3 | 0), 2 + (r() * 2 | 0), opt.patch); }
+  if (opt.stripe) for (let y = 1; y < 8; y += 3) rect(c, 0, y, 8, 1, opt.stripe);
+  const tex = new T.CanvasTexture(cv); tex.magFilter = tex.minFilter = T.NearestFilter; tex.generateMipmaps = false; tex.encoding = T.sRGBEncoding;
+  const m = opt.glow ? new T.MeshBasicMaterial({ map: tex }) : new T.MeshLambertMaterial({ map: tex, transparent: !!opt.op, opacity: opt.op || 1, depthWrite: !opt.op });
+  m.userData.cached = true; crCache.set(key, m); return m;
+}
+const cb = (w, h, d, col, x = 0, y = 0, z = 0, opt) => { const m = new T.Mesh(new T.BoxGeometry(w, h, d), crMat(col, opt)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; };
+function eyesOn(g, z, y, sep, s = .07, col = '#16141a', white = true) {
+  for (const sx of [-1, 1]) { if (white) g.add(cb(s * 1.6, s * 1.2, .02, '#f4f2ee', sx * sep, y, z, { v: 0 })); g.add(cb(s * .8, s * 1.2, .025, col, sx * sep + (white ? sx * s * .35 : 0), y, z + .005, { v: 0, glow: col !== '#16141a' })); }
+}
+function quadRig(o) {
+  const root = new T.Group(), model = new T.Group(); root.add(model);
+  const upper = new T.Group(); upper.position.y = o.legH; model.add(upper);
+  upper.add(cb(o.bw, o.bh, o.bd, o.body, 0, o.bh / 2, 0, o.bodyOpt));
+  const head = new T.Group(); head.position.set(0, o.bh * .7 + (o.neckY || 0), o.bd / 2 + (o.neckZ || 0)); upper.add(head);
+  const hz = o.hd * .38; head.add(cb(o.hw, o.hh, o.hd, o.headC || o.body, 0, o.hh * .15, hz, o.headOpt || o.bodyOpt));
+  const front = hz + o.hd / 2 + .011, hy = o.hh * .15;
+  const leg = (x, z) => { const pv = new T.Group(); pv.position.set(x, o.legH, z); pv.add(cb(o.lw, o.legH, o.lw, o.legC || o.body, 0, -o.legH / 2, 0)); model.add(pv); return pv; };
+  const lx = o.bw / 2 - o.lw / 2, fz = o.bd / 2 - o.lw / 2 - .02;
+  const armR = leg(-lx, fz), armL = leg(lx, fz), legR = leg(-lx, -fz), legL = leg(lx, -fz);
+  const headH = o.legH + o.bh * .7 + (o.neckY || 0) + hy;
+  return { root, model, upper, head, armL, armR, legL, legR, kind: 'quad', headH, height: headH + o.hh * .7, sitDrop: .08, front, hy, hw: o.hw, hh: o.hh };
+}
+const CREATURE_BUILD = {
+  pig: () => { const r = quadRig({ bw: .62, bh: .52, bd: .92, legH: .3, lw: .2, hw: .5, hh: .48, hd: .44, body: '#ef9fae' }); r.head.add(cb(.26, .17, .06, '#de7d90', 0, r.hy - .08, r.front + .02)); eyesOn(r.head, r.front, r.hy + .08, .13); return r; },
+  cow: () => { const r = quadRig({ bw: .72, bh: .7, bd: 1.15, legH: .56, lw: .24, hw: .52, hh: .48, hd: .4, body: '#f2efe8', bodyOpt: { patch: '#2a2522' }, headOpt: { patch: '#2a2522' }, legC: '#3a3430' }); r.head.add(cb(.36, .2, .06, '#e8b0a8', 0, r.hy - .1, r.front + .02)); [-1, 1].forEach(s => r.head.add(cb(.08, .14, .08, '#e8dcc0', s * .22, r.hy + .3, r.front - .2))); eyesOn(r.head, r.front, r.hy + .08, .15); return r; },
+  sheep: () => { const r = quadRig({ bw: .78, bh: .72, bd: 1.0, legH: .44, lw: .17, hw: .36, hh: .38, hd: .36, body: '#f3f1ea', bodyOpt: { v: .14 }, headC: '#cfc2ad', legC: '#cfc2ad' }); r.head.add(cb(.4, .16, .3, '#f3f1ea', 0, r.hy + .2, r.front - .2, { v: .14 })); eyesOn(r.head, r.front, r.hy + .04, .1, .06); return r; },
+  dog: () => { const r = quadRig({ bw: .38, bh: .38, bd: .74, legH: .38, lw: .13, hw: .36, hh: .34, hd: .36, body: '#c9a46b', legC: '#b8925a' }); r.head.add(cb(.18, .14, .16, '#d8b87e', 0, r.hy - .06, r.front + .08), cb(.08, .06, .03, '#2a2020', 0, r.hy - .01, r.front + .17)); [-1, 1].forEach(s => r.head.add(cb(.08, .14, .06, '#8a6a40', s * .15, r.hy + .2, r.front - .2))); eyesOn(r.head, r.front, r.hy + .07, .09, .05); const t = cb(.08, .08, .34, '#b8925a', 0, .3, -.48); t.rotation.x = .7; r.upper.add(t); return r; },
+  cat: () => { const r = quadRig({ bw: .28, bh: .28, bd: .6, legH: .26, lw: .09, hw: .3, hh: .26, hd: .28, body: '#e89a48', bodyOpt: { stripe: '#b86a28' }, headOpt: { stripe: '#b86a28' } }); [-1, 1].forEach(s => r.head.add(cb(.07, .1, .05, '#e89a48', s * .1, r.hy + .17, r.front - .12))); r.head.add(cb(.05, .04, .02, '#e07f90', 0, r.hy - .04, r.front + .01)); eyesOn(r.head, r.front, r.hy + .04, .07, .045, '#3a9a3a'); const t = cb(.06, .06, .5, '#e89a48', 0, .32, -.5, { stripe: '#b86a28' }); t.rotation.x = 1.0; r.upper.add(t); return r; },
+  horse: () => { const r = quadRig({ bw: .62, bh: .68, bd: 1.35, legH: .85, lw: .2, hw: .3, hh: .36, hd: .62, body: '#8a5a34', neckY: .38, neckZ: -.04, legC: '#7a4c2c' }); r.upper.add(cb(.3, .55, .3, '#8a5a34', 0, .82, .6)); r.upper.add(cb(.08, .6, .34, '#3a2418', 0, 1.0, .5)); eyesOn(r.head, r.front - .25, r.hy + .08, .16, .05, '#16141a', false); r.head.add(cb(.06, .12, .06, '#3a2418', -.1, r.hy + .24, r.front - .52), cb(.06, .12, .06, '#3a2418', .1, r.hy + .24, r.front - .52)); const t = cb(.12, .55, .12, '#3a2418', 0, .3, -.72); t.rotation.x = .35; r.upper.add(t); r.height += .2; return r; },
+  bear: () => { const r = quadRig({ bw: .86, bh: .8, bd: 1.3, legH: .46, lw: .3, hw: .56, hh: .5, hd: .48, body: '#6a4628', bodyOpt: { v: .12 } }); r.head.add(cb(.28, .2, .14, '#a88a68', 0, r.hy - .08, r.front + .06), cb(.1, .07, .03, '#1c1614', 0, r.hy - .02, r.front + .135)); [-1, 1].forEach(s => r.head.add(cb(.12, .12, .08, '#5a3a20', s * .22, r.hy + .3, r.front - .3))); eyesOn(r.head, r.front, r.hy + .1, .14, .05, '#16141a', false); return r; },
+  chicken: () => {
+    const root = new T.Group(), model = new T.Group(); root.add(model);
+    const upper = new T.Group(); upper.position.y = .3; model.add(upper);
+    upper.add(cb(.36, .36, .46, '#f6f4ee', 0, .18, 0));
+    const head = new T.Group(); head.position.set(0, .3, .16); upper.add(head);
+    head.add(cb(.24, .3, .2, '#f6f4ee', 0, .15, .02), cb(.12, .07, .1, '#e8a33a', 0, .14, .16), cb(.07, .1, .04, '#d8302c', 0, .06, .13), cb(.1, .06, .1, '#d8302c', 0, .33, .02));
+    eyesOn(head, .121, .2, .07, .04, '#16141a', false);
+    const wing = s => { const pv = new T.Group(); pv.position.set(s * .2, .32, 0); pv.add(cb(.05, .24, .34, '#ecebe4', 0, -.12, 0)); upper.add(pv); return pv; };
+    const leg = s => { const pv = new T.Group(); pv.position.set(s * .08, .3, 0); pv.add(cb(.05, .3, .05, '#e8a33a', 0, -.15, 0), cb(.12, .02, .14, '#e8a33a', 0, -.29, .03)); model.add(pv); return pv; };
+    return { root, model, upper, head, armR: wing(-1), armL: wing(1), legR: leg(-1), legL: leg(1), kind: 'quad', headH: .75, height: .9, sitDrop: .1 };
+  },
+  spider: () => {
+    const root = new T.Group(), model = new T.Group(); root.add(model);
+    const upper = new T.Group(); upper.position.y = .32; model.add(upper);
+    upper.add(cb(.72, .52, .72, '#2a2426', 0, .2, -.42, { v: .14 }), cb(.46, .38, .44, '#3a3234', 0, .12, .1));
+    const head = new T.Group(); head.position.set(0, .14, .32); upper.add(head);
+    head.add(cb(.38, .32, .26, '#3a3234', 0, 0, .1));
+    [[-.1, .06], [.1, .06], [-.05, -.05], [.05, -.05]].forEach(([x, y]) => head.add(cb(.06, .05, .02, '#ff3a3a', x, y, .235, { v: 0, glow: true })));
+    const pair = (s, z) => { const pv = new T.Group(); pv.position.set(s * .2, .32, z); [0, 1].forEach(k => { const g = new T.Group(); g.rotation.set(0, (k ? .35 : -.35) * s, s * -.55); g.add(cb(.65, .06, .06, '#2a2426', s * .33, 0, 0)); g.position.z = k ? .12 : -.12; pv.add(g); }); model.add(pv); return pv; };
+    return { root, model, upper, head, armR: pair(-1, .18), armL: pair(1, .18), legR: pair(-1, -.18), legL: pair(1, -.18), kind: 'quad', headH: .5, height: .85, sitDrop: .1 };
+  },
+  slime: () => {
+    const root = new T.Group(), model = new T.Group(); root.add(model);
+    const upper = new T.Group(); model.add(upper);
+    upper.add(cb(.44, .44, .44, '#3f9a3a', 0, .32, 0, { v: .1 }), cb(.82, .82, .82, '#7ad86f', 0, .41, 0, { op: .68, v: .1 }));
+    const head = new T.Group(); head.position.set(0, .41, 0); upper.add(head);
+    head.add(cb(.12, .12, .02, '#16141a', -.16, .1, .415, { v: 0 }), cb(.12, .12, .02, '#16141a', .16, .1, .415, { v: 0 }), cb(.12, .05, .02, '#16141a', 0, -.12, .415, { v: 0 }));
+    const nub = () => { const g = new T.Group(); model.add(g); return g; };
+    return { root, model, upper, head, armR: nub(), armL: nub(), legR: nub(), legL: nub(), kind: 'quad', hop: true, headH: .5, height: .9, sitDrop: .05 };
+  }
+};
+const ANIMALS = {
+  pig: { label: 'Pig', group: 'animals', beh: 'wander', lines: ['Oink.', 'Oink oink!'] },
+  cow: { label: 'Cow', group: 'animals', beh: 'wander', lines: ['Moo.', 'Mooo…'] },
+  sheep: { label: 'Sheep', group: 'animals', beh: 'wander', lines: ['Baa.', 'Baaa!'] },
+  chicken: { label: 'Chicken', group: 'animals', beh: 'wander', lines: ['Bawk!', 'Cluck cluck.'] },
+  dog: { label: 'Dog', group: 'animals', beh: 'follow', lines: ['Woof!', 'Arf arf!'] },
+  cat: { label: 'Cat', group: 'animals', beh: 'wander', lines: ['Meow.', 'Purrr…'] },
+  horse: { label: 'Horse', group: 'animals', beh: 'wander', lines: ['Neigh!', 'Hrrr.'] },
+  bear: { label: 'Bear', group: 'animals', beh: 'wander', lines: ['Grrr.', 'Rrrawr!'] },
+  spider: { label: 'Spider', group: 'mobs', beh: 'chase', lines: ['*skitter*', 'Hssss…'] },
+  slime: { label: 'Slime', group: 'mobs', beh: 'wander', lines: ['*blorp*', '*squish*'] }
+};
+Object.keys(ANIMALS).forEach(k => ANIMALS[k].creature = true);
+const MOB_SKINS = {
+  villager: { label: 'Villager', group: 'people', skin: '#d8a27a', hair: '#5a3b22', eyes: '#3a2a20', shirt: '#8a6a48', shirt2: '#5b4a38', pants: '#4f3f30', shoes: '#3a2a20', sleeves: 'long', belt: true, seed: 21, beh: 'wander', lines: ['Good harvest this year.', 'Care to trade?', 'Hmm, a visitor.'] },
+  witch: { label: 'Witch', group: 'mobs', skin: '#c9d8b0', hair: '#2a2a2a', hairStyle: 'long', eyes: '#7b3fb0', shirt: '#3b2a4a', shirt2: '#6a3a8a', robe: true, shoes: '#1c1820', sleeves: 'long', witchHat: true, seed: 22, beh: 'wander', lines: ['A pinch of this, a drop of that…', 'Fresh potions, dearie?', 'Hehehe!'] },
+  zombie: { label: 'Zombie', group: 'mobs', skin: '#7f9a6a', hair: '#2f3a28', hairStyle: 'short', eyes: '#1a1a1a', shirt: '#7a6a55', pants: '#4a4236', shoes: '#2b2b24', torn: true, pose: 'zombie', seed: 23, beh: 'chase', lines: ['Uuurgh…', 'Braaains…', 'Hungry…'] },
+  skeleton: { label: 'Skeleton', group: 'mobs', skin: '#e6e2d6', eyes: '#111111', shirt: '#e6e2d6', pants: '#e6e2d6', shoes: '#cfc9b8', hairStyle: 'bald', bones: true, slim: true, seed: 24, beh: 'wander', lines: ['*rattle rattle*', 'I’ve got a bone to pick.', 'Chilly in here.'] },
+  mummy: { label: 'Mummy', group: 'mobs', skin: '#d9cfb0', eyes: '#2a2a2a', shirt: '#d9cfb0', pants: '#d0c6a6', shoes: '#c4b996', hairStyle: 'bald', wrap: true, pose: 'zombie', seed: 25, beh: 'chase', lines: ['Mmmph!', 'Mmm-mmh…'] },
+  golem: { label: 'Stone golem', group: 'mobs', robot: true, skin: '#9a958c', eyes: '#f0a040', shirt: '#8a857c', shirt2: '#5f8a4a', pants: '#7d786f', shoes: '#5d5850', scale: 1.4, seed: 26, beh: 'idle', lines: ['…', 'I guard this place.'] },
+  pirate: { label: 'Pirate', group: 'people', skin: '#c98d62', hair: '#2a1d14', beard: '#2a1d14', eyes: '#2b1b10', hat: { type: 'cap', color: '#b33a3a' }, shirt: '#f0ece0', shirt2: '#b33a3a', pants: '#3a3a52', shoes: '#2b2018', belt: true, patch: true, seed: 27, beh: 'wander', lines: ['Arr!', 'Where’s me treasure?', 'Avast!'] },
+  ghost: { label: 'Ghost', group: 'mobs', skin: '#eef2f6', eyes: '#1a1a22', shirt: '#eef2f6', pants: '#eef2f6', shoes: '#dfe5ec', hairStyle: 'bald', robe: true, shirt2: '#dfe5ec', seed: 28, beh: 'wander', lines: ['Boooo…', 'Have you seen my chains?'] }
+};
+function paintMobExtras(c, cfg) {
+  const S = PARTS;
+  if (cfg.torn) { const r = rng(cfg.seed || 3); for (const s of [S.body, S.armR, S.armL, S.legR, S.legL]) { const F = faces(s); for (let i = 0; i < 6; i++) { const k = ['front', 'back', 'left', 'right'][i % 4], [x, y, w, h] = F[k]; rect(c, x + (r() * w | 0), y + (r() * h | 0), 1 + (r() < .5 ? 1 : 0), 1 + (r() < .5 ? 1 : 0), i % 3 ? cfg.skin : shadeHex(cfg.shirt, .7)); } } }
+  if (cfg.bones) {
+    const H = faces(S.head), [fx, fy] = H.front, dark = '#3a3630';
+    rect(c, fx + 1, fy + 3, 2, 2, '#111'); rect(c, fx + 5, fy + 3, 2, 2, '#111'); rect(c, fx + 3, fy + 5, 2, 1, dark); rect(c, fx + 1, fy + 6, 6, 1, dark); for (let x = 1; x < 7; x += 2) rect(c, fx + x, fy + 7, 1, 1, dark);
+    const B = faces(S.body); [B.front, B.back].forEach(([x, y]) => { rect(c, x + 3, y, 2, 12, '#cfc9b8'); for (let k = 1; k < 8; k += 2) rect(c, x, y + k, 8, 1, dark); rect(c, x, y + 9, 8, 3, dark); rect(c, x + 3, y + 9, 2, 3, '#cfc9b8'); });
+    for (const s of [S.armR, S.armL, S.legR, S.legL]) paintRows(c, s, 5, 6, '#b8b2a0');
+  }
+  if (cfg.wrap) { for (const s of Object.values(S)) { const F = faces(s); for (const k of ['front', 'back', 'left', 'right']) { const [x, y, w, h] = F[k]; for (let yy = 1; yy < h; yy += 3) rect(c, x, y + yy, w, 1, '#b8ac88'); } } const [fx, fy] = faces(S.head).front; rect(c, fx + 1, fy + 3, 6, 2, '#2a2420'); rect(c, fx + 2, fy + 3, 1, 1, '#e8d84a'); rect(c, fx + 5, fy + 3, 1, 1, '#e8d84a'); }
+  if (cfg.patch) { const [fx, fy] = faces(S.head).front; rect(c, fx + 1, fy + 3, 3, 3, '#141414'); rect(c, fx, fy + 2, 8, 1, '#141414'); }
+}
+function addWitchHat(m) {
+  const g = new T.Group(), hat = '#241c2c', band = '#6a3a8a', P8 = PX;
+  g.add(cb(14 * P8, 1 * P8, 14 * P8, hat, 0, 0, 0), cb(9 * P8, 1.2 * P8, 9 * P8, band, 0, 1 * P8, 0), cb(9 * P8, 3 * P8, 9 * P8, hat, 0, 3 * P8, 0), cb(6 * P8, 3 * P8, 6 * P8, hat, .5 * P8, 6 * P8, -.5 * P8), cb(4 * P8, 3 * P8, 4 * P8, hat, 1 * P8, 9 * P8, -1 * P8), cb(2 * P8, 2.5 * P8, 2 * P8, hat, 1.6 * P8, 11.5 * P8, -1.8 * P8));
+  g.position.y = 8.6 * P8; g.rotation.z = -.08; m.head.add(g); m.height += .45;
+}
+function buildCreature(key) { const r = CREATURE_BUILD[key](); r.creature = key; return r; }
 
 /* ================= terrain ================= */
 const TN = SIZE;
@@ -1369,13 +1612,14 @@ const charIcons = {};
 async function lookIcon(look, style) {
   const key = style + JSON.stringify(look); if (charIcons[key]) return charIcons[key];
   let url;
-  if (style === 'blocky') { const m = await buildRig(look, style); url = faceIcon(m.skinCanvas); disposeRig(m); }
+  if (style === 'blocky' && !(look.preset && ANIMALS[look.preset])) { const m = await buildRig(look, style); url = faceIcon(m.skinCanvas); disposeRig(m); }
+  else if (style === 'blocky') { const m = await buildRig(look, style); url = snap(m.root); disposeRig(m); }
   else { const m = await buildRig(look, style); const k = m.scale || 1; url = snap(m.root, { headH: m.headH * k, k: Math.max(.7, k) }); disposeRig(m); }
   if (!look.png) charIcons[key] = url; return url;
 }
 
 /* ================= actors ================= */
-const BEHAVIORS = [['idle', 'Stand'], ['wander', 'Wander'], ['talk', 'Chat'], ['dance', 'Dance'], ['wave', 'Wave'], ['sit', 'Sit'], ['follow', 'Follow you']];
+const BEHAVIORS = [['idle', 'Stand'], ['wander', 'Wander'], ['talk', 'Chat'], ['dance', 'Dance'], ['wave', 'Wave'], ['sit', 'Sit'], ['follow', 'Follow you'], ['chase', 'Chase you'], ['flee', 'Run away']];
 const BEH_LABEL = Object.fromEntries(BEHAVIORS);
 const actors = []; let player = null, actorSeq = 1;
 class Actor {
@@ -1465,6 +1709,13 @@ function updateNPC(a, dt) {
     case 'follow':
       if (player && player !== a) { if (pd > 2.6) steer(a, player.pos.x, player.pos.z, pd > 6 ? 4.2 : 2.4, dt); else faceTo(a, player.pos.x, player.pos.z, dt); look = player; }
       break;
+    case 'chase':
+      if (player && player !== a) { if (pd > 1.25) steer(a, player.pos.x, player.pos.z, pd > 8 ? 3.4 : 2.6, dt); else faceTo(a, player.pos.x, player.pos.z, dt, 8); look = player; if (pd < 1.6) { a.nextLine -= dt; if (a.nextLine <= 0) { a.nextLine = 4 + Math.random() * 3; a.say(a.line(), 1.8); } } }
+      break;
+    case 'flee':
+      if (player && player !== a && pd < 7) { const dx = a.pos.x - player.pos.x, dz = a.pos.z - player.pos.z, l = Math.hypot(dx, dz) || 1; steer(a, clamp(a.pos.x + dx / l * 4, 1.5, SIZE - 1.5), clamp(a.pos.z + dz / l * 4, 1.5, SIZE - 1.5), 4.4, dt); }
+      else { a.hy = 0; }
+      break;
     case 'talk': {
       if (!a.partner || a.partner.behavior !== 'talk' || !actors.includes(a.partner)) {
         a.partner = null; let best = null, bd = 16;
@@ -1481,7 +1732,7 @@ function updateNPC(a, dt) {
     }
     default: break;
   }
-  if (!look && a.notice && player && player !== a && pd < 7 && a.behavior !== 'dance') look = player;
+  if (!look && a.notice && player && player !== a && pd < 7 && a.behavior !== 'dance' && a.behavior !== 'flee') look = player;
   moveBody(a, dt);
   if (look) {
     const tx = look.pos.x - a.pos.x, tz = look.pos.z - a.pos.z, ty = look.headY - a.headY;
@@ -1509,7 +1760,23 @@ function animateActor(a, dt) {
   m.armL.rotation.set(-sw * .85, 0, .05 + Math.sin(t * 1.6) * .03); m.armR.rotation.set(sw * .85, 0, -.05 - Math.sin(t * 1.6) * .03);
   m.model.position.set(0, 0, 0); m.model.rotation.set(0, 0, 0); m.upper.rotation.set(0, 0, 0);
   let hy = a.hy || 0, hp = a.hp || 0;
-  if (!a.onGround) { m.armL.rotation.z = .5; m.armR.rotation.z = -.5; }
+  const quad = m.kind === 'quad';
+  if (quad) { m.armL.rotation.z = 0; m.armR.rotation.z = 0; }
+  else if (!a.onGround) { m.armL.rotation.z = .5; m.armR.rotation.z = -.5; }
+  if (m.pose === 'zombie') { m.armL.rotation.set(-1.45 + Math.sin(t * 2) * .05 - sw * .1, 0, .06); m.armR.rotation.set(-1.45 - Math.sin(t * 2) * .05 + sw * .1, 0, -.06); }
+  if (m.hop) { const hp2 = Math.abs(Math.sin(a.walk * 1.3)) * amt; m.model.position.y = hp2 * .35; m.upper.scale.set(1 + (1 - hp2) * amt * .12, 1 - (1 - hp2) * amt * .15, 1 + (1 - hp2) * amt * .12); }
+  if (quad && sp < .2 && a !== player && a.behavior !== 'idle' && a.behavior !== 'wander' && a.behavior !== 'follow' && a.behavior !== 'chase' && a.behavior !== 'flee') {
+    if (a.behavior === 'dance') { m.model.position.y = Math.abs(Math.sin(t * 8)) * .18; m.model.rotation.y = Math.sin(t * 3) * .7; hy = Math.sin(t * 6) * .3; }
+    else if (a.behavior === 'sit') { m.legL.rotation.x = m.legR.rotation.x = -1.1; m.model.rotation.x = -.3; m.model.position.y = -m.sitDrop; }
+    else if (a.behavior === 'wave') { m.armR.rotation.x = -1.2 + Math.sin(t * 9) * .35; }
+    else if (a.behavior === 'talk' && a.speakT > 0) hp += Math.sin(t * 9) * .12;
+    if (a.speakT > 0) a.speakT -= dt;
+    a.headYaw = lerp(a.headYaw, hy, 1 - Math.exp(-dt * 8)); a.headPitch = lerp(a.headPitch, hp, 1 - Math.exp(-dt * 8));
+    m.head.rotation.set(a.headPitch, a.headYaw, 0); m.root.position.copy(a.pos); m.root.rotation.y = a.yaw;
+    if (a.bubble) { a.bubbleT -= dt; if (a.bubbleT <= 0) { disposeSprite(a.bubble); a.bubble = null; } }
+    return;
+  }
+  if (quad && a.speakT > 0) { a.speakT -= dt; hp += Math.sin(t * 9) * .12; a.speakT = Math.max(a.speakT, 0); }
   if (sp < .2 && a !== player) {
     switch (a.behavior) {
       case 'dance': {
@@ -1524,7 +1791,7 @@ function animateActor(a, dt) {
       default: break;
     }
   }
-  if (a.speakT > 0) { a.speakT -= dt; m.armR.rotation.x = -.6 + Math.sin(t * 5) * .35; hp += Math.sin(t * 7) * .06; }
+  if (a.speakT > 0 && !quad) { a.speakT -= dt; if (m.pose !== 'zombie') m.armR.rotation.x = -.6 + Math.sin(t * 5) * .35; hp += Math.sin(t * 7) * .06; }
   if (m.cape) m.cape.rotation.x = .14 + amt * .5 + Math.sin(t * 3) * .03;
   a.headYaw = lerp(a.headYaw, hy, 1 - Math.exp(-dt * 8)); a.headPitch = lerp(a.headPitch, hp, 1 - Math.exp(-dt * 8));
   m.head.rotation.set(a.headPitch, a.headYaw, 0);
@@ -1570,7 +1837,16 @@ const I = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   group: svg('<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14 14c3.3 0 6 2.7 6 6"/>')
 };
-const BEH_ICON = { idle: I.stand, wander: I.walk, talk: I.chat, dance: I.dance, wave: I.wave, sit: I.sit, follow: I.follow };
+I.chase = svg('<circle cx="15" cy="4.5" r="2.5"/><path d="M4 12h4l3-4 4 3-3 4 3 3v4M11 15l-4 5"/><path d="M19 9h3M18 13h3"/>');
+I.flee = svg('<circle cx="9" cy="4.5" r="2.5"/><path d="M20 12h-4l-3-4-4 3 3 4-3 3v4M13 15l4 5"/><path d="M5 9H2M6 13H3"/>');
+const BEH_ICON = { idle: I.stand, wander: I.walk, talk: I.chat, dance: I.dance, wave: I.wave, sit: I.sit, follow: I.follow, chase: I.chase, flee: I.flee };
+const GROUPS = [['people', 'People'], ['mobs', 'Monsters'], ['animals', 'Animals']];
+let charGroup = 'people', blockCat = 'nature';
+function presetGrid(P, act, isOn) {
+  const vox = isVoxel(), entries = Object.entries(P).filter(([k, p]) => !vox || (p.group || 'people') === charGroup);
+  return (vox ? `<div class="chips" style="margin-top:0">${GROUPS.map(([k, l]) => `<button class="chip${charGroup === k ? ' on' : ''}" data-act="g:${k}">${l}</button>`).join('')}</div>` : '') +
+    '<div class="picks">' + entries.map(([k, p]) => `<button class="pk${isOn && isOn(k) ? ' on' : ''}" data-act="${act}${k}"><img data-look="${lookAttr({ preset: k })}" class="${vox && !p.creature ? 'px' : ''}" alt=""><span>${esc(p.label)}</span></button>`).join('');
+}
 
 /* ================= input ================= */
 const keys = new Set();
@@ -1587,8 +1863,32 @@ const ptrs = new Map(); let gest = null;
 const canvasEl = renderer.domElement;
 canvasEl.addEventListener('contextmenu', e => e.preventDefault());
 function releaseJoy() { joy.id = null; joy.x = 0; joy.y = 0; $('#joy').hidden = true; }
+/* mouse look (cursor lock) */
+let locked = false, lockFailed = false;
+const mouseLock = () => !coarse && settings.mouseLook === 'mouse' && !lockFailed;
+function freeCursor() { if (document.pointerLockElement) document.exitPointerLock(); }
+function lockHint(msg, ms = 2600) { const h = $('#lockHint'); h.textContent = msg; h.hidden = false; clearTimeout(lockHint.t); lockHint.t = setTimeout(() => h.hidden = true, ms); }
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvasEl; $('#xhair').hidden = !locked; document.body.classList.toggle('locked', locked);
+  if (locked) lockHint('Move the mouse to look. Esc frees the cursor.'); else if (inStudio && mouseLock()) lockHint('Click the scene to look around with the mouse.');
+});
+document.addEventListener('pointerlockerror', () => { lockFailed = true; toast('Cursor lock isn’t available here, so drag to look instead.'); });
+function tryLock() { try { const r = canvasEl.requestPointerLock(); if (r && r.catch) r.catch(() => { lockFailed = true; toast('Cursor lock isn’t available here, so drag to look instead.'); }); } catch (e) { lockFailed = true; } }
+canvasEl.addEventListener('mousemove', e => {
+  if (!locked) return;
+  const s = .0024;
+  if (view.mode === 'cine') cine.base -= e.movementX * s;
+  else { view.yaw -= e.movementX * s; view.pitch += e.movementY * s; clampPitch(); }
+});
 canvasEl.addEventListener('pointerdown', e => {
   if (!inStudio) return;
+  if (e.pointerType === 'mouse' && mouseLock()) {
+    if (!locked) { if (e.button === 0) { closeSheet(); tryLock(); } return; }
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    if (tool.kind === 'terrain' && e.button === 0) { ptrs.set(e.pointerId, { role: 'paint', sx: cx, sy: cy, x: cx, y: cy, t0: performance.now(), moved: 0, button: 0 }); return; }
+    if (tool.kind === 'blocks' && e.button === 1) { e.preventDefault(); const ray = screenRay(cx, cy); const hit = voxelRay(ray.origin, ray.direction, 60); if (hit && !hit.floor) { tool.block = hit.v; renderToolbar(); } return; }
+    onTap(cx, cy, e.button); return;
+  }
   canvasEl.setPointerCapture(e.pointerId);
   const p = { role: 'look', sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), moved: 0, button: e.button };
   ptrs.set(e.pointerId, p);
@@ -1600,6 +1900,7 @@ canvasEl.addEventListener('pointerdown', e => {
   }
 });
 canvasEl.addEventListener('pointermove', e => {
+  if (locked) return;
   const p = ptrs.get(e.pointerId); if (!p) return;
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
   p.moved = Math.max(p.moved, Math.hypot(e.clientX - p.sx, e.clientY - p.sy));
@@ -1750,6 +2051,7 @@ function renderToolbar() {
     h = tbBtn('raise', I.up, 'Raise', tool.terra === 'raise') + tbBtn('lower', I.down, 'Lower', tool.terra === 'lower') + tbBtn('smooth', I.smooth, 'Smooth', tool.terra === 'smooth');
     t = 'Press and drag on the ground. Two fingers move the camera.';
   }
+  if (locked && tool.kind === 'blocks') t = 'Left click places, right click breaks, middle click picks';
   tb.innerHTML = h + tbBtn('done', I.check, 'Done', false, 'primary'); hint.textContent = t;
 }
 function showRing(p) { const r = Math.max(p.hw, p.hd) * p.s + .35; selRing.scale.setScalar(r); selRing.position.set(p.x, p.obj.position.y + .06, p.z); selRing.visible = true; }
@@ -1878,7 +2180,7 @@ function finishTake() {
   rec.blob = new Blob(rec.chunks, { type: rec.mime.split(';')[0] });
   const v = $('#takeVideo'); if (v.src) URL.revokeObjectURL(v.src); v.src = URL.createObjectURL(rec.blob);
   $('#takeTitle').textContent = 'Take ' + rec.take; $('#takeMeta').textContent = fmtTime(rec.secs) + ' long, ' + rec.cv.width + '×' + rec.cv.height + ', ' + rec.ext.toUpperCase();
-  $('#takeDlg').hidden = false;
+  freeCursor(); $('#takeDlg').hidden = false;
 }
 let dlPromise = null;
 function getDownloads() { if (!dlPromise) dlPromise = (window.claude && typeof window.claude.use === 'function') ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null); return dlPromise; }
@@ -1912,7 +2214,7 @@ function rleEncode(a) { const out = []; let v = a[0], n = 0; for (let i = 0; i <
 function rleDecode(s, len) { const a = new Uint8Array(len); let i = 0; for (const part of s.split(',')) { const [v, n] = part.split('*').map(x => parseInt(x, 36)); a.fill(v, i, i + n); i += n; } return a; }
 const r2 = v => Math.round(v * 100) / 100;
 function serialize() {
-  const w = isVoxel() ? { rle: rleEncode(world), custom: BLOCKS.slice(BUILTIN_COUNT).map(b => b.deleted ? { deleted: true } : b.src) }
+  const w = isVoxel() ? { v3: true, rle: rleEncode(world), custom: BLOCKS.slice(BUILTIN_COUNT).map(b => b.deleted ? { deleted: true } : b.src) }
     : { h: Array.from(terr.h, r2), path: rleEncode(terr.path), water: terr.water, props: props.map(p => [p.key, r2(p.x), r2(p.z), r2(p.rot), r2(p.s), p.seed]) };
   return JSON.stringify({ app: 'gamescene', v: 2, name: project.name, style: styleKey, world: w,
     cast: actors.map(a => ({ name: a.name, look: a.look, behavior: a.behavior, notice: a.notice, lines: a.lines, pos: [r2(a.pos.x), r2(a.pos.y), r2(a.pos.z)], yaw: r2(a.yaw), player: a === player })),
@@ -1981,7 +2283,8 @@ async function loadProjectData(d) {
   if (isVoxel()) {
     BLOCKS.length = BUILTIN_COUNT; nextTile = BUILTIN_TILES;
     for (const src of d.world.custom || []) { if (src && !src.deleted) { try { await customBlock(src); } catch (e) { BLOCKS.push({ deleted: true, id: BLOCKS.length }); } } else BLOCKS.push({ deleted: true, id: BLOCKS.length }); }
-    world.set(rleDecode(d.world.rle, world.length)); rebuildWorld(); dirtyWorld = false;
+    const arr = rleDecode(d.world.rle, world.length); if (!d.world.v3) for (let i = 0; i < arr.length; i++) if (arr[i] >= 27) arr[i] = Math.min(255, arr[i] - 27 + BUILTIN_COUNT);
+    world.set(arr); rebuildWorld(); dirtyWorld = false;
   } else {
     terr.h.set(d.world.h); terr.path.set(rleDecode(d.world.path, TN * TN)); terr.water = d.world.water || 2.2;
     for (const [k, x, z, rot, s, seed] of d.world.props || []) addProp(k, x, z, rot, s, seed);
@@ -2000,6 +2303,8 @@ async function enterStudio() {
   inStudio = true; document.body.classList.remove('at-home'); $('#home').hidden = true; $('#busy').hidden = true;
   rec.take = 1; updateRecLabel(); syncPad(); applyQuality(); layoutFrame(); weatherInit = false;
   if (view.mode === 'cine') cineReset();
+  if (!coarse && !settings.mouseLook) setTimeout(() => openSheet('pointer'), 400);
+  else if (mouseLock()) lockHint('Click the scene to look around with the mouse.', 3500);
 }
 async function newScene(key) {
   $('#busy').hidden = false; await new Promise(r => setTimeout(r, 30));
@@ -2016,6 +2321,7 @@ async function openProject(id) {
   catch (e) { $('#busy').hidden = true; toast(e.message || 'That scene couldn’t be opened.'); }
 }
 function goHome() {
+  freeCursor();
   if (rec.on) stopRecording();
   if (inStudio && project.id) saveNow(captureThumb());
   inStudio = false; clearScene(); document.body.classList.add('at-home'); document.body.classList.remove('clean'); $('#home').hidden = false; layoutFrame(); renderHome();
@@ -2028,7 +2334,7 @@ function migrateV1() {
 
 /* ================= sheets ================= */
 let openView = null, viewStack = [];
-function openSheet(name, arg) { viewStack = [{ name, arg }]; renderSheet(); }
+function openSheet(name, arg) { freeCursor(); viewStack = [{ name, arg }]; renderSheet(); }
 function pushView(name, arg) { viewStack.push({ name, arg }); renderSheet(); }
 function backView() { viewStack.pop(); if (!viewStack.length) closeSheet(); else renderSheet(); }
 function closeSheet() { viewStack = []; openView = null; $('#sheet').hidden = true; $$('[data-tab]').forEach(b => b.classList.remove('on')); }
@@ -2055,18 +2361,18 @@ const VIEWS = {
     bind: b => onAct(b, { char: () => pushView('addChar'), blocks: () => pushView('blocks'), prefabs: () => pushView('prefabs'), objects: () => pushView('objects'), terrain: () => setTool('terrain') }) }),
   addChar: () => {
     const P = presetsFor(styleKey);
-    let html = '<div class="picks">' + Object.entries(P).map(([k, p]) => `<button class="pk" data-act="p:${k}"><img data-look="${lookAttr({ preset: k })}" class="${isVoxel() ? 'px' : ''}" alt=""><span>${esc(p.label)}</span></button>`).join('');
-    html += `<button class="pk add" data-act="random"><span class="ph">${I.shuffle}</span><span>Random</span></button>`;
-    if (isVoxel()) html += `<label class="pk add"><span class="ph">${I.upload}</span><span>Upload skin</span><input type="file" accept="image/png" id="skinUp"></label>`;
-    html += '</div>' + (isVoxel() ? '<p class="mini">Uploaded skins use the common 64×64 character layout.</p>' : '');
+    let html = presetGrid(P, 'p:');
+    if (!isVoxel() || charGroup === 'people') html += `<button class="pk add" data-act="random"><span class="ph">${I.shuffle}</span><span>Random</span></button>`;
+    if (isVoxel() && charGroup === 'people') html += `<label class="pk add"><span class="ph">${I.upload}</span><span>Upload skin</span><input type="file" accept="image/png" id="skinUp"></label>`;
+    html += '</div>' + (isVoxel() && charGroup === 'people' ? '<p class="mini">Uploaded skins use the common 64×64 character layout.</p>' : '');
     return { title: 'Add a character', html, bind: b => {
-      onAct(b, { random: () => addChar({ cfg: randomCfg(styleKey) }, pick(NAMES), []), _: btn => { const k = btn.dataset.act.slice(2); const p = P[k]; addChar({ preset: k }, p.label === 'Kid' ? pick(NAMES) : pick(NAMES), (p.lines || []).slice()); } });
+      onAct(b, { random: () => addChar({ cfg: randomCfg(styleKey) }, pick(NAMES), []), _: btn => { const a = btn.dataset.act; if (a.startsWith('g:')) { charGroup = a.slice(2); renderSheet(); return; } const k = a.slice(2); const p = P[k]; addChar({ preset: k }, (p.group && p.group !== 'people') ? p.label : pick(NAMES), (p.lines || []).slice(), p.beh); } });
       const up = b.querySelector('#skinUp'); if (up) up.onchange = async e => { const f = e.target.files[0]; if (!f) return; const data = await readFile(f); try { await loadSkin(data); } catch (err) { toast(err.message); return; } addChar({ png: data }, f.name.replace(/\.[^.]+$/, '').slice(0, 18), []); };
     } };
   },
   blocks: () => ({ title: 'Blocks',
-    html: '<div class="picks">' + BLOCKS.filter(b => b && !b.deleted).map(b => `<button class="pk${b.id === tool.block ? ' on' : ''}" data-act="b:${b.id}"><img class="px" src="${b.icon}" alt=""><span>${esc(b.name)}</span></button>`).join('') + `<button class="pk add" data-act="new"><span class="ph">${I.plus}</span><span>New block</span></button></div>`,
-    bind: b => onAct(b, { new: () => pushView('maker'), _: btn => { setTool('blocks', { block: +btn.dataset.act.slice(2), mode: 'place' }); } }) }),
+    html: `<div class="chips" style="margin-top:0">${BLOCK_CATS.filter(([k]) => k !== 'mine' || BLOCKS.some(b => b && b.custom && !b.deleted)).map(([k, l]) => `<button class="chip${blockCat === k ? ' on' : ''}" data-act="c:${k}">${l}</button>`).join('')}</div>` + '<div class="picks">' + BLOCKS.filter(b => b && !b.deleted && (blockCat === 'mine' ? b.custom : b.cat === blockCat)).map(b => `<button class="pk${b.id === tool.block ? ' on' : ''}" data-act="b:${b.id}"><img class="px" src="${b.icon}" alt=""><span>${esc(b.name)}</span></button>`).join('') + `<button class="pk add" data-act="new"><span class="ph">${I.plus}</span><span>New block</span></button></div>`,
+    bind: b => onAct(b, { new: () => pushView('maker'), _: btn => { const x = btn.dataset.act; if (x.startsWith('c:')) { blockCat = x.slice(2); renderSheet(); $('#shBody').scrollTop = 0; return; } setTool('blocks', { block: +x.slice(2), mode: 'place' }); } }) }),
   maker: () => ({ title: 'New block',
     html: `<div class="maker"><div class="hero"><canvas id="mkPrev" width="72" height="72"></canvas><input class="tin" id="mkName" value="My block" maxlength="22" aria-label="Block name"></div>
       <div class="chips"><button class="chip on" data-act="mcol">Colors</button><button class="chip" data-act="mimg">Image</button></div>
@@ -2083,7 +2389,7 @@ const VIEWS = {
       b.querySelector('#mkTop').oninput = prev; b.querySelector('#mkSide').oninput = prev;
       b.querySelector('#mkFile').onchange = async e => { const f = e.target.files[0]; if (f) { st.img = await readFile(f); prev(); } };
       onAct(b, { mcol: x => { st.mode = 'color'; b.querySelector('#mkC').hidden = false; b.querySelector('#mkI').hidden = true; x.classList.add('on'); x.nextElementSibling.classList.remove('on'); prev(); }, mimg: x => { st.mode = 'image'; b.querySelector('#mkC').hidden = true; b.querySelector('#mkI').hidden = false; x.classList.add('on'); x.previousElementSibling.classList.remove('on'); prev(); },
-        add: async () => { const s = src(); if (s.mode === 'image' && !s.side) { toast('Choose an image first.'); return; } try { const blk = await customBlock(s); setTool('blocks', { block: blk.id, mode: 'place' }); markWorld(); toast(blk.name + ' added.'); } catch (e) { toast(e.message); } },
+        add: async () => { const s = src(); if (s.mode === 'image' && !s.side) { toast('Choose an image first.'); return; } try { const blk = await customBlock(s); blockCat = 'mine'; setTool('blocks', { block: blk.id, mode: 'place' }); markWorld(); toast(blk.name + ' added.'); } catch (e) { toast(e.message); } },
         _: x => { const a = x.dataset.act; if (a.startsWith('pat:')) { st.pat = a.slice(4); group('#mkPat', a); prev(); } else if (a.startsWith('k:')) { st.kind = a.slice(2); group('#mkKind', a); } } });
       prev();
     } }),
@@ -2121,18 +2427,18 @@ const VIEWS = {
   look: id => {
     const a = actorById(id); if (!a) return null; const P = presetsFor(styleKey), vox = isVoxel();
     const cfg = a.look.cfg || (a.look.preset ? P[a.look.preset] : null);
-    let html = '<div class="picks">' + Object.entries(P).map(([k, p]) => `<button class="pk${a.look.preset === k ? ' on' : ''}" data-act="p:${k}"><img data-look="${lookAttr({ preset: k })}" class="${vox ? 'px' : ''}" alt=""><span>${esc(p.label)}</span></button>`).join('');
-    html += `<button class="pk add" data-act="random"><span class="ph">${I.shuffle}</span><span>Shuffle</span></button>`;
-    if (vox) html += `<label class="pk add"><span class="ph">${I.upload}</span><span>Upload skin</span><input type="file" accept="image/png" id="skinUp"></label>`;
+    let html = presetGrid(P, 'p:', k => a.look.preset === k);
+    if (!vox || charGroup === 'people') html += `<button class="pk add" data-act="random"><span class="ph">${I.shuffle}</span><span>Shuffle</span></button>`;
+    if (vox && charGroup === 'people') html += `<label class="pk add"><span class="ph">${I.upload}</span><span>Upload skin</span><input type="file" accept="image/png" id="skinUp"></label>`;
     html += '</div>';
     if (!vox && cfg) html += `<div class="lbl">Colors</div><div class="swatches"><label>Skin<input type="color" data-c="skin" value="${cfg.skin}"></label><label>Hair<input type="color" data-c="${styleKey === 'tactical' && cfg.head && cfg.head !== 'hair' ? 'hatC' : 'hair'}" value="${(styleKey === 'tactical' && cfg.head && cfg.head !== 'hair' ? cfg.hatC : cfg.hair) || '#3b2a1e'}"></label><label>Outfit<input type="color" data-c="shirt" value="${cfg.shirt}"></label></div>`;
-    if (vox) html += `<label class="check"><input type="checkbox" id="slim"${a.look.slim ? ' checked' : ''}> Slim arms (for uploaded skins)</label>`;
+    if (vox && charGroup === 'people') html += `<label class="check"><input type="checkbox" id="slim"${a.look.slim ? ' checked' : ''}> Slim arms (for uploaded skins)</label>`;
     return { title: a.name + ': look', html, bind: b => {
       const apply = async look => { await a.setLook(look); scheduleSave(); renderSheet(); };
-      onAct(b, { random: () => apply({ cfg: randomCfg(styleKey) }), _: btn => apply({ preset: btn.dataset.act.slice(2) }) });
+      onAct(b, { random: () => apply({ cfg: randomCfg(styleKey) }), _: btn => { const x = btn.dataset.act; if (x.startsWith('g:')) { charGroup = x.slice(2); renderSheet(); return; } apply({ preset: x.slice(2) }); } });
       b.querySelectorAll('input[type=color]').forEach(inp => inp.onchange = () => { const base = Object.assign({}, a.look.cfg || P[a.look.preset] || {}); base[inp.dataset.c] = inp.value; apply({ cfg: base }); });
       const up = b.querySelector('#skinUp'); if (up) up.onchange = async e => { const f = e.target.files[0]; if (!f) return; const data = await readFile(f); try { await loadSkin(data); } catch (err) { toast(err.message); return; } apply({ png: data, slim: b.querySelector('#slim').checked }); };
-      const sl = b.querySelector('#slim'); if (sl) sl.onchange = () => { if (a.look.png) apply(Object.assign({}, a.look, { slim: sl.checked })); };
+      const sl = b.querySelector('#slim'); if (sl && up) sl.onchange = () => { if (a.look.png) apply(Object.assign({}, a.look, { slim: sl.checked })); };
     } };
   },
   lines: id => {
@@ -2174,11 +2480,14 @@ const VIEWS = {
       b.querySelector('#oCycle').onchange = e => { settings.cycle = e.target.checked; scheduleSave(); };
       onAct(b, { _: x => { settings.weather = x.dataset.act; weatherInit = false; applySky(); scheduleSave(); renderSheet(); } });
     } }),
+  pointer: () => ({ title: 'How do you look around?',
+    html: `<p class="mini" style="margin-top:0">Browsers can’t tell a mouse from a touchpad, so pick the one you’re using. You can change it later in Settings.</p><div class="tiles">${tileH('mouse', svg('<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/>'), 'Mouse', 'Cursor turns the camera')}${tileH('touchpad', svg('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 15h18M12 15v4"/>'), 'Touchpad', 'Drag to look')}</div>`,
+    bind: b => onAct(b, { mouse: () => { settings.mouseLook = 'mouse'; savePrefs(); closeSheet(); lockHint('Click the scene to look around with the mouse.', 4000); }, touchpad: () => { settings.mouseLook = 'touchpad'; savePrefs(); closeSheet(); } }) }),
   settings: () => ({ title: 'Settings',
-    html: `<div class="lbl" style="margin-top:4px">Quality</div><div class="chips">${[['low', 'Low'], ['balanced', 'Balanced'], ['high', 'High']].map(([k, l]) => `<button class="chip${settings.quality === k ? ' on' : ''}" data-act="${k}">${l}</button>`).join('')}</div><p class="mini">Phones start on Balanced. High adds sharper shadows and full resolution.</p>
+    html: `${coarse ? '' : `<div class="lbl" style="margin-top:4px">Looking around</div><div class="chips">${[['mouse', 'Mouse: cursor turns the camera'], ['touchpad', 'Touchpad: drag to look']].map(([k, l]) => `<button class="chip${(settings.mouseLook || 'mouse') === k ? ' on' : ''}" data-act="ml:${k}">${l}</button>`).join('')}</div>`}<div class="lbl">Quality</div><div class="chips">${[['low', 'Low'], ['balanced', 'Balanced'], ['high', 'High']].map(([k, l]) => `<button class="chip${settings.quality === k ? ' on' : ''}" data-act="${k}">${l}</button>`).join('')}</div><p class="mini">Phones start on Balanced. High adds sharper shadows and full resolution.</p>
       <label class="check"><input type="checkbox" id="oNames"${settings.names ? ' checked' : ''}> Name tags above characters</label><label class="check"><input type="checkbox" id="oFps"${settings.showFps ? ' checked' : ''}> Show frame rate</label><label class="check"><input type="checkbox" id="oAJ"${settings.autoJump ? ' checked' : ''}> Auto-jump up blocks</label>
       <p class="mini" style="margin-top:14px">Everything stays on this device and works offline.</p>`,
-    bind: b => { onAct(b, { _: x => { settings.quality = x.dataset.act; applyQuality(); savePrefs(); renderSheet(); } }); b.querySelector('#oNames').onchange = e => { settings.names = e.target.checked; actors.forEach(a => a.refreshTag()); savePrefs(); }; b.querySelector('#oFps').onchange = e => { settings.showFps = e.target.checked; $('#fps').hidden = !settings.showFps; savePrefs(); }; b.querySelector('#oAJ').onchange = e => { settings.autoJump = e.target.checked; savePrefs(); }; } }),
+    bind: b => { onAct(b, { _: x => { const a = x.dataset.act; if (a.startsWith('ml:')) { settings.mouseLook = a.slice(3); lockFailed = false; } else { settings.quality = a; applyQuality(); } savePrefs(); renderSheet(); } }); b.querySelector('#oNames').onchange = e => { settings.names = e.target.checked; actors.forEach(a => a.refreshTag()); savePrefs(); }; b.querySelector('#oFps').onchange = e => { settings.showFps = e.target.checked; $('#fps').hidden = !settings.showFps; savePrefs(); }; b.querySelector('#oAJ').onchange = e => { settings.autoJump = e.target.checked; savePrefs(); }; } }),
   projectMenu: id => {
     const meta = loadIndex().find(p => p.id === id); if (!meta) return null;
     return { title: 'Scene', html: `<input class="tin" id="pName" value="${esc(meta.name)}" maxlength="40" aria-label="Scene name"><div class="row"><button class="btn primary" data-act="open">Open</button><button class="btn" data-act="export">Export file</button><button class="btn danger" data-act="del">Delete</button></div>`,
@@ -2192,8 +2501,8 @@ const VIEWS = {
 function rangeH(id, label, min, max, step, val, fmt) { return `<div class="field"><div class="lab">${label}<b id="${id}Out">${fmt(val)}</b></div><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`; }
 function bindR(b, id, set, fmt) { const el = b.querySelector('#' + id), out = b.querySelector('#' + id + 'Out'); el.oninput = () => { set(+el.value); out.textContent = fmt(+el.value); scheduleSave(); }; }
 function timeLabel(v) { const h = Math.floor(v), m = Math.round((v - h) * 60); return String(h).padStart(2, '0') + ':' + String(m === 60 ? 0 : m).padStart(2, '0'); }
-async function addChar(look, name, lines) {
-  const sp = spawnNear(); const a = await addActor({ name, look, behavior: 'wander', lines, ...sp, yaw: Math.random() * 6 });
+async function addChar(look, name, lines, beh) {
+  const sp = spawnNear(); const a = await addActor({ name, look, behavior: beh || 'wander', lines, ...sp, yaw: Math.random() * 6 });
   if (a) { scheduleSave(); toast(name + ' joined the scene.'); openSheet('actor', a.id); }
 }
 function setClean(on) { document.body.classList.toggle('clean', on); if (on) { closeSheet(); toast(coarse ? 'Double-tap to bring the controls back.' : 'Press H to bring the controls back.'); } }
@@ -2234,7 +2543,7 @@ async function genThumbs() {
 }
 
 /* ================= quality, prefs ================= */
-function savePrefs() { store.set('gss-prefs', JSON.stringify({ quality: settings.quality, names: settings.names, showFps: settings.showFps, autoJump: settings.autoJump })); }
+function savePrefs() { store.set('gss-prefs', JSON.stringify({ quality: settings.quality, names: settings.names, showFps: settings.showFps, autoJump: settings.autoJump, mouseLook: settings.mouseLook })); }
 try { Object.assign(settings, JSON.parse(store.get('gss-prefs') || '{}')); } catch (e) {}
 function applyQuality() {
   const q = settings.quality, dpr = window.devicePixelRatio || 1;
