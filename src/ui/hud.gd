@@ -1,0 +1,829 @@
+class_name Hud
+extends Control
+## Studio overlay: top buttons, dock, record slate, tool strip, sheets
+## (bottom sheet on phones, side panel on wide screens), touch controls,
+## toasts, dialogs and the recording frame guide.
+
+signal go_home
+
+var studio: Studio
+var icons: IconStudio
+var sheets: Sheets
+
+var top_left := HBoxContainer.new()
+var top_right := HBoxContainer.new()
+var undo_btn: Button
+var redo_btn: Button
+var fps_label := Label.new()
+var dock := PanelContainer.new()
+var dock_row := HBoxContainer.new()
+var dock_btns := {}
+var slate := Button.new()
+var slate_label := Label.new()
+var slate_dot := Panel.new()
+var toolbar := PanelContainer.new()
+var toolbar_row := HBoxContainer.new()
+var tool_hint := Label.new()
+var sheet := PanelContainer.new()
+var sheet_title := Label.new()
+var sheet_back: Button
+var sheet_body := VBoxContainer.new()
+var sheet_scroll := ScrollContainer.new()
+var toast_panel := PanelContainer.new()
+var toast_label := Label.new()
+var countdown := Label.new()
+var modal := Control.new()
+var frame_guide := FrameGuide.new()
+var joy := Joystick.new()
+var pad := VBoxContainer.new()
+var restore_btn: Button
+var play_bar := PanelContainer.new()
+var play_label := Label.new()
+
+var clean := false
+var view_stack: Array = []
+var _toast_t := 0.0
+var _counting := false
+var take := 1
+var jump_held := false
+var up_held := false
+var down_held := false
+
+
+func _ready() -> void:
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sheets = Sheets.new(self)
+
+	frame_guide.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame_guide.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(frame_guide)
+
+	# Top bar.
+	top_left.add_theme_constant_override("separation", UIK.px(8))
+	top_left.add_child(UIK.icon_btn("home", func(): go_home.emit(), "Home"))
+	undo_btn = UIK.icon_btn("undo", _undo, "Undo (Ctrl+Z)")
+	redo_btn = UIK.icon_btn("redo", _redo, "Redo (Ctrl+Shift+Z)")
+	top_left.add_child(undo_btn)
+	top_left.add_child(redo_btn)
+	add_child(top_left)
+	top_right.add_theme_constant_override("separation", UIK.px(8))
+	top_right.add_child(UIK.icon_btn("image", screenshot, "Screenshot (P)"))
+	top_right.add_child(UIK.icon_btn("eyeview", func(): set_clean(true), "Clean view (H)"))
+	top_right.add_child(UIK.icon_btn("gear", func(): open_sheet("settings"), "Settings"))
+	add_child(top_right)
+	fps_label.add_theme_font_size_override("font_size", UIK.px(12))
+	fps_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	fps_label.visible = false
+	add_child(fps_label)
+
+	# Dock.
+	dock.add_theme_stylebox_override("panel", UIK.glass(18))
+	dock_row.add_theme_constant_override("separation", UIK.px(2))
+	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Script"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["film", "film", "Film"]]:
+		var b := _dock_button(tab[0], tab[1], tab[2])
+		dock_btns[tab[0]] = b
+		dock_row.add_child(b)
+	dock.add_child(dock_row)
+	add_child(dock)
+
+	# Record slate.
+	slate.focus_mode = Control.FOCUS_NONE
+	slate.custom_minimum_size = Vector2(UIK.px(112), UIK.px(60))
+	var sb := UIK.box(Color("2a2f3a"), 13)
+	sb.corner_radius_top_left = UIK.px(4)
+	sb.corner_radius_top_right = UIK.px(4)
+	sb.set_border_width_all(2)
+	sb.border_color = Color("1d222b")
+	sb.border_width_top = UIK.px(14)
+	slate.add_theme_stylebox_override("normal", sb)
+	slate.add_theme_stylebox_override("hover", sb)
+	slate.add_theme_stylebox_override("pressed", sb)
+	slate.tooltip_text = "Record a take (R)"
+	var sh := UIK.hbox(8)
+	sh.alignment = BoxContainer.ALIGNMENT_CENTER
+	sh.set_anchors_preset(Control.PRESET_FULL_RECT)
+	sh.offset_top = UIK.px(12)
+	sh.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dot_sb := StyleBoxFlat.new()
+	dot_sb.bg_color = UIK.REC
+	dot_sb.set_corner_radius_all(UIK.px(7))
+	slate_dot.add_theme_stylebox_override("panel", dot_sb)
+	slate_dot.custom_minimum_size = Vector2(UIK.px(13), UIK.px(13))
+	slate_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slate_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sh.add_child(slate_dot)
+	slate_label.text = "Take 1"
+	slate_label.add_theme_font_override("font", UIK.font_bold)
+	slate_label.add_theme_font_size_override("font_size", UIK.px(16))
+	slate_label.add_theme_color_override("font_color", Color.WHITE)
+	slate_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sh.add_child(slate_label)
+	slate.add_child(sh)
+	var clap := ClapStripe.new()
+	clap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clap.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	clap.offset_bottom = UIK.px(13)
+	slate.add_child(clap)
+	slate.pressed.connect(toggle_record)
+	add_child(slate)
+
+	# Tool strip.
+	toolbar.add_theme_stylebox_override("panel", UIK.glass(18))
+	toolbar_row.add_theme_constant_override("separation", UIK.px(2))
+	toolbar.add_child(toolbar_row)
+	toolbar.visible = false
+	add_child(toolbar)
+	tool_hint.add_theme_font_size_override("font_size", UIK.px(13))
+	tool_hint.add_theme_stylebox_override("normal", UIK.glass(12))
+	tool_hint.add_theme_color_override("font_color", Color.WHITE)
+	tool_hint.visible = false
+	tool_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tool_hint)
+
+	# Script playback bar.
+	play_bar.add_theme_stylebox_override("panel", UIK.glass(14))
+	var pr := UIK.hbox(8)
+	pr.add_child(UIK.icon_btn("stop", func(): stop_script(), "Stop", 36, false))
+	play_label.add_theme_color_override("font_color", Color.WHITE)
+	pr.add_child(play_label)
+	play_bar.add_child(pr)
+	play_bar.visible = false
+	add_child(play_bar)
+
+	# Sheet.
+	sheet.add_theme_stylebox_override("panel", UIK.box(UIK.SURFACE, 22, UIK.LINE))
+	var sv := UIK.vbox(4)
+	var head := UIK.hbox(6)
+	sheet_back = UIK.icon_btn("back", back_view, "Back", 38, false)
+	sheet_back.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 12, UIK.LINE))
+	head.add_child(sheet_back)
+	sheet_title.add_theme_font_override("font", UIK.font_bold)
+	sheet_title.add_theme_font_size_override("font_size", UIK.px(21))
+	sheet_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sheet_title.clip_text = true
+	head.add_child(sheet_title)
+	var close := UIK.icon_btn("close", close_sheet, "Close", 38, false)
+	close.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 12, UIK.LINE))
+	head.add_child(close)
+	sv.add_child(head)
+	sheet_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sheet_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sheet_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sheet_body.add_theme_constant_override("separation", UIK.px(10))
+	var pad_m := MarginContainer.new()
+	pad_m.add_theme_constant_override("margin_left", UIK.px(4))
+	pad_m.add_theme_constant_override("margin_right", UIK.px(8))
+	pad_m.add_theme_constant_override("margin_bottom", UIK.px(12))
+	pad_m.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pad_m.add_child(sheet_body)
+	sheet_scroll.add_child(pad_m)
+	sv.add_child(sheet_scroll)
+	sheet.add_child(sv)
+	sheet.visible = false
+	add_child(sheet)
+
+	# Touch controls.
+	joy.visible = false
+	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(joy)
+	pad.add_theme_constant_override("separation", UIK.px(10))
+	pad.add_child(_hold_btn("up", func(v): up_held = v, 60))
+	pad.add_child(_hold_btn("down", func(v): down_held = v, 60))
+	pad.add_child(_hold_btn("up", func(v): jump_held = v, 70))
+	pad.visible = App.is_touch
+	add_child(pad)
+
+	restore_btn = UIK.btn("Show controls", func(): set_clean(false))
+	restore_btn.modulate.a = 0.4
+	restore_btn.visible = false
+	add_child(restore_btn)
+
+	toast_panel.add_theme_stylebox_override("panel", UIK.glass(12))
+	toast_label.add_theme_color_override("font_color", Color.WHITE)
+	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast_panel.add_child(toast_label)
+	toast_panel.visible = false
+	toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(toast_panel)
+
+	countdown.add_theme_font_override("font", UIK.font_bold)
+	countdown.add_theme_font_size_override("font_size", UIK.px(180))
+	countdown.add_theme_color_override("font_color", Color.WHITE)
+	countdown.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	countdown.add_theme_constant_override("shadow_offset_y", 6)
+	countdown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	countdown.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	countdown.set_anchors_preset(Control.PRESET_FULL_RECT)
+	countdown.visible = false
+	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(countdown)
+
+	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(modal)
+
+	App.toast_requested.connect(toast)
+	studio.tools.tool_changed.connect(render_toolbar)
+	studio.recording_changed.connect(_on_recording)
+	studio.recorder.finished.connect(_on_take_done)
+	studio.recorder.progress.connect(_on_progress)
+	studio.cast_changed.connect(_on_cast_changed)
+	get_viewport().size_changed.connect(layout)
+	layout()
+
+
+func _on_cast_changed() -> void:
+	if _top_name() == "cast":
+		render_sheet()
+
+
+func _dock_button(tab: String, icon: String, text: String) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.text = text
+	b.icon = Icons.tex(icon, UIK.px(22), Color.WHITE)
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.custom_minimum_size = Vector2(UIK.px(62), UIK.px(58))
+	b.add_theme_font_size_override("font_size", UIK.px(12))
+	b.add_theme_font_override("font", UIK.font_bold)
+	b.add_theme_color_override("font_color", Color.WHITE)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	var clear := StyleBoxEmpty.new()
+	b.add_theme_stylebox_override("normal", clear)
+	b.add_theme_stylebox_override("hover", UIK.box(Color(1, 1, 1, 0.08), 13))
+	b.add_theme_stylebox_override("pressed", UIK.box(UIK.TAPE, 13))
+	b.pressed.connect(func(): _on_tab(tab))
+	return b
+
+
+func _hold_btn(icon: String, set_fn: Callable, size: int) -> Button:
+	var b := UIK.icon_btn(icon, func(): pass, "", size)
+	var r := UIK.glass(size / 2)
+	b.add_theme_stylebox_override("normal", r)
+	b.button_down.connect(func(): set_fn.call(true))
+	b.button_up.connect(func(): set_fn.call(false))
+	b.size_flags_horizontal = Control.SIZE_SHRINK_END
+	return b
+
+
+func _on_tab(tab: String) -> void:
+	if _top_name() == tab or (view_stack.size() > 0 and view_stack[0][0] == tab):
+		close_sheet()
+		return
+	open_sheet(tab)
+
+
+# ---------------------------------------------------------------- layout
+
+func wide() -> bool:
+	return get_viewport_rect().size.x >= UIK.px(900)
+
+
+func layout() -> void:
+	var vs := get_viewport_rect().size
+	var m := float(UIK.px(12))
+	top_left.position = Vector2(m, m)
+	top_left.size = top_left.get_combined_minimum_size()
+	top_right.size = top_right.get_combined_minimum_size()
+	top_right.position = Vector2(vs.x - top_right.size.x - m, m)
+	fps_label.position = Vector2(m + top_left.size.x + 12, m + 14)
+	dock.size = dock.get_combined_minimum_size()
+	dock.position = Vector2(m, vs.y - dock.size.y - m)
+	slate.size = slate.custom_minimum_size
+	slate.position = Vector2(vs.x - slate.size.x - m, vs.y - slate.size.y - m)
+	toolbar.size = toolbar.get_combined_minimum_size()
+	toolbar.position = Vector2(m, vs.y - toolbar.size.y - m)
+	tool_hint.size = tool_hint.get_combined_minimum_size()
+	tool_hint.position = Vector2((vs.x - tool_hint.size.x) / 2, vs.y - toolbar.size.y - tool_hint.size.y - m * 2.5)
+	play_bar.size = play_bar.get_combined_minimum_size()
+	play_bar.position = Vector2((vs.x - play_bar.size.x) / 2, m)
+	pad.size = pad.get_combined_minimum_size()
+	pad.position = Vector2(vs.x - pad.size.x - m - 2, vs.y - slate.size.y - pad.size.y - m * 3)
+	restore_btn.size = restore_btn.get_combined_minimum_size()
+	restore_btn.position = Vector2(m, vs.y - restore_btn.size.y - m)
+	if wide():
+		var w := float(UIK.px(400))
+		sheet.position = Vector2(vs.x - w - 16, top_right.size.y + m * 2)
+		sheet.size = Vector2(w, vs.y - sheet.position.y - slate.size.y - m * 3)
+	else:
+		var h := vs.y * 0.6
+		sheet.position = Vector2(8, vs.y - h - dock.size.y - m * 2)
+		sheet.size = Vector2(vs.x - 16, h)
+	toast_panel.size = Vector2(minf(vs.x * 0.92, UIK.px(460)), 0)
+	toast_panel.size = toast_panel.get_combined_minimum_size().max(Vector2(minf(vs.x * 0.92, UIK.px(460)), 0))
+	toast_panel.position = Vector2((vs.x - toast_panel.size.x) / 2, UIK.px(72))
+	frame_guide.queue_redraw()
+	for c in modal.get_children():
+		if c is Control:
+			_center(c)
+
+
+func _center(c: Control) -> void:
+	var vs := get_viewport_rect().size
+	c.size = c.get_combined_minimum_size()
+	c.position = (vs - c.size) / 2
+
+
+# ---------------------------------------------------------------- per frame
+
+func _process(delta: float) -> void:
+	if _toast_t > 0:
+		_toast_t -= delta
+		if _toast_t <= 0:
+			toast_panel.visible = false
+	fps_label.visible = App.device["show_fps"] and not clean
+	if fps_label.visible:
+		fps_label.text = "%d fps" % Engine.get_frames_per_second()
+	undo_btn.disabled = not studio.can_undo()
+	redo_btn.disabled = not studio.can_redo()
+	var rec := studio.recorder
+	if rec.active:
+		var secs := float(rec.frames) / rec.fps
+		slate_label.text = U.fmt_time(secs)
+		slate_dot.modulate.a = 1.0 if fmod(Time.get_ticks_msec() / 500.0, 2.0) < 1.0 else 0.25
+	if studio.playing and not rec.active:
+		play_bar.visible = true
+		var total := studio.script_length()
+		play_label.text = "Script  %s / %s" % [U.fmt_time(studio.play_t), U.fmt_time(total)]
+		play_bar.size = play_bar.get_combined_minimum_size()
+		if studio.play_t > total + 1.0:
+			stop_script()
+	else:
+		play_bar.visible = false
+	var free := studio.camera.mode == "free"
+	var kids := pad.get_children()
+	(kids[0] as Control).visible = free
+	(kids[1] as Control).visible = free
+	(kids[2] as Control).visible = not free
+	pad.visible = App.is_touch and not clean and not rec.active
+
+
+func _top_name() -> String:
+	return view_stack[-1][0] if not view_stack.is_empty() else ""
+
+
+# ---------------------------------------------------------------- sheets
+
+func open_sheet(name: String, arg: Variant = null) -> void:
+	view_stack = [[name, arg]]
+	render_sheet()
+
+
+func push_view(name: String, arg: Variant = null) -> void:
+	view_stack.append([name, arg])
+	render_sheet()
+
+
+func back_view() -> void:
+	view_stack.pop_back()
+	if view_stack.is_empty():
+		close_sheet()
+	else:
+		render_sheet()
+
+
+func close_sheet() -> void:
+	view_stack.clear()
+	sheet.visible = false
+	for k in dock_btns:
+		(dock_btns[k] as Button).add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		(dock_btns[k] as Button).add_theme_color_override("font_color", Color.WHITE)
+
+
+func render_sheet() -> void:
+	if view_stack.is_empty():
+		close_sheet()
+		return
+	var top: Array = view_stack[-1]
+	var scroll := sheet_scroll.scroll_vertical
+	var same := sheet.visible and sheet_title.has_meta("view") and sheet_title.get_meta("view") == top[0]
+	UIK.clear(sheet_body)
+	var title: String = sheets.render(top[0], top[1], sheet_body)
+	if title == "":
+		back_view()
+		return
+	sheet_title.text = title
+	sheet_title.set_meta("view", top[0])
+	sheet_back.visible = view_stack.size() > 1
+	sheet.visible = true
+	var root_tab: String = view_stack[0][0]
+	for k in dock_btns:
+		var on: bool = k == root_tab
+		(dock_btns[k] as Button).add_theme_stylebox_override("normal", UIK.box(UIK.TAPE, 13) if on else StyleBoxEmpty.new())
+		(dock_btns[k] as Button).add_theme_color_override("font_color", UIK.TAPE_INK if on else Color.WHITE)
+	if same:
+		await get_tree().process_frame
+		sheet_scroll.scroll_vertical = scroll
+	else:
+		sheet_scroll.scroll_vertical = 0
+
+
+# ---------------------------------------------------------------- toolbar
+
+func render_toolbar() -> void:
+	UIK.clear(toolbar_row)
+	var t := studio.tools
+	if t.kind == "":
+		toolbar.visible = false
+		tool_hint.visible = false
+		dock.visible = not clean
+		layout()
+		return
+	dock.visible = false
+	toolbar.visible = not clean
+	tool_hint.visible = not clean
+	var hint := ""
+	match t.kind:
+		"blocks":
+			var b := Blocks.get_block(t.block)
+			toolbar_row.add_child(_tb_tex(Blocks.icon(t.block), "Block", func(): open_sheet("blocks")))
+			toolbar_row.add_child(_tb("place", "place", "Place", t.mode == "place"))
+			toolbar_row.add_child(_tb("break", "brk", "Break", t.mode == "break"))
+			toolbar_row.add_child(_tb("pick", "pickI", "Pick", t.mode == "pick"))
+			hint = {"place": "Tap to place " + str(b.get("name", "block")).to_lower(), "break": "Tap a block to break it", "pick": "Tap a block to copy it"}[t.mode]
+			if not App.is_touch:
+				hint += "  ·  right click breaks, middle click picks"
+		"prefab":
+			toolbar_row.add_child(_tb("prefabs", "house", "Change", false))
+			toolbar_row.add_child(_tb("rot", "rotate", "Rotate", false))
+			hint = "Tap the ground to build a " + str(VoxelWorld.PREFABS[t.prefab]["name"]).to_lower()
+		"objects":
+			if not t.sel.is_empty():
+				toolbar_row.add_child(_tb("move", "move", "Move", t.moving))
+				toolbar_row.add_child(_tb("prot", "rotate", "Rotate", false))
+				toolbar_row.add_child(_tb("psize", "size", "Size", false))
+				toolbar_row.add_child(_tb("pdel", "trash", "Delete", false))
+				hint = "Tap where it should go" if t.moving else t.sel_name() + " selected"
+			else:
+				toolbar_row.add_child(_tb("objects", "tree", "Change", false))
+				var pn: String = Props.defs(studio.style_key).get(t.prop, {}).get("name", "")
+				hint = ("Tap the ground to add a " + pn.to_lower() + ". Tap an object to edit it.") if pn != "" else "Tap an object to edit it"
+		"terrain":
+			toolbar_row.add_child(_tb("raise", "up", "Raise", t.terra == "raise"))
+			toolbar_row.add_child(_tb("lower", "down", "Lower", t.terra == "lower"))
+			toolbar_row.add_child(_tb("smooth", "smooth", "Smooth", t.terra == "smooth"))
+			hint = "Press and drag on the ground. Two fingers or right-drag move the camera."
+		"move_actor":
+			var a := studio.actor_by_id(t.actor_id)
+			hint = "Tap where " + (a.name if a else "they") + " should stand"
+	toolbar_row.add_child(_tb("done", "check", "Done", false, true))
+	tool_hint.text = "  " + hint + "  "
+	layout()
+
+
+func _tb(act: String, icon: String, text: String, on: bool, primary := false) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.text = text
+	b.icon = Icons.tex(icon, UIK.px(22), UIK.TAPE_INK if primary else Color.WHITE)
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.custom_minimum_size = Vector2(UIK.px(66), UIK.px(58))
+	b.add_theme_font_size_override("font_size", UIK.px(12))
+	b.add_theme_font_override("font", UIK.font_bold)
+	b.add_theme_color_override("font_color", UIK.TAPE_INK if primary else Color.WHITE)
+	b.add_theme_color_override("font_hover_color", UIK.TAPE_INK if primary else Color.WHITE)
+	var st: StyleBox = UIK.box(UIK.TAPE, 13) if primary else (UIK.box(Color(UIK.TAPE, 0.28), 13, UIK.TAPE, 2) if on else StyleBoxEmpty.new())
+	b.add_theme_stylebox_override("normal", st)
+	b.add_theme_stylebox_override("hover", UIK.box(Color(1, 1, 1, 0.1), 13) if not primary else st)
+	b.pressed.connect(func(): _tool_action(act))
+	return b
+
+
+func _tb_tex(tex: Texture2D, text: String, cb: Callable) -> Button:
+	var b := _tb("", "cube", text, false)
+	b.icon = tex
+	b.expand_icon = false
+	for c in b.pressed.get_connections():
+		b.pressed.disconnect(c["callable"])
+	b.pressed.connect(cb)
+	return b
+
+
+func _tool_action(a: String) -> void:
+	var t := studio.tools
+	match a:
+		"done":
+			t.set_tool("")
+		"prefabs":
+			open_sheet("prefabs")
+		"objects":
+			open_sheet("objects")
+		"place", "break", "pick":
+			t.mode = a
+			render_toolbar()
+		"rot":
+			t.rot = (t.rot + 1) % 4
+			toast("Facing " + ["south", "west", "north", "east"][t.rot])
+		"raise", "lower", "smooth":
+			t.terra = a
+			render_toolbar()
+		"move":
+			t.moving = not t.moving
+			render_toolbar()
+		"prot":
+			t.rotate_sel()
+		"psize":
+			t.resize_sel()
+		"pdel":
+			t.delete_sel()
+
+
+# ---------------------------------------------------------------- recording
+
+func toggle_record() -> void:
+	if _counting:
+		return
+	if studio.recorder.active:
+		studio.stop_take()
+		return
+	close_sheet()
+	var n: int = int(App.settings["countdown"])
+	if n > 0:
+		_counting = true
+		for i in range(n, 0, -1):
+			countdown.text = str(i)
+			countdown.visible = true
+			await get_tree().create_timer(0.8).timeout
+		countdown.visible = false
+		_counting = false
+	if not studio.start_take():
+		toast("Recording couldn’t start.")
+
+
+func _on_recording(on: bool) -> void:
+	var sb: StyleBoxFlat = slate.get_theme_stylebox("normal").duplicate()
+	sb.shadow_color = Color(UIK.REC, 0.6) if on else Color(0, 0, 0, 0)
+	sb.shadow_size = UIK.px(4) if on else 0
+	slate.add_theme_stylebox_override("normal", sb)
+	slate.add_theme_stylebox_override("hover", sb)
+	for n in [top_left, dock, toolbar, tool_hint]:
+		n.modulate.a = 0.0 if on else 1.0
+	if not on:
+		slate_label.text = "Take %d" % take
+		slate_dot.modulate.a = 1.0
+
+
+func _on_progress(frac: float) -> void:
+	var p := modal.get_node_or_null("progress")
+	if p:
+		(p.find_child("bar", true, false) as ProgressBar).value = frac * 100.0
+
+
+func _on_take_done(path: String, secs: float) -> void:
+	UIK.clear(modal)
+	take += 1
+	slate_label.text = "Take %d" % take
+	var card := _card()
+	var v: VBoxContainer = card.get_child(0)
+	v.add_child(UIK.label("Saved", 22, UIK.INK, true))
+	v.add_child(UIK.para("%s long · %s" % [U.fmt_time(secs), path.get_file()], 14))
+	v.add_child(UIK.para(path.get_base_dir(), 12))
+	var row := UIK.hbox()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(UIK.btn("Open folder", func(): OS.shell_open(path.get_base_dir())))
+	row.add_child(UIK.btn("Play", func(): OS.shell_open(path)))
+	row.add_child(UIK.btn("Done", func(): UIK.clear(modal), true))
+	v.add_child(row)
+	modal.add_child(card)
+	_center(card)
+
+
+func show_progress(title: String) -> void:
+	UIK.clear(modal)
+	var card := _card()
+	card.name = "progress"
+	var v: VBoxContainer = card.get_child(0)
+	v.add_child(UIK.label(title, 20, UIK.INK, true))
+	v.add_child(UIK.para("Rendering every frame at full quality. The editor keeps running underneath.", 13))
+	var bar := ProgressBar.new()
+	bar.name = "bar"
+	bar.custom_minimum_size = Vector2(UIK.px(320), UIK.px(14))
+	bar.show_percentage = false
+	v.add_child(bar)
+	var row := UIK.hbox()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(UIK.btn("Cancel", func():
+		studio.recorder.cancel()
+		UIK.clear(modal)))
+	v.add_child(row)
+	modal.add_child(card)
+	_center(card)
+
+
+func _card() -> PanelContainer:
+	var card := PanelContainer.new()
+	var sb := UIK.box(UIK.SURFACE, 22, UIK.LINE)
+	sb.content_margin_left = UIK.px(20)
+	sb.content_margin_right = UIK.px(20)
+	sb.content_margin_top = UIK.px(18)
+	sb.content_margin_bottom = UIK.px(18)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = UIK.px(16)
+	card.add_theme_stylebox_override("panel", sb)
+	card.custom_minimum_size.x = minf(UIK.px(440), get_viewport_rect().size.x - 32)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.add_child(UIK.vbox(10))
+	return card
+
+
+func ask(msg: String, yes: String, cb: Callable) -> void:
+	UIK.clear(modal)
+	var card := _card()
+	var v: VBoxContainer = card.get_child(0)
+	var l := UIK.para(msg, 16, UIK.INK)
+	v.add_child(l)
+	var row := UIK.hbox()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(UIK.btn("Cancel", func(): UIK.clear(modal)))
+	row.add_child(UIK.btn(yes, func():
+		UIK.clear(modal)
+		cb.call(), true))
+	v.add_child(row)
+	modal.add_child(card)
+	_center(card)
+
+
+func screenshot() -> void:
+	close_sheet()
+	var vs := get_viewport_rect().size
+	var path: String = await studio.recorder.screenshot(App.export_size(vs.x / vs.y))
+	if path != "":
+		toast("Saved " + path.get_file() + " to " + path.get_base_dir().get_file())
+	else:
+		toast("Screenshot couldn’t be made here.")
+
+
+func play_script() -> void:
+	if studio.cues.is_empty():
+		toast("Add a few lines to the script first.")
+		return
+	close_sheet()
+	studio.play_scene(true)
+
+
+func stop_script() -> void:
+	studio.playing = false
+	for a in studio.actors:
+		a.goto = {}
+		a.set_behavior(a.base_behavior, false)
+
+
+# ---------------------------------------------------------------- misc
+
+## At home only dialogs and toasts show; in the studio everything does.
+func set_home_mode(on: bool) -> void:
+	for c in get_children():
+		if c == modal or c == toast_panel:
+			continue
+		if c is Control:
+			(c as Control).visible = not on
+	if not on:
+		close_sheet()
+		restore_btn.visible = false
+		joy.visible = false
+		countdown.visible = false
+		toolbar.visible = false
+		tool_hint.visible = false
+		play_bar.visible = false
+		set_clean(false)
+		render_toolbar()
+
+
+func set_clean(on: bool) -> void:
+	clean = on
+	if on:
+		close_sheet()
+	for n in [top_left, top_right, slate]:
+		n.visible = not on
+	dock.visible = not on and studio.tools.kind == ""
+	toolbar.visible = not on and studio.tools.kind != ""
+	tool_hint.visible = toolbar.visible
+	restore_btn.visible = on
+	frame_guide.queue_redraw()
+
+
+func toast(msg: String) -> void:
+	toast_label.text = msg
+	toast_panel.visible = true
+	_toast_t = 3.2
+	layout()
+
+
+func _undo() -> void:
+	studio.undo()
+
+
+func _redo() -> void:
+	studio.redo()
+
+
+func _dialog_cb(ok: bool, paths: PackedStringArray, _f: int, cb: Callable) -> void:
+	if ok and paths.size() > 0:
+		cb.call(paths[0])
+
+
+## Opens a file picker; `cb` gets the chosen path.
+func pick_file(filters: PackedStringArray, cb: Callable, title := "Open") -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		DisplayServer.file_dialog_show(title, "", "", false, DisplayServer.FILE_DIALOG_MODE_OPEN_FILE, filters,
+			_dialog_cb.bind(cb))
+		return
+	var fd := FileDialog.new()
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	fd.filters = filters
+	fd.title = title
+	fd.use_native_dialog = true
+	fd.file_selected.connect(func(p): cb.call(p))
+	fd.canceled.connect(fd.queue_free)
+	add_child(fd)
+	fd.popup_centered_ratio(0.7)
+
+
+func save_file(default_name: String, filters: PackedStringArray, cb: Callable) -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		DisplayServer.file_dialog_show("Save", OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS), default_name, false, DisplayServer.FILE_DIALOG_MODE_SAVE_FILE, filters,
+			_dialog_cb.bind(cb))
+		return
+	var fd := FileDialog.new()
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	fd.filters = filters
+	fd.current_file = default_name
+	fd.use_native_dialog = true
+	fd.file_selected.connect(func(p): cb.call(p))
+	add_child(fd)
+	fd.popup_centered_ratio(0.7)
+
+
+## Letterbox guide for the chosen frame aspect (9:16, 1:1...).
+class FrameGuide:
+	extends Control
+
+	func frame_rect() -> Rect2:
+		var vs := get_viewport_rect().size
+		var r: float = App.FRAMES.get(App.settings["frame"], 0.0)
+		if r <= 0:
+			return Rect2(Vector2.ZERO, vs)
+		var w: float
+		var h: float
+		if vs.x / vs.y > r:
+			h = vs.y
+			w = h * r
+		else:
+			w = vs.x
+			h = w / r
+		return Rect2((vs - Vector2(w, h)) / 2, Vector2(w, h))
+
+	func _draw() -> void:
+		if App.settings["frame"] == "full":
+			return
+		var vs := get_viewport_rect().size
+		var f := frame_rect()
+		var c := Color(0.016, 0.027, 0.047, 0.82)
+		draw_rect(Rect2(0, 0, vs.x, f.position.y), c)
+		draw_rect(Rect2(0, f.end.y, vs.x, vs.y - f.end.y), c)
+		draw_rect(Rect2(0, f.position.y, f.position.x, f.size.y), c)
+		draw_rect(Rect2(f.end.x, f.position.y, vs.x - f.end.x, f.size.y), c)
+		draw_rect(f, Color(1, 1, 1, 0.22), false, 1.0)
+
+	func _process(_d: float) -> void:
+		queue_redraw()
+
+
+class ClapStripe:
+	extends Control
+
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		draw_rect(Rect2(0, 0, w, h), Color("1d222b"))
+		var x := -h
+		var i := 0
+		while x < w + h:
+			var col := Color("f3f3f3") if i % 2 == 0 else Color("1d222b")
+			if get_parent() and get_parent().get_parent() is Hud and (get_parent().get_parent() as Hud).studio.recorder.active:
+				col = Color("ef4444") if i % 2 == 0 else Color("1d222b")
+			draw_colored_polygon(PackedVector2Array([Vector2(x, h), Vector2(x + 10, h), Vector2(x + 10 + h * 0.7, 0), Vector2(x + h * 0.7, 0)]), col)
+			x += 10
+			i += 1
+
+	func _process(_d: float) -> void:
+		queue_redraw()
+
+
+## On-screen joystick for phones (drawn where the thumb lands).
+class Joystick:
+	extends Control
+	var center := Vector2.ZERO
+	var knob := Vector2.ZERO
+	const R := 52.0
+
+	func _draw() -> void:
+		draw_circle(center, R + 6, Color(0.06, 0.09, 0.13, 0.45))
+		draw_arc(center, R + 6, 0, TAU, 48, Color(1, 1, 1, 0.18), 1.5, true)
+		draw_circle(center + knob * R, 24, Color(1, 1, 1, 0.85))

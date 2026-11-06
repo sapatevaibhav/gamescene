@@ -1,0 +1,109 @@
+extends Node
+## Global app state (autoload "App"): settings, device tier, notifications.
+
+signal toast_requested(msg: String)
+signal settings_changed
+
+const SCHEMA_VERSION := 3
+
+## Per-scene settings are saved with the project; device settings are not.
+var settings := {
+	"time": 11.0, "cycle": false, "weather": "clear", "fog": 110.0, "mood": "day",
+	"frame": "full", "fov": 70.0, "shake": false, "dof": false, "subtitles": true,
+	"fps": 30, "countdown": 3, "restart": true, "res": "1080",
+}
+
+const SCENE_KEYS := ["time", "cycle", "weather", "fog", "mood", "frame", "fov", "shake", "dof", "subtitles", "fps", "countdown", "restart", "res"]
+
+var device := {
+	"quality": "high", "show_fps": false, "names": true, "auto_jump": true, "mouse_look": "drag", "ui_scale": 1.0,
+}
+
+var is_touch := false
+var is_mobile := false
+
+## Fixed simulation step while recording (0 = real time).
+var fixed_dt := 0.0
+## RNG for scene simulation; reseeded for deterministic takes.
+var sim_rng := RandomNumberGenerator.new()
+
+const QUALITY := {
+	"low": {"label": "Battery saver", "scale": 0.6, "shadow": 1024, "ssao": false, "ssil": false, "vfog": false, "glow": false, "msaa": 0, "grass": 0.35, "cast": 16, "lights": 0, "fxaa": true},
+	"balanced": {"label": "Balanced", "scale": 0.8, "shadow": 2048, "ssao": false, "ssil": false, "vfog": false, "glow": true, "msaa": 0, "grass": 0.6, "cast": 24, "lights": 4, "fxaa": true},
+	"high": {"label": "High", "scale": 1.0, "shadow": 4096, "ssao": true, "ssil": false, "vfog": true, "glow": true, "msaa": 2, "grass": 1.0, "cast": 40, "lights": 10, "fxaa": false},
+	"ultra": {"label": "Cinematic", "scale": 1.0, "shadow": 8192, "ssao": true, "ssil": true, "vfog": true, "glow": true, "msaa": 4, "grass": 1.4, "cast": 60, "lights": 16, "fxaa": false},
+}
+
+const RES := {
+	"720": {"label": "720p", "h": 720},
+	"1080": {"label": "1080p", "h": 1080},
+	"1440": {"label": "1440p", "h": 1440},
+	"2160": {"label": "4K", "h": 2160},
+}
+
+const FRAMES := {"full": 0.0, "16:9": 16.0 / 9.0, "9:16": 9.0 / 16.0, "1:1": 1.0}
+
+
+func _ready() -> void:
+	is_mobile = OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
+	is_touch = is_mobile or DisplayServer.is_touchscreen_available()
+	device["quality"] = "balanced" if is_mobile else "high"
+	if is_mobile:
+		settings["res"] = "720"
+	load_device()
+	sim_rng.randomize()
+
+
+func q() -> Dictionary:
+	return QUALITY.get(device["quality"], QUALITY["high"])
+
+
+func toast(msg: String) -> void:
+	toast_requested.emit(msg)
+
+
+func set_setting(key: String, value: Variant) -> void:
+	settings[key] = value
+	settings_changed.emit()
+
+
+func set_device(key: String, value: Variant) -> void:
+	device[key] = value
+	save_device()
+	settings_changed.emit()
+
+
+func sim_randf() -> float:
+	return sim_rng.randf()
+
+
+func save_device() -> void:
+	var f := FileAccess.open("user://device.json", FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(device))
+
+
+func load_device() -> void:
+	if not FileAccess.file_exists("user://device.json"):
+		return
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string("user://device.json"))
+	if d is Dictionary:
+		for k in d:
+			if device.has(k):
+				device[k] = d[k]
+
+
+## Height in pixels of the chosen export resolution and frame aspect.
+func export_size(window_aspect: float) -> Vector2i:
+	var h: int = RES.get(str(settings["res"]), RES["1080"])["h"]
+	var r: float = FRAMES.get(settings["frame"], 0.0)
+	if r <= 0.0:
+		r = window_aspect
+	var w: int
+	if r >= 1.0:
+		w = int(round(h * r))
+	else:
+		# Portrait: the resolution names the short side.
+		w = h
+		h = int(round(w / r))
+	return Vector2i(w & ~1, h & ~1)
