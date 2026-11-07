@@ -34,6 +34,10 @@ void fragment() {
 	float rk = smoothstep(0.22, 0.42, slope + (n - 0.5) * 0.12) * rock_mix;
 	vec3 rock = rock_color.rgb * mix(0.82, 1.12, t_noise(w_pos.xz * 3.1 + w_pos.y));
 	c = mix(c, rock, rk);
+#ifdef ANIME
+	float big = t_noise(w_pos.xz * 0.05) * 0.7 + t_noise(w_pos.xz * 0.13) * 0.3;
+	c *= mix(vec3(0.8, 0.94, 0.86), vec3(1.14, 1.1, 0.84), smoothstep(0.3, 0.75, big));
+#endif
 	ALBEDO = c;
 #ifdef TOON
 	ROUGHNESS = 0.95;

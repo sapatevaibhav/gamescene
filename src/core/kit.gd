@@ -29,7 +29,7 @@ static var _meshes := {}
 static func mat(color: Variant, opts: Dictionary = {}) -> Material:
 	var c: Color = color if color is Color else U.col(str(color))
 	var op: float = opts.get("op", 1.0)
-	var key := "%s|%s|%s|%.2f|%s|%.3f|%s|%s" % [shade, c.to_html(), opts.get("glow", false), op, opts.get("side", false), outline_width, opts.get("rough", -1.0), opts.get("metal", -1.0)]
+	var key := "%s|%s|%s|%.2f|%s|%.3f|%s|%s" % [shade, c.to_html(), opts.get("glow", false), op, opts.get("side", false), outline_width, opts.get("rough", -1.0), opts.get("metal", -1.0)] + ("s" if opts.get("skin", false) else "") + ("h" if opts.get("hair", false) else "")
 	if _mats.has(key):
 		return _mats[key]
 	var m: Material
@@ -45,6 +45,18 @@ static func mat(color: Variant, opts: Dictionary = {}) -> Material:
 		var t := ShaderMaterial.new()
 		t.shader = TOON
 		t.set_shader_parameter("albedo", c)
+		# Shadows are tinted, never grey: skin goes warm rose, the rest cool lilac.
+		var tint := Color(0.74, 0.71, 0.88)
+		if opts.get("skin", false):
+			tint = Color(0.97, 0.74, 0.74)
+		elif c.v > 0.85 and c.s < 0.15:
+			tint = Color(0.78, 0.8, 0.94)
+		t.set_shader_parameter("shadow_tint", tint)
+		if opts.get("hair", false):
+			t.set_shader_parameter("hair_spec", 0.32)
+		if opts.get("metal", -1.0) > 0.3:
+			t.set_shader_parameter("spec_amount", 0.8)
+			t.set_shader_parameter("rim_amount", 0.5)
 		if outline_width > 0.0:
 			var ol := ShaderMaterial.new()
 			ol.shader = OUTLINE
@@ -424,3 +436,85 @@ static func _flat_tris(tris: Array, outward := false) -> ArrayMesh:
 
 static func _set_double_sided_hint(_m: Mesh) -> void:
 	pass
+
+
+# ---------------------------------------------------------------- batching
+
+## Merges every static MeshInstance3D under `root` into one mesh per material
+## (and vertex format), cutting draw calls by 10-50x for procedural props.
+## Animated parts listed in the "spin"/"flicker" metas, and anything marked
+## with meta "keep", stay separate.
+static func merge_static(root: Node3D) -> void:
+	var keep := {}
+	for key in ["spin", "flicker"]:
+		if root.has_meta(key):
+			var v: Variant = root.get_meta(key)
+			for n in (v if v is Array else [v]):
+				if n is Node:
+					_mark(n, keep)
+	var groups := {}
+	_collect(root, root, Transform3D.IDENTITY, keep, groups)
+	_emit(root, groups)
+
+
+## Merges only the direct mesh children of `n` (for rig pivots that move).
+static func merge_children(n: Node3D) -> void:
+	if n == null:
+		return
+	var groups := {}
+	for c in n.get_children():
+		if c is MeshInstance3D and c.get_child_count() == 0 and not c.has_meta("keep"):
+			_add(groups, c as MeshInstance3D, (c as MeshInstance3D).transform)
+	_emit(n, groups)
+
+
+static func _mark(n: Node, keep: Dictionary) -> void:
+	keep[n] = true
+	for c in n.get_children():
+		_mark(c, keep)
+
+
+static func _collect(root: Node3D, n: Node, xf: Transform3D, keep: Dictionary, groups: Dictionary) -> void:
+	for c in n.get_children():
+		if keep.has(c) or not (c is Node3D):
+			continue
+		var cx: Transform3D = xf * (c as Node3D).transform
+		if c is MeshInstance3D and not c.has_meta("keep") and (c as MeshInstance3D).visible:
+			_add(groups, c as MeshInstance3D, cx)
+		_collect(root, c, cx, keep, groups)
+
+
+static func _add(groups: Dictionary, mi3: MeshInstance3D, xf: Transform3D) -> void:
+	var mesh := mi3.mesh
+	if mesh == null or mi3.material_override == null or mesh.get_surface_count() != 1:
+		return
+	var fmt := 0
+	if mesh is ArrayMesh:
+		fmt = (mesh as ArrayMesh).surface_get_format(0) & (Mesh.ARRAY_FORMAT_COLOR | Mesh.ARRAY_FORMAT_TEX_UV | Mesh.ARRAY_FORMAT_NORMAL)
+	else:
+		fmt = Mesh.ARRAY_FORMAT_TEX_UV | Mesh.ARRAY_FORMAT_NORMAL
+	var key := "%d|%d|%d" % [mi3.material_override.get_instance_id(), fmt, mi3.cast_shadow]
+	if not groups.has(key):
+		groups[key] = {"mat": mi3.material_override, "shadow": mi3.cast_shadow, "items": []}
+	groups[key]["items"].append([mi3, xf])
+
+
+static func _emit(root: Node3D, groups: Dictionary) -> void:
+	for key in groups:
+		var g: Dictionary = groups[key]
+		var items: Array = g["items"]
+		if items.size() < 2:
+			continue
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for it in items:
+			st.append_from((it[0] as MeshInstance3D).mesh, 0, it[1])
+		var merged := MeshInstance3D.new()
+		merged.mesh = st.commit()
+		merged.material_override = g["mat"]
+		merged.cast_shadow = g["shadow"]
+		for it in items:
+			var old: MeshInstance3D = it[0]
+			old.get_parent().remove_child(old)
+			old.queue_free()
+		root.add_child(merged)

@@ -173,4 +173,9 @@ static func build(look: Dictionary, style: String) -> Dictionary:
 		rig[k] = bool(rig.get(k, false))
 	if cfg.get("creature") and not rig.has("creature"):
 		rig["creature"] = str(cfg["creature"])
+	# Batch each rigid part into one mesh per material (far fewer draw calls).
+	for k in ["root", "model", "upper", "head", "hc", "armL", "armR", "legL", "legR", "cape"]:
+		var n: Variant = rig.get(k)
+		if n is Node3D:
+			Kit.merge_children(n)
 	return rig

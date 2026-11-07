@@ -48,6 +48,11 @@ func _ready() -> void:
 	is_mobile = OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
 	is_touch = is_mobile or DisplayServer.is_touchscreen_available()
 	device["quality"] = "balanced" if is_mobile else "high"
+	# Integrated GPUs (Intel UHD/Iris, AMD APUs) default to Balanced.
+	if RenderingServer.get_video_adapter_type() == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+		device["quality"] = "balanced"
+	# Desktop: the mouse drives the camera (Esc frees the cursor).
+	device["mouse_look"] = "drag" if is_mobile else "capture"
 	if is_mobile:
 		settings["res"] = "720"
 	load_device()
@@ -78,6 +83,8 @@ func sim_randf() -> float:
 
 
 func save_device() -> void:
+	device["mouse_v"] = 2
+	device["quality_v"] = 2
 	var f := FileAccess.open("user://device.json", FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(device))
@@ -89,6 +96,11 @@ func load_device() -> void:
 	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string("user://device.json"))
 	if d is Dictionary:
 		for k in d:
+			# Saves from before mouse capture became the default keep the new default.
+			if k == "mouse_look" and not d.has("mouse_v"):
+				continue
+			if k == "quality" and not d.has("quality_v"):
+				continue
 			if device.has(k):
 				device[k] = d[k]
 

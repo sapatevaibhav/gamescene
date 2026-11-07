@@ -7,7 +7,7 @@ const STYLES := {
 	"blocky": {"name": "Blocky", "blurb": "Pixel skins and block building", "world": "voxel", "char": "skin", "shade": "lambert", "sky": "#8ec9ff", "mood": "day", "light": 1.0,
 		"swatch": ["#7fc4ff", "#5c9b3a"]},
 	"anime": {"name": "Anime fantasy", "blurb": "Cel-shaded heroes, soft skies", "world": "terrain", "char": "anime", "shade": "toon", "sky": "#7cc4ff", "mood": "day", "light": 0.74,
-		"pal": {"grass": "#6fbf52", "grass2": "#86cf5e", "path": "#d6c8a2", "sand": "#e8dcb0", "rock": "#9aa3ad", "water": "#58b8e0", "wop": 0.8},
+		"pal": {"grass": "#5fa64a", "grass2": "#76b652", "path": "#d6c8a2", "sand": "#e8dcb0", "rock": "#9aa3ad", "water": "#58b8e0", "wop": 0.8},
 		"swatch": ["#bfe6ff", "#f7a8c8"]},
 	"tactical": {"name": "Tactical", "blurb": "Squads, outposts, open fields", "world": "terrain", "char": "tactical", "shade": "standard", "sky": "#a9c3d8", "mood": "day", "light": 0.82,
 		"pal": {"grass": "#8d9157", "grass2": "#a39a65", "path": "#a68c68", "sand": "#c2b089", "rock": "#8a8a85", "water": "#4f7480", "wop": 0.86},

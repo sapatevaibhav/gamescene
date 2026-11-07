@@ -26,6 +26,8 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_voxel` | Blocks, atlas, the 5 world generators, rays, save round trip |
 | `test_terrain` | Every prop, world generation, picking, collisions, save round trip |
 | `test_rigs` | Every character preset in every style, random looks, skins |
+| `test_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- test_perf anime`) |
+| `test_look` | Needs a window: renders a few views of one style to `user://look/` for a visual check (`-- test_look anime`) |
 
 The smoke run builds each style and saves screenshots (third person, cinematic, sunset, night, weather, a panel) to `user://smoke/`. It also exports a short two-shot film per style.
 

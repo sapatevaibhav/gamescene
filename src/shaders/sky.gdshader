@@ -11,6 +11,9 @@ uniform float clouds = 0.55;
 uniform vec3 cloud_color : source_color = vec3(1.0);
 uniform float cloud_speed = 0.004;
 uniform float horizon_haze = 1.0;
+uniform float cloud_sharp = 0.35;
+uniform float cloud_scale = 1.6;
+uniform float cloud_toon = 0.0;
 
 float hash(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -62,10 +65,11 @@ void sky() {
 	// Clouds on a curved layer.
 	{
 		if (h > 0.0 && clouds > 0.01) {
-			vec2 uv = d.xz / (d.y + 0.18) * 1.6 + vec2(TIME * cloud_speed, TIME * cloud_speed * 0.4);
+			vec2 uv = d.xz / (d.y + 0.18) * cloud_scale + vec2(TIME * cloud_speed, TIME * cloud_speed * 0.4);
 			float n = fbm(uv);
-			float c = smoothstep(1.0 - clouds, 1.0 - clouds + 0.35, n);
-			float shade = 0.82 + 0.18 * fbm(uv * 2.0 + 3.0);
+			float c = smoothstep(1.0 - clouds, 1.0 - clouds + cloud_sharp, n);
+			float f2 = fbm(uv * 2.0 + 3.0);
+			float shade = mix(0.82 + 0.18 * f2, mix(0.8, 1.04, smoothstep(0.42, 0.5, n - f2 * 0.25)), cloud_toon);
 			col = mix(col, cloud_color * shade, c * smoothstep(0.0, 0.18, h) * 0.92);
 		}
 	}

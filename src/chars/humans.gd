@@ -209,7 +209,7 @@ static func humanoid(p: Dictionary) -> Dictionary:
 # ---------------------------------------------------------------- anime
 
 static func _strand(hc: Node3D, m: Material, x: float, y: float, z: float, ln: float, w: float, dir: Array) -> MeshInstance3D:
-	var c := Kit.cone(w, ln, 8, m)
+	var c := Kit.cone(w, ln, 12, m)
 	var d := Vector3(dir[0], dir[1], dir[2]).normalized()
 	c.quaternion = _q_from(d, Vector3(0, -1, 0))
 	c.position = Vector3(x + d.x * ln / 2.0, y + d.y * ln / 2.0, z + d.z * ln / 2.0)
@@ -226,10 +226,15 @@ static func hair_anime(hc: Node3D, r: float, m: Material, style: String) -> void
 	back.scale = Vector3(1, 0.92, 0.86)
 	back.position = Vector3(0, -r * 0.08, -r * 0.3)
 	hc.add_child(back)
-	for k in 9:
-		var t := (k / 8.0 - 0.5) * 2.0
-		var a := t * 1.05
-		_strand(hc, m, sin(a) * r * 0.98, r * 0.5, cos(a) * r * 0.9, r * (0.62 + (1.0 - absf(t)) * 0.18 + (k % 2) * 0.08), r * 0.2, [t * 0.25, -1, 0.35])
+	for k in 13:
+		var t := (k / 12.0 - 0.5) * 2.0
+		var a := t * 1.1
+		# Bangs stop above the eyes in the middle and frame the face at the sides.
+		var ln := r * (0.36 + absf(t) * 0.42 + (k % 2) * 0.06)
+		_strand(hc, m, sin(a) * r * 1.0, r * 0.62, cos(a) * r * 0.95, ln, r * 0.16, [t * 0.3, -1, 0.5])
+	for k in 10:
+		var t := (k / 9.0) * TAU
+		_strand(hc, m, sin(t) * r * 0.95, r * 0.35, cos(t) * r * 0.85 - r * 0.15, r * (0.7 + 0.15 * (k % 3)), r * 0.24, [sin(t) * 0.35, -1, cos(t) * 0.25 - 0.1])
 	for s in [-1.0, 1.0]:
 		_strand(hc, m, s * r * 0.9, r * 0.2, r * 0.32, r * (0.9 if style == "short" else 1.45), r * 0.17, [s * 0.12, -1, 0.12])
 	if style == "spiky":
@@ -260,8 +265,8 @@ static func hair_anime(hc: Node3D, r: float, m: Material, style: String) -> void
 static func build_anime(cfg: Dictionary) -> Dictionary:
 	var g := func(k: String, d: String) -> String: return str(cfg[k]) if cfg.get(k) else d
 	var skin: String = g.call("skin", "#f6dcc8")
-	var mS := M(skin)
-	var mH := M(g.call("hair", "#3b2a1e"))
+	var mS := M(skin, {"skin": true})
+	var mH := M(g.call("hair", "#3b2a1e"), {"hair": true})
 	var mSh := M(g.call("shirt", "#f4f2ec"))
 	var shirt2: String = g.call("shirt2", "#2a7f87")
 	var mA := M(shirt2)
@@ -272,7 +277,7 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 	var root := Kit.group()
 	var model := Kit.group()
 	root.add_child(model)
-	var hip := 0.92
+	var hip := 1.0
 	var legs := []
 	var arms := []
 	var legs_kind: String = cfg.get("legs", "") if cfg.get("legs") else ""
@@ -285,20 +290,20 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 	for s in [-1.0, 1.0]:
 		var pv := Kit.group(s * 0.082, hip, 0)
 		model.add_child(pv)
-		pv.add_child(_cap(0.066, 0.34, thigh_m, 0, -0.2, 0))
-		pv.add_child(_cap(0.052, 0.34, mB if tall else (thigh_m if legs_kind == "stockings" else mP), 0, -0.6, 0))
+		pv.add_child(_cap(0.064, 0.4, thigh_m, 0, -0.22, 0, 16))
+		pv.add_child(_cap(0.05, 0.4, mB if tall else (thigh_m if legs_kind == "stockings" else mP), 0, -0.66, 0, 16))
 		if tall:
-			pv.add_child(Kit.cyl(0.062, 0.056, 0.07, 14, mA, 0, -0.43, 0))
-		var foot := _cap(0.05, 0.12, mB, 0, -0.86, 0.05)
+			pv.add_child(Kit.cyl(0.06, 0.054, 0.07, 18, mA, 0, -0.46, 0))
+		var foot := _cap(0.048, 0.13, mB, 0, -0.94, 0.05, 14)
 		foot.rotation.x = PI / 2
 		pv.add_child(foot)
 		legs.append(pv)
 	var upper := Kit.group(0, hip, 0)
 	model.add_child(upper)
-	var hips_m := Kit.mi(CharMesh.lathe([[0.001, -0.12], [0.13, -0.11], [0.15, -0.04], [0.13, 0.06], [0.001, 0.06]], 24), mP)
+	var hips_m := Kit.mi(CharMesh.lathe([[0.001, -0.12], [0.13, -0.11], [0.15, -0.04], [0.13, 0.06], [0.001, 0.06]], 36), mP)
 	hips_m.scale.z = 0.74
 	upper.add_child(hips_m)
-	var torso := Kit.mi(CharMesh.lathe([[0.001, 0], [0.12, 0], [0.112, 0.12], [0.122, 0.25], [0.15, 0.36], [0.158, 0.43], [0.1, 0.5], [0.04, 0.53], [0.001, 0.53]], 24), mSh)
+	var torso := Kit.mi(CharMesh.lathe([[0.001, 0], [0.12, 0], [0.112, 0.12], [0.122, 0.25], [0.15, 0.36], [0.158, 0.43], [0.1, 0.5], [0.04, 0.53], [0.001, 0.53]], 36), mSh)
 	torso.scale.z = 0.7
 	upper.add_child(torso)
 	var sash := Kit.cyl(0.118, 0.118, 0.035, 20, mA, 0, 0.03, 0)
@@ -309,11 +314,27 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 	collar.rotation.x = PI / 2
 	collar.position.y = 0.52
 	upper.add_child(collar)
+	# Layered outfit: corset over the shirt, gold trims, a front tabard.
+	var mC := M(coat_c)
+	var corset := Kit.mi(CharMesh.lathe([[0.001, 0.0], [0.13, 0.0], [0.124, 0.12], [0.13, 0.25], [0.152, 0.33], [0.001, 0.33]], 36), mA)
+	corset.scale.z = 0.73
+	upper.add_child(corset)
+	for ty in [0.005, 0.33]:
+		var trim := _torus(0.135 if ty < 0.1 else 0.152, 0.008, 6, 36, gold)
+		trim.rotation.x = PI / 2
+		trim.position.y = ty
+		trim.scale = Vector3(1, 0.73, 1)
+		upper.add_child(trim)
+	var tabard := Kit.box(0.13, 0.36, 0.012, mC, 0, -0.18, 0.1)
+	tabard.rotation.x = -0.12
+	upper.add_child(tabard)
+	upper.add_child(Kit.box(0.135, 0.014, 0.016, gold, 0, -0.355, 0.122))
+	upper.add_child(Kit.octa(0.022, M("#7fe3ff", {"glow": true}), 0, 0.04, 0.1))
 	var coat = cfg.get("coat")
 	if coat:
 		var cl := 0.78 if coat == "long" else (0.3 if coat == "skirt" else 0.46)
 		var flare := 0.25 if coat == "skirt" else 0.22
-		var sk := Kit.mi(CharMesh.lathe([[0.13, 0.04], [0.145, -0.02], [flare * 0.9, -cl * 0.6], [flare, -cl]], 28), CharMesh.side_mat(coat_c))
+		var sk := Kit.mi(CharMesh.lathe([[0.13, 0.04], [0.145, -0.02], [flare * 0.9, -cl * 0.6], [flare, -cl]], 40), CharMesh.side_mat(coat_c))
 		sk.scale.z = 0.8
 		upper.add_child(sk)
 		if coat != "skirt":
@@ -325,19 +346,19 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 	var head := Kit.group(0, 0.56, 0)
 	upper.add_child(head)
 	head.add_child(_cap(0.036, 0.06, mS, 0, 0.02, 0, 10))
-	var r := 0.15
-	var hc := Kit.group(0, 0.15, 0)
+	var r := 0.128
+	var hc := Kit.group(0, 0.13, 0)
 	head.add_child(hc)
 	hc.add_child(Kit.mi(CharMesh.anime_head(r), mS))
 	for s in [-1.0, 1.0]:
 		hc.add_child(_sph(0.028, 10, 8, mS, s * r * 0.93, -r * 0.1, -r * 0.05))
 	var eye := anime_tex("eye", g.call("eyes", "#3c78d8"))
-	face_decal(hc, eye, -r * 0.37, -r * 0.12, r, r * 0.42, r * 0.62, 0.06)
-	var eye_r := face_decal(hc, eye, r * 0.37, -r * 0.12, r, r * 0.42, r * 0.62, -0.06)
+	face_decal(hc, eye, -r * 0.38, -r * 0.14, r, r * 0.5, r * 0.74, 0.06)
+	var eye_r := face_decal(hc, eye, r * 0.38, -r * 0.14, r, r * 0.5, r * 0.74, -0.06)
 	eye_r.scale.x = -1
 	var brow := anime_tex("brow", U.shade_hex(g.call("hair", "#3b2a1e"), 0.7))
-	face_decal(hc, brow, -r * 0.38, r * 0.28, r, r * 0.38, r * 0.1, 0.12)
-	var brow_r := face_decal(hc, brow, r * 0.38, r * 0.28, r, r * 0.38, r * 0.1, -0.12)
+	face_decal(hc, brow, -r * 0.38, r * 0.3, r, r * 0.4, r * 0.1, 0.12)
+	var brow_r := face_decal(hc, brow, r * 0.38, r * 0.3, r, r * 0.4, r * 0.1, -0.12)
 	brow_r.scale.x = -1
 	var bl := anime_tex("blush", "")
 	face_decal(hc, bl, -r * 0.48, -r * 0.45, r, r * 0.36, r * 0.18)
@@ -382,14 +403,22 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 		var pv := Kit.group(s * 0.175, 0.45, 0)
 		upper.add_child(pv)
 		pv.add_child(Kit.ball(0.055, mSh))
-		pv.add_child(_cap(0.042, 0.2, mSh, 0, -0.15, 0))
-		pv.add_child(_cap(0.035, 0.18, mSh if sl > 0.9 else mS, 0, -0.39, 0))
+		var pad := Kit.cap(0.07, 18, 0.5, mC, 0, 0.01, 0)
+		pad.scale = Vector3(1.05, 0.8, 1.0)
+		pad.rotation.z = -s * 0.25
+		pv.add_child(pad)
+		var pad_trim := _torus(0.068, 0.006, 5, 24, gold)
+		pad_trim.rotation.x = PI / 2
+		pad_trim.position.y = 0.012
+		pv.add_child(pad_trim)
+		pv.add_child(_cap(0.047, 0.23, mSh, 0, -0.16, 0, 14))
+		pv.add_child(_cap(0.04, 0.21, mSh if sl > 0.9 else mS, 0, -0.42, 0, 14))
 		if sl > 0.9:
 			var cf := _torus(0.037, 0.01, 6, 16, gold)
 			cf.rotation.x = PI / 2
-			cf.position.y = -0.47
+			cf.position.y = -0.52
 			pv.add_child(cf)
-		pv.add_child(_sph(0.038, 14, 10, M(g.call("gloves", skin)), 0, -0.52, 0.005))
+		pv.add_child(_sph(0.042, 16, 12, M(g.call("gloves", skin), {"skin": not cfg.get("gloves")}), 0, -0.58, 0.005))
 		arms.append(pv)
 	var cape_g: Node3D = null
 	if cfg.get("cape", false):
@@ -436,9 +465,9 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 		ring.position.y = 1.05
 		sg.add_child(ring)
 		(arms[0] as Node3D).add_child(sg)
-	var head_h := hip + 0.56 + 0.15
+	var head_h := hip + 0.56 + 0.13
 	return {"root": root, "model": model, "upper": upper, "head": head, "hc": hc, "torso": torso, "armR": arms[0], "armL": arms[1], "legR": legs[0], "legL": legs[1],
-		"headH": head_h, "height": head_h + r * 1.3, "sitDrop": hip - 0.08, "cape": cape_g, "kind": "human"}
+		"headH": head_h, "height": head_h + r * 1.4, "sitDrop": hip - 0.08, "cape": cape_g, "kind": "human"}
 
 
 static func build_anime_creature(cfg: Dictionary) -> Dictionary:

@@ -14,17 +14,26 @@ class_name Props
 
 const DEFS := {
 	"anime": {
-		"oak": {"name": "Oak tree", "cols": [[0.0, 0.0, 0.4]]},
-		"windmill": {"name": "Windmill", "cols": [[0.0, 0.0, 1.6]]},
+		"oak": {"name": "Broadleaf tree", "cols": [[0.0, 0.0, 0.55]]},
+		"tall": {"name": "Forest giant", "cols": [[0.0, 0.0, 0.6]]},
+		"blossom": {"name": "Blossom tree", "cols": [[0.0, 0.0, 0.45]]},
+		"bush": {"name": "Bush", "cols": []},
+		"fern": {"name": "Ferns", "cols": []},
+		"rocks": {"name": "Mossy boulder"},
+		"stone": {"name": "Small rock"},
+		"log": {"name": "Fallen log"},
+		"stump": {"name": "Stump", "cols": [[0.0, 0.0, 0.5]]},
+		"mushrooms": {"name": "Mushrooms", "cols": []},
+		"pillar": {"name": "Ruin pillar", "cols": [[0.0, 0.0, 0.55]]},
+		"arch": {"name": "Ancient arch", "cols": [[-1.7, 0.0, 0.6], [1.7, 0.0, 0.6]]},
+		"flowers": {"name": "Wildflowers", "cols": []},
 		"house": {"name": "Timber house"},
+		"windmill": {"name": "Windmill", "cols": [[0.0, 0.0, 1.6]]},
 		"wall": {"name": "Stone wall"},
 		"fence": {"name": "Fence"},
 		"hay": {"name": "Haystack"},
 		"cart": {"name": "Cart"},
 		"lamp": {"name": "Lamp post"},
-		"flowers": {"name": "Wildflowers", "cols": []},
-		"rocks": {"name": "Rocks"},
-		"blossom": {"name": "Blossom tree", "cols": [[0.0, 0.0, 0.35]]},
 		"lantern": {"name": "Stone lantern"},
 		"crystal": {"name": "Crystals"},
 		"bench": {"name": "Bench"},
@@ -82,7 +91,18 @@ static func build(style: String, key: String, seed: int) -> Node3D:
 	match style:
 		"anime":
 			match key:
-				"oak": g = _oak(r)
+				"oak": g = AnimeNature.broadleaf(r)
+				"tall": g = AnimeNature.broadleaf(r, "deep", true)
+				"blossom": g = AnimeNature.blossom(r)
+				"bush": g = AnimeNature.bush(r)
+				"fern": g = AnimeNature.fern(r)
+				"rocks": g = AnimeNature.boulder(r, true)
+				"stone": g = AnimeNature.boulder(r, false)
+				"log": g = AnimeNature.log_prop(r)
+				"stump": g = AnimeNature.stump(r)
+				"mushrooms": g = AnimeNature.mushrooms(r)
+				"pillar": g = AnimeNature.ruin_pillar(r)
+				"arch": g = AnimeNature.ruin_arch(r)
 				"windmill": g = _windmill()
 				"house": g = _timber_house(r2)
 				"wall": g = _stone_wall()
@@ -91,8 +111,6 @@ static func build(style: String, key: String, seed: int) -> Node3D:
 				"cart": g = _cart()
 				"lamp": g = _iron_lamp()
 				"flowers": g = _wildflowers(r, r2)
-				"rocks": g = _outcrop(r)
-				"blossom": g = _tree_round("#f7a8c8", "#ffc9de", r)
 				"lantern": g = _lantern()
 				"crystal": g = _crystals(r, r2)
 				"bench": g = _bench()

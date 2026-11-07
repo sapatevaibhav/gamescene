@@ -164,12 +164,14 @@ func apply_quality() -> void:
 	env.glow_enabled = qd["glow"]
 	env.volumetric_fog_enabled = qd["vfog"]
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if qd["shadow"] >= 4096 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 90.0
 	RenderingServer.directional_shadow_atlas_set_size(qd["shadow"], true)
 	rain.amount = 2600 if qd["shadow"] >= 4096 else 1200
 	snow.amount = 2200 if qd["shadow"] >= 4096 else 1000
 	var vp := get_viewport()
 	if vp:
 		vp.scaling_3d_scale = qd["scale"]
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if qd["scale"] < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
 		vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_4X][qd["msaa"]]
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if qd["fxaa"] else Viewport.SCREEN_SPACE_AA_DISABLED
 
@@ -178,10 +180,10 @@ func set_style(key: String) -> void:
 	style = key
 	match key:
 		"anime":
-			env.adjustment_saturation = 1.12
-			env.adjustment_contrast = 1.02
+			env.adjustment_saturation = 1.08
+			env.adjustment_contrast = 1.05
 			env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-			env.tonemap_exposure = 1.08
+			env.tonemap_exposure = 1.12
 		"tactical":
 			env.adjustment_saturation = 0.92
 			env.adjustment_contrast = 1.06
@@ -310,7 +312,14 @@ func apply() -> void:
 		vf = 0.02
 	elif dusk > 0.3:
 		vf = 0.012
+	if style == "anime" and vf < 0.014:
+		# Soft light shafts through the canopy.
+		vf = 0.014
 	env.volumetric_fog_density = vf
+	var toon_sky := style == "anime"
+	sky_mat.set_shader_parameter("cloud_toon", 1.0 if toon_sky else 0.0)
+	sky_mat.set_shader_parameter("cloud_sharp", 0.1 if toon_sky else 0.35)
+	sky_mat.set_shader_parameter("cloud_scale", 0.95 if toon_sky else 1.6)
 	env.glow_intensity = 0.55 + 0.5 * night
 
 	rain.visible = weather == "rain"

@@ -118,7 +118,11 @@ func _enter_studio() -> void:
 	if studio.camera.mode == "cine":
 		studio.camera.cine_reset()
 	if not App.is_touch:
-		App.toast("Drag to look · WASD to move · tap a character to direct them")
+		if App.device["mouse_look"] == "capture":
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			App.toast("Mouse looks around · WASD moves · click aims at the crosshair · Esc frees the cursor")
+		else:
+			App.toast("Drag to look · WASD to move · click a character to direct them")
 
 
 func _go_home() -> void:
@@ -269,6 +273,7 @@ func _zoom(f: float) -> void:
 func _tap(pos: Vector2, button: int) -> void:
 	var id := studio.tools.tap(pos, button)
 	if id >= 0:
+		_release_mouse()
 		hud.open_sheet("actor", id)
 	elif studio.tools.kind == "" and hud.sheet.visible:
 		hud.close_sheet()

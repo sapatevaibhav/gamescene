@@ -31,6 +31,10 @@ var _dirty := false
 var _dirty_t := 0.0
 var _t := 0.0
 var _skirt_key := ""
+var _backdrop: Node3D
+var _skirt_hf: Callable
+var _border_mmi: MultiMeshInstance3D
+var _grass_root: Node3D
 var _mat_key := ""
 
 const SH_REAL := preload("res://src/shaders/terrain.gdshader")
@@ -38,6 +42,8 @@ const SH_TOON := preload("res://src/shaders/terrain_toon.gdshader")
 const SH_FLAT := preload("res://src/shaders/terrain_flat.gdshader")
 const SH_WATER := preload("res://src/shaders/water.gdshader")
 const SH_GRASS := preload("res://src/shaders/grass.gdshader")
+const SH_GRASS_ANIME := preload("res://src/shaders/grass_anime.gdshader")
+const SH_TERRAIN_ANIME := preload("res://src/shaders/terrain_anime.gdshader")
 
 
 func _init() -> void:
@@ -292,6 +298,8 @@ func _terrain_material() -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var sh := _shade()
 	m.shader = SH_TOON if sh == "toon" else (SH_FLAT if sh == "flat" else SH_REAL)
+	if style_key == "anime":
+		m.shader = SH_TERRAIN_ANIME
 	m.set_shader_parameter("rock_color", U.col(_pal().rock))
 	m.set_shader_parameter("detail_amount", 0.07 if sh == "toon" else (0.05 if sh == "flat" else 0.16))
 	m.set_shader_parameter("rock_mix", 0.0 if sh == "flat" else 0.6)
@@ -325,7 +333,7 @@ func _build_skirt() -> void:
 		var dz := maxf(maxf(-z, z - TN), 0.0)
 		var d := Vector2(dx, dz).length()
 		var k := clampf((d - 6.0) / 70.0, 0.0, 1.0)
-		return base + k * k * (4.0 + fbm(x * 0.4 + 300.0, z * 0.4 + 300.0, 41.0) * 22.0)
+		return base + k * k * (4.0 + fbm(x * 0.4 + 300.0, z * 0.4 + 300.0, 41.0) * (34.0 if style_key == "anime" else 22.0))
 	var cf := func(x: float, z: float, y: float) -> Color:
 		var t := clampf((y - base) / 18.0, 0.0, 1.0)
 		var c2: Color = col.lerp(U.col(_pal().rock), t * 0.55)
@@ -360,6 +368,136 @@ func _build_skirt() -> void:
 	var m := _terrain_material()
 	m.set_shader_parameter("rock_mix", 0.0)
 	_skirt_mi.material_override = m
+	if _backdrop:
+		_backdrop.queue_free()
+		_backdrop = null
+	_skirt_hf = hf
+	if style_key == "anime":
+		_build_backdrop(hf)
+
+
+## Instanced forest filling the horizon around the play area, plus floating
+## light motes and drifting leaves over the glade.
+func _build_backdrop(hf: Callable) -> void:
+	_backdrop = Node3D.new()
+	_backdrop.name = "Backdrop"
+	add_child(_backdrop)
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 4242
+	for variant in 3:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = AnimeNature.backdrop_tree_mesh(variant)
+		var xfs := []
+		for k in 260:
+			var x := rr.randf_range(-110.0, TN + 110.0)
+			var z := rr.randf_range(-110.0, TN + 110.0)
+			var dx := maxf(maxf(-x, x - TN), 0.0)
+			var dz := maxf(maxf(-z, z - TN), 0.0)
+			var d := Vector2(dx, dz).length()
+			if d < 3.5 or d > 105.0:
+				continue
+			# Thin out with distance and leave a few meadow clearings.
+			if rr.randf() < d / 160.0 or fbm(x * 0.05, z * 0.05, 7.0) < 0.36:
+				continue
+			var y: float = hf.call(x, z)
+			var sc := rr.randf_range(0.8, 1.4) * (1.0 + d / 120.0)
+			xfs.append(Transform3D(Basis(Vector3.UP, rr.randf() * TAU).scaled(Vector3.ONE * sc), Vector3(x, y - 0.4, z)))
+		mm.instance_count = xfs.size()
+		for i in xfs.size():
+			mm.set_instance_transform(i, xfs[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_backdrop.add_child(mmi)
+	_backdrop.add_child(_motes())
+	_backdrop.add_child(_falling_leaves())
+
+
+func _motes() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = 120
+	p.lifetime = 9.0
+	p.preprocess = 9.0
+	p.position = Vector3(TN / 2.0, 5.0, TN / 2.0)
+	p.visibility_aabb = AABB(Vector3(-30, -10, -30), Vector3(60, 25, 60))
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(24, 3, 24)
+	pm.gravity = Vector3(0, 0.05, 0)
+	pm.initial_velocity_min = 0.05
+	pm.initial_velocity_max = 0.25
+	pm.spread = 180.0
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 0.4
+	pm.turbulence_noise_scale = 6.0
+	pm.scale_min = 0.5
+	pm.scale_max = 1.2
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 0))
+	fade.add_point(0.2, Color(1, 1, 1, 1))
+	fade.add_point(0.8, Color(1, 1, 1, 1))
+	fade.set_color(fade.get_point_count() - 1, Color(1, 1, 1, 0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = fade
+	pm.color_ramp = gt
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.09, 0.09)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = Color(1.0, 0.95, 0.6) * 2.2
+	var dot := GradientTexture2D.new()
+	dot.fill = GradientTexture2D.FILL_RADIAL
+	dot.fill_from = Vector2(0.5, 0.5)
+	dot.fill_to = Vector2(1, 0.5)
+	var dg := Gradient.new()
+	dg.set_color(0, Color(1, 1, 1, 1))
+	dg.set_color(1, Color(1, 1, 1, 0))
+	dot.gradient = dg
+	m.albedo_texture = dot
+	q.material = m
+	p.draw_pass_1 = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return p
+
+
+func _falling_leaves() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = 60
+	p.lifetime = 12.0
+	p.preprocess = 12.0
+	p.position = Vector3(TN / 2.0, 12.0, TN / 2.0)
+	p.visibility_aabb = AABB(Vector3(-30, -20, -30), Vector3(60, 30, 60))
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(24, 2, 24)
+	pm.gravity = Vector3(0.35, -0.55, 0.15)
+	pm.initial_velocity_min = 0.1
+	pm.initial_velocity_max = 0.4
+	pm.direction = Vector3(0.4, -1, 0.2)
+	pm.spread = 35.0
+	pm.angular_velocity_min = -90.0
+	pm.angular_velocity_max = 90.0
+	pm.angle_min = -180.0
+	pm.angle_max = 180.0
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.14, 0.09)
+	var m := StandardMaterial3D.new()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.albedo_color = Color(0.62, 0.82, 0.32)
+	m.albedo_texture = AnimeNature.leaf_texture("single")
+	q.material = m
+	p.draw_pass_1 = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return p
 
 
 # ---------------------------------------------------------------- grass
@@ -367,7 +505,13 @@ func _build_skirt() -> void:
 func rebuild_grass() -> void:
 	_grass_mmi.multimesh = null
 	_flower_mmi.multimesh = null
+	if _grass_root:
+		_grass_root.queue_free()
+		_grass_root = null
 	if grass_density <= 0.0:
+		return
+	if style_key == "anime":
+		_anime_grass()
 		return
 	var sh := _shade()
 	var base: Color
@@ -450,6 +594,114 @@ func rebuild_grass() -> void:
 		_flower_mmi.multimesh = _scatter(fmesh, flowers, 0.0, 0.0, false, ["#ffffff", "#ffe066", "#8fb7ff", "#c9a2ff", "#ff9ec4"])
 
 
+## Anime meadow, built for speed: painted grass-clump cards (2 crossed quads
+## each, ~8 vertices instead of ~130 for modelled blades), grouped in 12 m
+## chunks so off-screen and distant chunks are culled, and faded out by
+## distance in the shader. The ground shader already paints grass colour, so
+## sparse clumps read as a full meadow.
+const GRASS_CHUNK := 12.0
+const GRASS_FAR := 42.0
+
+func _anime_grass() -> void:
+	if _grass_root:
+		_grass_root.queue_free()
+	_grass_root = Node3D.new()
+	_grass_root.name = "GrassChunks"
+	add_child(_grass_root)
+	if _border_mmi:
+		_border_mmi.queue_free()
+		_border_mmi = null
+	var gm := ShaderMaterial.new()
+	gm.shader = SH_GRASS_ANIME
+	gm.set_shader_parameter("grass_tex", AnimeNature.grass_texture())
+	gm.set_shader_parameter("fade_end", GRASS_FAR)
+	var card := _grass_card_mesh(1.05, 0.62)
+	card.surface_set_material(0, gm)
+	var fm := ShaderMaterial.new()
+	fm.shader = SH_GRASS_ANIME
+	fm.set_shader_parameter("grass_tex", AnimeNature.flower_texture())
+	fm.set_shader_parameter("fade_end", GRASS_FAR * 0.7)
+	fm.set_shader_parameter("tint_strength", 0.0)
+	var fcard := _grass_card_mesh(0.28, 0.3)
+	fcard.surface_set_material(0, fm)
+	var density := 2.4 * grass_density
+	var lo := -12.0 if _skirt_hf.is_valid() else 0.0
+	var hi := TN + (12.0 if _skirt_hf.is_valid() else 0.0)
+	var cz := lo
+	while cz < hi:
+		var cx := lo
+		while cx < hi:
+			_grass_chunk(card, fcard, cx, cz, density)
+			cx += GRASS_CHUNK
+		cz += GRASS_CHUNK
+
+
+func _grass_chunk(card: Mesh, fcard: Mesh, cx: float, cz: float, density: float) -> void:
+	var grass := []
+	var flowers := []
+	var n := int(GRASS_CHUNK * GRASS_CHUNK * density)
+	for k in n:
+		var x := cx + randf() * GRASS_CHUNK
+		var z := cz + randf() * GRASS_CHUNK
+		var inside := x > 0.5 and z > 0.5 and x < TN - 0.5 and z < TN - 0.5
+		var y: float
+		if inside:
+			var i := int(x)
+			var j := int(z)
+			if path[j * TN + i] == 1:
+				continue
+			y = terrain_h(x, z)
+			if y < water + 0.4 or prop_hit(x, z, y):
+				continue
+		else:
+			if not _skirt_hf.is_valid():
+				continue
+			y = _skirt_hf.call(x, z)
+		var sc := 0.75 + randf() * 0.6
+		var xf := Transform3D(Basis(Vector3.UP, randf() * TAU).scaled(Vector3(sc, sc * (0.8 + randf() * 0.45), sc)), Vector3(x, y - 0.03, z))
+		if randf() < 0.04:
+			flowers.append(xf)
+		else:
+			grass.append(xf)
+	for pair in [[card, grass], [fcard, flowers]]:
+		var list: Array = pair[1]
+		if list.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = pair[0]
+		mm.instance_count = list.size()
+		var flower: bool = pair[0] == fcard
+		var petals := [Color.WHITE, Color.WHITE, Color("ffe27a"), Color("9cc8ff"), Color("d6b3ff"), Color("ffb3cf")]
+		for i in list.size():
+			mm.set_instance_transform(i, list[i])
+			mm.set_instance_color(i, petals[randi() % petals.size()] if flower else Color.from_hsv(0.23 + randf() * 0.07, 0.25, 0.85 + randf() * 0.15))
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.visibility_range_end = GRASS_FAR + GRASS_CHUNK
+		mmi.visibility_range_end_margin = 6.0
+		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		_grass_root.add_child(mmi)
+
+
+## Two crossed vertical quads, UV v = 1 at the ground.
+func _grass_card_mesh(w := 0.9, h := 0.6) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 2:
+		var a := k * PI / 2.0 + PI / 4.0
+		var d := Vector3(cos(a), 0, sin(a)) * w * 0.5
+		var q := [-d, d, -d + Vector3(0, h, 0), d + Vector3(0, h, 0)]
+		var uv := [Vector2(0, 1), Vector2(1, 1), Vector2(0, 0), Vector2(1, 0)]
+		for idx in [0, 1, 2, 2, 1, 3]:
+			st.set_uv(uv[idx])
+			st.set_normal(Vector3.UP)
+			st.add_vertex(q[idx])
+	return st.commit()
+
+
 func _scatter(mesh: Mesh, n: int, hue: float, sat: float, is_grass: bool, petals: Array) -> MultiMesh:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -504,6 +756,7 @@ func add_prop(key: String, x: float, z: float, rot := 0.0, s := 1.0, seed := -1)
 	var node := Props.build(style_key, key, seed)
 	if node == null:
 		return {}
+	Kit.merge_static(node)
 	var bb := Kit.bounds(node)
 	var def := _prop_def(key)
 	var cols: Variant = def.get("cols", null)
@@ -574,9 +827,23 @@ func free_spot(x: float, z: float, r := 1.2) -> bool:
 	if terrain_h(x, z) < water + 0.3:
 		return false
 	for p in props:
-		if Vector2(p.x - x, p.z - z).length() < r + maxf(p.hw, p.hd) * p.s * 0.8:
+		if Vector2(p.x - x, p.z - z).length() < r + _footprint(p) * p.s:
 			return false
 	return true
+
+
+## Ground radius a prop occupies: trunk colliders for trees, almost nothing
+## for undergrowth, the bounding box otherwise.
+func _footprint(p: Dictionary) -> float:
+	var cols: Variant = p.get("cols")
+	if cols is Array:
+		if (cols as Array).is_empty():
+			return 0.25
+		var m := 0.0
+		for c in cols:
+			m = maxf(m, Vector2(c[0], c[1]).length() + float(c[2]))
+		return m
+	return maxf(p.hw, p.hd) * 0.8
 
 
 func on_path(x: float, z: float) -> bool:
@@ -603,7 +870,8 @@ func _scatter_props(key: String, n: int, r_min: float, r_max: float, r: U.Rng, a
 		var z := c + sin(a) * d
 		if avoid_path and on_path(x, z):
 			continue
-		if not free_spot(x, z, 1):
+		var spacing := 3.2 if key in ["oak", "tall", "blossom"] else 0.6
+		if not free_spot(x, z, spacing):
 			continue
 		var rot := r.next() * TAU
 		var sc := 0.85 + r.next() * 0.35
@@ -631,25 +899,32 @@ func new_world(key: String) -> void:
 	gen_terrain(seed)
 	clear_props()
 	if key == "anime":
-		_ring_place("house", 5, 10.5, r, 0.4)
-		add_prop("well", c, c)
-		add_prop("fire", c + 3.5, c + 3)
-		add_prop("windmill", c + 13, c + 9, -0.6)
-		add_prop("windmill", c - 14, c + 7, 0.5)
-		var z := 4.0
-		while z < c - 6:
-			add_prop("lamp", c - 2, z)
-			z += 5
-		for w in [[c - 5, c - 8, 0.2], [c + 5, c - 8, -0.2], [c - 8, c - 5, 0.9], [c + 8, c - 5, -0.9]]:
-			add_prop("wall", w[0], w[1], w[2])
-		add_prop("hay", c + 7, c + 1)
-		add_prop("hay", c + 8.2, c + 2.4)
-		add_prop("cart", c - 6.5, c + 1.5, 1.2)
-		add_prop("bench", c - 3, c - 3, PI * 0.15)
-		_scatter_props("oak", 20, 13, 22, r)
-		_scatter_props("rocks", 7, 14, 22, r)
-		_scatter_props("flowers", 22, 6, 21, r)
-		_scatter_props("fence", 6, 12, 16, r)
+		# A forest glade: ruins and a campfire in a clearing, a winding path,
+		# dense broadleaf forest all around, undergrowth everywhere.
+		add_prop("arch", c, c + 7.5, PI)
+		for q in [[c - 6.5, c + 3.5], [c + 6.8, c + 4.2], [c - 5.0, c - 5.5], [c + 7.5, c - 3.0]]:
+			add_prop("pillar", q[0], q[1], r.next() * TAU)
+		add_prop("fire", c + 1.5, c - 1.0)
+		add_prop("log", c + 3.6, c - 1.4, 1.3)
+		add_prop("log", c - 0.8, c - 3.4, 0.2)
+		add_prop("stump", c - 1.5, c + 0.8)
+		add_prop("house", c - 12.5, c - 9.5, 0.7)
+		add_prop("windmill", c + 16, c + 14, -0.6)
+		add_prop("lantern", c - 1.6, c - 7.5)
+		add_prop("lantern", c + 1.6, c - 7.5)
+		add_prop("rocks", c + 9.5, c + 9.5, r.next() * TAU)
+		add_prop("rocks", c - 10.5, c + 7.5, r.next() * TAU)
+		_scatter_props("tall", 12, 15, 23, r)
+		_scatter_props("oak", 18, 11, 23, r)
+		_scatter_props("blossom", 3, 10, 18, r)
+		_scatter_props("rocks", 6, 12, 23, r)
+		_scatter_props("stone", 10, 7, 22, r)
+		_scatter_props("bush", 24, 8, 23, r)
+		_scatter_props("fern", 34, 7, 23, r)
+		_scatter_props("log", 3, 12, 21, r)
+		_scatter_props("stump", 3, 10, 21, r)
+		_scatter_props("mushrooms", 14, 8, 22, r)
+		_scatter_props("flowers", 26, 4, 20, r)
 	elif key == "tactical":
 		add_prop("warehouse", c + 8, c + 7, -0.4)
 		add_prop("tower", c - 8, c + 8, 0.3)
@@ -686,7 +961,7 @@ func new_world(key: String) -> void:
 		_scatter_props("rock", 8, 10, 22, r)
 		_scatter_props("flowers", 10, 7, 18, r)
 	for p in props:
-		flatten_at(p.x, p.z, maxf(p.hw, p.hd) * p.s + 0.6, terrain_h(p.x, p.z))
+		flatten_at(p.x, p.z, _footprint(p) * p.s + 0.6, terrain_h(p.x, p.z))
 	for p in props:
 		update_prop(p)
 	rebuild()

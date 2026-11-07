@@ -11,6 +11,9 @@ var _col := VBoxContainer.new()
 var _cards := GridContainer.new()
 var _recent := HFlowContainer.new()
 var _scroll := ScrollContainer.new()
+## Multi-select mode for bulk actions on saved scenes.
+var _selecting := false
+var _selected := {}
 
 
 func _ready() -> void:
@@ -71,11 +74,22 @@ func refresh() -> void:
 	var t := UIK.label("Your scenes", 20, UIK.INK, true)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rh.add_child(t)
-	var open := UIK.btn("Open a file", func(): _open_file(), false, "folder")
-	rh.add_child(open)
-	_col.add_child(rh)
-	_recent = UIK.flow(12)
 	var idx := ProjectStore.index()
+	if _selecting:
+		rh.add_child(UIK.btn("All" if _selected.size() < idx.size() else "None", func(): _select_all(idx)))
+		var del := UIK.danger("Delete (%d)" % _selected.size(), func(): _delete_selected())
+		del.disabled = _selected.is_empty()
+		rh.add_child(del)
+		rh.add_child(UIK.btn("Done", func(): _set_selecting(false), true, "check"))
+	else:
+		if not idx.is_empty():
+			rh.add_child(UIK.btn("Select", func(): _set_selecting(true), false, "check"))
+		var open := UIK.btn("Open a file", func(): _open_file(), false, "folder")
+		rh.add_child(open)
+	_col.add_child(rh)
+	if _selecting:
+		_col.add_child(UIK.para("Tap scenes to select them.", 13))
+	_recent = UIK.flow(12)
 	if idx.is_empty():
 		_col.add_child(UIK.para("Nothing yet. Pick a style above to build your first scene.", 14))
 	for p in idx:
@@ -190,9 +204,76 @@ func _recent_tile(p: Dictionary) -> Control:
 	pm.add_item("Export file", 2)
 	pm.add_item("Delete", 3)
 	pm.id_pressed.connect(func(item: int): _tile_action(id, p, item))
+	if _selecting:
+		more.visible = false
+		var on := _selected.has(id)
+		var ring := UIK.box(UIK.RAISE_HI if on else UIK.RAISE, 16, UIK.TAPE if on else UIK.LINE, 3 if on else 1)
+		b.add_theme_stylebox_override("normal", ring)
+		b.add_theme_stylebox_override("hover", ring)
+		var tick := PanelContainer.new()
+		tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tb := UIK.box(UIK.TAPE if on else Color(0.06, 0.08, 0.13, 0.6), 14, Color.WHITE, 2)
+		tb.content_margin_left = UIK.px(4)
+		tb.content_margin_right = UIK.px(4)
+		tb.content_margin_top = UIK.px(4)
+		tb.content_margin_bottom = UIK.px(4)
+		tick.add_theme_stylebox_override("panel", tb)
+		var ic := TextureRect.new()
+		ic.texture = Icons.tex("check", UIK.px(18), UIK.TAPE_INK if on else Color(1, 1, 1, 0.0))
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tick.add_child(ic)
+		tick.position = Vector2(UIK.px(148), UIK.px(8))
+		b.add_child(tick)
 	b.add_child(more)
-	b.pressed.connect(func(): open_project.emit(id))
+	b.pressed.connect(func(): _tile_pressed(id))
 	return b
+
+
+func _tile_pressed(id: String) -> void:
+	if not _selecting:
+		open_project.emit(id)
+		return
+	if _selected.has(id):
+		_selected.erase(id)
+	else:
+		_selected[id] = true
+	_refresh_keep_scroll()
+
+
+func _set_selecting(on: bool) -> void:
+	_selecting = on
+	_selected.clear()
+	_refresh_keep_scroll()
+
+
+func _select_all(idx: Array) -> void:
+	if _selected.size() < idx.size():
+		for p in idx:
+			_selected[p["id"]] = true
+	else:
+		_selected.clear()
+	_refresh_keep_scroll()
+
+
+func _delete_selected() -> void:
+	if _selected.is_empty():
+		return
+	var n := _selected.size()
+	var hud: Hud = get_parent().get_node("Hud")
+	hud.ask("Delete %d scene%s? This can’t be undone." % [n, "" if n == 1 else "s"], "Delete", func():
+		for id in _selected.keys():
+			ProjectStore.delete(id)
+		App.toast("Deleted %d scene%s." % [n, "" if n == 1 else "s"])
+		_selecting = false
+		_selected.clear()
+		_refresh_keep_scroll())
+
+
+func _refresh_keep_scroll() -> void:
+	var sc := _scroll.scroll_vertical
+	refresh()
+	await get_tree().process_frame
+	_scroll.scroll_vertical = sc
 
 
 func _tile_action(id: String, p: Dictionary, item: int) -> void:

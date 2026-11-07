@@ -34,6 +34,7 @@ var toast_label := Label.new()
 var countdown := Label.new()
 var modal := Control.new()
 var frame_guide := FrameGuide.new()
+var crosshair := Crosshair.new()
 var joy := Joystick.new()
 var pad := VBoxContainer.new()
 var restore_btn: Button
@@ -58,6 +59,9 @@ func _ready() -> void:
 	frame_guide.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame_guide.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(frame_guide)
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(crosshair)
 
 	# Top bar.
 	top_left.add_theme_constant_override("separation", UIK.px(8))
@@ -373,6 +377,7 @@ func _process(delta: float) -> void:
 	(kids[1] as Control).visible = free
 	(kids[2] as Control).visible = not free
 	pad.visible = App.is_touch and not clean and not rec.active
+	crosshair.visible = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not clean and not rec.active
 
 
 func _top_name() -> String:
@@ -382,6 +387,8 @@ func _top_name() -> String:
 # ---------------------------------------------------------------- sheets
 
 func open_sheet(name: String, arg: Variant = null) -> void:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	view_stack = [[name, arg]]
 	render_sheet()
 
@@ -807,6 +814,19 @@ class FrameGuide:
 
 	func _process(_d: float) -> void:
 		queue_redraw()
+
+
+## Small aiming mark shown while the mouse controls the camera.
+class Crosshair:
+	extends Control
+
+	func _draw() -> void:
+		var c := get_viewport_rect().size / 2
+		var col := Color(1, 1, 1, 0.85)
+		draw_line(c + Vector2(-9, 0), c + Vector2(-3, 0), col, 2.0)
+		draw_line(c + Vector2(3, 0), c + Vector2(9, 0), col, 2.0)
+		draw_line(c + Vector2(0, -9), c + Vector2(0, -3), col, 2.0)
+		draw_line(c + Vector2(0, 3), c + Vector2(0, 9), col, 2.0)
 
 
 class ClapStripe:
