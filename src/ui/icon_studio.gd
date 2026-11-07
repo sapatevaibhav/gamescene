@@ -78,20 +78,32 @@ func _pump() -> void:
 
 func _frame(node: Node3D, kind: String) -> void:
 	var bb := Kit.bounds(node)
+	# Characters carry their real height/head height (skinned mesh bounds lie).
+	if node.has_meta("frame_h"):
+		var fh: float = node.get_meta("frame_h")
+		bb = AABB(Vector3(-fh * 0.22, 0, -fh * 0.15), Vector3(fh * 0.44, fh, fh * 0.3))
 	if bb.size == Vector3.ZERO:
 		bb = AABB(Vector3(-0.5, 0, -0.5), Vector3(1, 1.8, 1))
 	var c := bb.get_center()
 	var r := bb.size.length() * 0.5
 	var dir := Vector3(0.55, 0.32, 1.0).normalized()
-	if kind == "char":
+	if kind == "face":
+		# Head-and-shoulders portrait.
+		var fh2: float = node.get_meta("frame_h", bb.size.y)
+		var hh: float = node.get_meta("head_h", fh2 * 0.88)
+		var head_r := maxf(fh2 - hh, fh2 * 0.07)
+		c = Vector3(0, hh - head_r * 0.15, 0)
+		r = head_r * 2.0
+		dir = Vector3(0.18, 0.05, 1.0).normalized()
+	elif kind == "char":
 		# Favour the upper body so faces read at small sizes.
-		c.y = bb.position.y + bb.size.y * 0.62
-		r = maxf(bb.size.y * 0.5, maxf(bb.size.x, bb.size.z) * 0.6)
+		c.y = bb.position.y + bb.size.y * 0.6
+		r = maxf(bb.size.y * 0.48, maxf(bb.size.x, bb.size.z) * 0.6)
 		dir = Vector3(0.35, 0.12, 1.0).normalized()
-	var d := r / sin(deg_to_rad(_cam.fov * 0.5)) * 0.92
+	var d := r / sin(deg_to_rad(_cam.fov * 0.5)) * 0.95
 	_cam.look_at_from_position(c + dir * d, c, Vector3.UP)
-	_cam.near = maxf(0.01, d - r * 2)
-	_cam.far = d + r * 2
+	_cam.near = maxf(0.01, d - r * 3)
+	_cam.far = d + r * 3
 
 
 func clear() -> void:

@@ -269,7 +269,7 @@ func _process(delta: float) -> void:
 func sel_name() -> String:
 	if sel.is_empty():
 		return ""
-	return str(Props.defs(studio.style_key).get(sel["key"], {}).get("name", sel["key"]))
+	return Props.display_name(studio.style_key, sel["key"])
 
 
 func rotate_sel() -> void:

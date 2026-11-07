@@ -82,7 +82,7 @@ func _ready() -> void:
 	add_child(fps_label)
 
 	# Dock.
-	dock.add_theme_stylebox_override("panel", UIK.glass(18))
+	dock.add_theme_stylebox_override("panel", _bar_panel())
 	dock_row.add_theme_constant_override("separation", UIK.px(2))
 	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Script"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["film", "film", "Film"]]:
 		var b := _dock_button(tab[0], tab[1], tab[2])
@@ -91,49 +91,37 @@ func _ready() -> void:
 	dock.add_child(dock_row)
 	add_child(dock)
 
-	# Record slate.
+	# Record button: a pill with a red dot; turns red while recording.
 	slate.focus_mode = Control.FOCUS_NONE
-	slate.custom_minimum_size = Vector2(UIK.px(112), UIK.px(60))
-	var sb := UIK.box(Color("2a2f3a"), 13)
-	sb.corner_radius_top_left = UIK.px(4)
-	sb.corner_radius_top_right = UIK.px(4)
-	sb.set_border_width_all(2)
-	sb.border_color = Color("1d222b")
-	sb.border_width_top = UIK.px(14)
-	slate.add_theme_stylebox_override("normal", sb)
-	slate.add_theme_stylebox_override("hover", sb)
-	slate.add_theme_stylebox_override("pressed", sb)
+	slate.custom_minimum_size = Vector2(UIK.px(128), UIK.px(54))
 	slate.tooltip_text = "Record a take (R)"
-	var sh := UIK.hbox(8)
+	_style_record(false)
+	var sh := UIK.hbox(10)
 	sh.alignment = BoxContainer.ALIGNMENT_CENTER
 	sh.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	sh.offset_top = UIK.px(12)
 	sh.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var dot_sb := StyleBoxFlat.new()
 	dot_sb.bg_color = UIK.REC
-	dot_sb.set_corner_radius_all(UIK.px(7))
+	dot_sb.set_corner_radius_all(UIK.px(8))
+	dot_sb.set_border_width_all(UIK.px(2))
+	dot_sb.border_color = Color(1, 1, 1, 0.9)
 	slate_dot.add_theme_stylebox_override("panel", dot_sb)
-	slate_dot.custom_minimum_size = Vector2(UIK.px(13), UIK.px(13))
+	slate_dot.custom_minimum_size = Vector2(UIK.px(16), UIK.px(16))
 	slate_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	slate_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sh.add_child(slate_dot)
-	slate_label.text = "Take 1"
+	slate_label.text = "Record"
 	slate_label.add_theme_font_override("font", UIK.font_bold)
 	slate_label.add_theme_font_size_override("font_size", UIK.px(16))
 	slate_label.add_theme_color_override("font_color", Color.WHITE)
 	slate_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sh.add_child(slate_label)
 	slate.add_child(sh)
-	var clap := ClapStripe.new()
-	clap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	clap.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	clap.offset_bottom = UIK.px(13)
-	slate.add_child(clap)
 	slate.pressed.connect(toggle_record)
 	add_child(slate)
 
 	# Tool strip.
-	toolbar.add_theme_stylebox_override("panel", UIK.glass(18))
+	toolbar.add_theme_stylebox_override("panel", _bar_panel())
 	toolbar_row.add_theme_constant_override("separation", UIK.px(2))
 	toolbar.add_child(toolbar_row)
 	toolbar.visible = false
@@ -160,7 +148,7 @@ func _ready() -> void:
 	var sv := UIK.vbox(4)
 	var head := UIK.hbox(6)
 	sheet_back = UIK.icon_btn("back", back_view, "Back", 38, false)
-	sheet_back.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 12, UIK.LINE))
+	UIK.style_button(sheet_back, "neutral")
 	head.add_child(sheet_back)
 	sheet_title.add_theme_font_override("font", UIK.font_bold)
 	sheet_title.add_theme_font_size_override("font_size", UIK.px(21))
@@ -168,7 +156,7 @@ func _ready() -> void:
 	sheet_title.clip_text = true
 	head.add_child(sheet_title)
 	var close := UIK.icon_btn("close", close_sheet, "Close", 38, false)
-	close.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 12, UIK.LINE))
+	UIK.style_button(close, "neutral")
 	head.add_child(close)
 	sv.add_child(head)
 	sheet_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -244,23 +232,81 @@ func _on_cast_changed() -> void:
 
 
 func _dock_button(tab: String, icon: String, text: String) -> Button:
-	var b := Button.new()
-	b.focus_mode = Control.FOCUS_NONE
-	b.text = text
-	b.icon = Icons.tex(icon, UIK.px(22), Color.WHITE)
-	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-	b.custom_minimum_size = Vector2(UIK.px(62), UIK.px(58))
-	b.add_theme_font_size_override("font_size", UIK.px(12))
-	b.add_theme_font_override("font", UIK.font_bold)
-	b.add_theme_color_override("font_color", Color.WHITE)
-	b.add_theme_color_override("font_hover_color", Color.WHITE)
-	var clear := StyleBoxEmpty.new()
-	b.add_theme_stylebox_override("normal", clear)
-	b.add_theme_stylebox_override("hover", UIK.box(Color(1, 1, 1, 0.08), 13))
-	b.add_theme_stylebox_override("pressed", UIK.box(UIK.TAPE, 13))
+	var b := _bar_button(icon, text)
 	b.pressed.connect(func(): _on_tab(tab))
 	return b
+
+
+## Icon-over-label button used by the dock and the tool strip. Every state
+## shares the same padding, so nothing shifts on hover, and the content is
+## centred in the bar. mode: "rest" | "on" (toggled) | "active" (primary).
+func _bar_button(icon: String, text: String) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.tooltip_text = text
+	b.set_meta("icon", icon)
+	b.custom_minimum_size = Vector2(UIK.px(64), UIK.px(60))
+	# Our own centred column: icon above label, optically centred.
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", UIK.px(4))
+	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	col.offset_top = UIK.px(2)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tr := TextureRect.new()
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	tr.custom_minimum_size = Vector2(UIK.px(22), UIK.px(22))
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(tr)
+	var l := Label.new()
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size", UIK.px(12))
+	l.add_theme_font_override("font", UIK.font_bold)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(l)
+	b.add_child(col)
+	b.set_meta("tex", tr)
+	b.set_meta("label", l)
+	_bar_mode(b, "rest")
+	return b
+
+
+func _bar_panel() -> StyleBoxFlat:
+	var sb := UIK.glass(18)
+	for side in [SIDE_LEFT, SIDE_RIGHT, SIDE_TOP, SIDE_BOTTOM]:
+		sb.set_content_margin(side, UIK.px(5))
+	return sb
+
+
+func _bar_box(c: Color, border := Color(0, 0, 0, 0)) -> StyleBoxFlat:
+	var sb := UIK.box(c, 13, border, 1 if border.a > 0 else 0)
+	sb.content_margin_top = UIK.px(12)
+	sb.content_margin_bottom = UIK.px(2)
+	sb.content_margin_left = UIK.px(6)
+	sb.content_margin_right = UIK.px(6)
+	return sb
+
+
+func _bar_mode(b: Button, mode: String) -> void:
+	var active := mode == "active"
+	var ink := UIK.TAPE_INK if active else UIK.INK
+	(b.get_meta("tex") as TextureRect).texture = Icons.tex(str(b.get_meta("icon", "plus")), UIK.px(22), ink)
+	(b.get_meta("label") as Label).add_theme_color_override("font_color", ink)
+	var rest: StyleBoxFlat
+	match mode:
+		"active":
+			rest = _bar_box(UIK.PRIMARY_500)
+		"on":
+			rest = _bar_box(Color(UIK.PRIMARY_500, 0.22), UIK.PRIMARY_500)
+		_:
+			rest = _bar_box(Color(0, 0, 0, 0))
+	var hover := _bar_box(UIK.PRIMARY_300 if active else UIK.GRAY_600, UIK.PRIMARY_500 if mode == "on" else Color(0, 0, 0, 0))
+	b.add_theme_stylebox_override("normal", rest)
+	b.add_theme_stylebox_override("hover", hover)
+	b.add_theme_stylebox_override("pressed", hover)
+	b.add_theme_stylebox_override("hover_pressed", hover)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 
 func _hold_btn(icon: String, set_fn: Callable, size: int) -> Button:
@@ -352,7 +398,7 @@ func _process(delta: float) -> void:
 		_toast_t -= delta
 		if _toast_t <= 0:
 			toast_panel.visible = false
-	fps_label.visible = App.device["show_fps"] and not clean
+	fps_label.visible = App.device["show_fps"] and not clean and studio.in_studio
 	if fps_label.visible:
 		fps_label.text = "%d fps" % Engine.get_frames_per_second()
 	undo_btn.disabled = not studio.can_undo()
@@ -410,8 +456,7 @@ func close_sheet() -> void:
 	view_stack.clear()
 	sheet.visible = false
 	for k in dock_btns:
-		(dock_btns[k] as Button).add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-		(dock_btns[k] as Button).add_theme_color_override("font_color", Color.WHITE)
+		_bar_mode(dock_btns[k], "rest")
 
 
 func render_sheet() -> void:
@@ -433,8 +478,7 @@ func render_sheet() -> void:
 	var root_tab: String = view_stack[0][0]
 	for k in dock_btns:
 		var on: bool = k == root_tab
-		(dock_btns[k] as Button).add_theme_stylebox_override("normal", UIK.box(UIK.TAPE, 13) if on else StyleBoxEmpty.new())
-		(dock_btns[k] as Button).add_theme_color_override("font_color", UIK.TAPE_INK if on else Color.WHITE)
+		_bar_mode(dock_btns[k], "active" if on else "rest")
 	if same:
 		await get_tree().process_frame
 		sheet_scroll.scroll_vertical = scroll
@@ -480,7 +524,7 @@ func render_toolbar() -> void:
 				hint = "Tap where it should go" if t.moving else t.sel_name() + " selected"
 			else:
 				toolbar_row.add_child(_tb("objects", "tree", "Change", false))
-				var pn: String = Props.defs(studio.style_key).get(t.prop, {}).get("name", "")
+				var pn: String = Props.display_name(studio.style_key, t.prop) if t.prop != "" else ""
 				hint = ("Tap the ground to add a " + pn.to_lower() + ". Tap an object to edit it.") if pn != "" else "Tap an object to edit it"
 		"terrain":
 			toolbar_row.add_child(_tb("raise", "up", "Raise", t.terra == "raise"))
@@ -496,27 +540,15 @@ func render_toolbar() -> void:
 
 
 func _tb(act: String, icon: String, text: String, on: bool, primary := false) -> Button:
-	var b := Button.new()
-	b.focus_mode = Control.FOCUS_NONE
-	b.text = text
-	b.icon = Icons.tex(icon, UIK.px(22), UIK.TAPE_INK if primary else Color.WHITE)
-	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-	b.custom_minimum_size = Vector2(UIK.px(66), UIK.px(58))
-	b.add_theme_font_size_override("font_size", UIK.px(12))
-	b.add_theme_font_override("font", UIK.font_bold)
-	b.add_theme_color_override("font_color", UIK.TAPE_INK if primary else Color.WHITE)
-	b.add_theme_color_override("font_hover_color", UIK.TAPE_INK if primary else Color.WHITE)
-	var st: StyleBox = UIK.box(UIK.TAPE, 13) if primary else (UIK.box(Color(UIK.TAPE, 0.28), 13, UIK.TAPE, 2) if on else StyleBoxEmpty.new())
-	b.add_theme_stylebox_override("normal", st)
-	b.add_theme_stylebox_override("hover", UIK.box(Color(1, 1, 1, 0.1), 13) if not primary else st)
+	var b := _bar_button(icon, text)
+	_bar_mode(b, "active" if primary else ("on" if on else "rest"))
 	b.pressed.connect(func(): _tool_action(act))
 	return b
 
 
 func _tb_tex(tex: Texture2D, text: String, cb: Callable) -> Button:
 	var b := _tb("", "cube", text, false)
-	b.icon = tex
+	(b.get_meta("tex") as TextureRect).texture = tex
 	b.expand_icon = false
 	for c in b.pressed.get_connections():
 		b.pressed.disconnect(c["callable"])
@@ -575,16 +607,22 @@ func toggle_record() -> void:
 		toast("Recording couldn’t start.")
 
 
+func _style_record(on: bool) -> void:
+	var r := UIK.px(27)
+	var rest := UIK.box(UIK.REC if on else UIK.GLASS, r, Color(1, 1, 1, 0.9) if on else UIK.GRAY_500, 2 if on else 1)
+	var hover := UIK.box(UIK.REC.lightened(0.1) if on else Color(UIK.GRAY_700, 0.95), r, Color.WHITE if on else UIK.GRAY_300, 2 if on else 1)
+	slate.add_theme_stylebox_override("normal", rest)
+	slate.add_theme_stylebox_override("hover", hover)
+	slate.add_theme_stylebox_override("pressed", hover)
+	slate.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
+
 func _on_recording(on: bool) -> void:
-	var sb: StyleBoxFlat = slate.get_theme_stylebox("normal").duplicate()
-	sb.shadow_color = Color(UIK.REC, 0.6) if on else Color(0, 0, 0, 0)
-	sb.shadow_size = UIK.px(4) if on else 0
-	slate.add_theme_stylebox_override("normal", sb)
-	slate.add_theme_stylebox_override("hover", sb)
+	_style_record(on)
 	for n in [top_left, dock, toolbar, tool_hint]:
 		n.modulate.a = 0.0 if on else 1.0
 	if not on:
-		slate_label.text = "Take %d" % take
+		slate_label.text = "Record"
 		slate_dot.modulate.a = 1.0
 
 
@@ -597,7 +635,7 @@ func _on_progress(frac: float) -> void:
 func _on_take_done(path: String, secs: float) -> void:
 	UIK.clear(modal)
 	take += 1
-	slate_label.text = "Take %d" % take
+	slate_label.text = "Record"
 	var card := _card()
 	var v: VBoxContainer = card.get_child(0)
 	v.add_child(UIK.label("Saved", 22, UIK.INK, true))
@@ -761,6 +799,25 @@ func pick_file(filters: PackedStringArray, cb: Callable, title := "Open") -> voi
 	fd.use_native_dialog = true
 	fd.file_selected.connect(func(p): cb.call(p))
 	fd.canceled.connect(fd.queue_free)
+	add_child(fd)
+	fd.popup_centered_ratio(0.7)
+
+
+## Picks several files at once; `cb` gets a PackedStringArray of paths.
+func pick_files(filters: PackedStringArray, cb: Callable, title := "Open") -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		DisplayServer.file_dialog_show(title, "", "", false, DisplayServer.FILE_DIALOG_MODE_OPEN_FILES, filters,
+			func(ok: bool, paths: PackedStringArray, _f: int) -> void:
+				if ok and paths.size() > 0:
+					cb.call(paths))
+		return
+	var fd := FileDialog.new()
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.file_mode = FileDialog.FILE_MODE_OPEN_FILES
+	fd.filters = filters
+	fd.title = title
+	fd.use_native_dialog = true
+	fd.files_selected.connect(func(p): cb.call(p))
 	add_child(fd)
 	fd.popup_centered_ratio(0.7)
 

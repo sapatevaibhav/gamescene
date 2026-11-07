@@ -6,12 +6,12 @@ extends Node3D
 ##
 ## Data layout and save format match the web build so old projects open.
 
-const WX := 48
+const WX := 80
 const WY := 24
-const WZ := 48
+const WZ := 80
 const CH := 16
-const CX := 3  # WX / CH
-const CZ := 3  # WZ / CH
+const CX := 5  # WX / CH
+const CZ := 5  # WZ / CH
 const HW := 0.28
 const HH := 1.75
 const MAX_LIGHTS := 12
@@ -291,7 +291,8 @@ func generate(kind: String, p_seed := -1) -> void:
 		_fill_raw(cx - 3, 4, cz - 3, cx + 2, 4, cz + 2, _id("planks"))
 		_fill_raw(cx - 2, 5, cz - 2, cx + 1, 5, cz + 1, _id("brick"))
 		_fill_raw(cx - 1, 5, cz - 1, cx, 5, cz, _id("water"))
-		var spots := [[6, 6], [32, 6], [6, 32], [32, 32]]
+		var far := WX - 16
+		var spots := [[6, 6], [far, 6], [6, far], [far, far]]
 		var mats := [_id("brick"), _id("sandstone"), _id("planks"), _id("brick")]
 		for i in spots.size():
 			var x: int = spots[i][0]
@@ -340,7 +341,7 @@ func generate(kind: String, p_seed := -1) -> void:
 			var t := get_b(door.x, y, z)
 			if t == _id("grass") or t == _id("snow"):
 				_set_raw(door.x, y, z, _id("path"))
-	for i in 60:
+	for i in int(60.0 * WX * WZ / 2304.0):
 		var x := 2 + int(r.next() * (WX - 4))
 		var z := 2 + int(r.next() * (WZ - 4))
 		if Vector2(x - cx, z - cz).length() < 10 or absi(x - door.x) < 2:
@@ -517,8 +518,12 @@ func clip_cam(from: Vector3, dir: Vector3, dist: float) -> float:
 
 # ================================================================ save / load
 
+## Offset applied to old 48-wide saves when loading (actors shift with it).
+var load_offset := 0.0
+
+
 func serialize() -> Dictionary:
-	return {"v3": true, "rle": U.rle_encode(data), "custom": Blocks.custom_sources()}
+	return {"v3": true, "size": WX, "rle": U.rle_encode(data), "custom": Blocks.custom_sources()}
 
 
 func load_data(d: Dictionary) -> void:
@@ -529,12 +534,31 @@ func load_data(d: Dictionary) -> void:
 				Blocks.push_deleted()
 		else:
 			Blocks.push_deleted()
-	var arr := U.rle_decode(str(d.get("rle", "")), WX * WY * WZ)
+	var n := int(d.get("size", Styles.LEGACY_SIZE))
+	var arr := U.rle_decode(str(d.get("rle", "")), n * WY * n)
 	if not d.get("v3", false):
 		for i in arr.size():
 			if arr[i] >= 27:
 				arr[i] = mini(255, arr[i] - 27 + Blocks.BUILTIN_COUNT)
-	data = arr
+	load_offset = 0.0
+	if n == WX:
+		data = arr
+	else:
+		# Older, smaller world: centre it and extend its edge columns outward.
+		var off := (WX - n) / 2
+		load_offset = off
+		data = PackedByteArray()
+		data.resize(WX * WY * WZ)
+		for z in WZ:
+			var sz := clampi(z - off, 0, n - 1)
+			for x in WX:
+				var sx := clampi(x - off, 0, n - 1)
+				var edge := sx != x - off or sz != z - off
+				for y in WY:
+					var v := arr[(y * n + sz) * n + sx]
+					if edge and v != 0 and Blocks.get_block(v).get("kind", "solid") != "solid":
+						v = 0
+					data[(y * WZ + z) * WX + x] = v
 	rebuild()
 
 

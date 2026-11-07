@@ -74,13 +74,24 @@ static func defs(style: String) -> Dictionary:
 
 
 static func has(style: String, key: String) -> bool:
+	if AssetLib.is_key(key):
+		# Missing files still "exist" so scenes keep them (as placeholders).
+		return style != "blocky"
 	return DEFS.has(style) and DEFS[style].has(key)
+
+
+static func display_name(style: String, key: String) -> String:
+	if AssetLib.is_key(key):
+		return AssetLib.display_name(key)
+	return str(defs(style).get(key, {}).get("name", key))
 
 
 ## Builds prop `key` for `style`. Returns null for unknown keys.
 static func build(style: String, key: String, seed: int) -> Node3D:
 	if not has(style, key):
 		return null
+	if AssetLib.is_key(key):
+		return AssetLib.build(style, key)
 	var prev_shade := Kit.shade
 	var prev_w := Kit.outline_width
 	Kit.shade = Styles.get_style(style).get("shade", "lambert")

@@ -88,6 +88,9 @@ func _new_scene(style: String) -> void:
 	studio.project_id = ProjectStore.new_id()
 	studio.project_name = Styles.STYLES[style]["name"] + " scene " + str(n)
 	_enter_studio()
+	# Let the camera settle on the cast before taking the thumbnail.
+	for i in 12:
+		await get_tree().process_frame
 	await studio.save_now(true)
 
 
@@ -113,16 +116,16 @@ func _enter_studio() -> void:
 	studio.in_studio = true
 	hud.set_home_mode(false)
 	hud.take = 1
-	hud.slate_label.text = "Take 1"
+	hud.slate_label.text = "Record"
 	hud.layout()
 	if studio.camera.mode == "cine":
 		studio.camera.cine_reset()
 	if not App.is_touch:
 		if App.device["mouse_look"] == "capture":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			App.toast("Mouse looks around · WASD moves · click aims at the crosshair · Esc frees the cursor")
+			App.toast("Mouse looks · WASD moves · Shift sprints · Ctrl crouches · left click attacks · right click a character for their menu · Esc frees the cursor")
 		else:
-			App.toast("Drag to look · WASD to move · click a character to direct them")
+			App.toast("Drag to look · WASD moves · Shift sprints · Ctrl crouches · left click attacks · right click a character for their menu")
 
 
 func _go_home() -> void:
@@ -182,6 +185,7 @@ func _process(_dt: float) -> void:
 	var typing := _typing()
 	studio.input_jump = hud.jump_held or (not typing and Input.is_physical_key_pressed(KEY_SPACE))
 	studio.input_sprint = not typing and Input.is_physical_key_pressed(KEY_SHIFT)
+	studio.input_crouch = not typing and Input.is_physical_key_pressed(KEY_CTRL)
 	var up := 0.0
 	if hud.up_held or (not typing and (Input.is_physical_key_pressed(KEY_E) or Input.is_physical_key_pressed(KEY_SPACE))):
 		up += 1
@@ -270,13 +274,27 @@ func _zoom(f: float) -> void:
 			App.settings["fov"] = clampf(float(App.settings["fov"]) * f, 25, 110)
 
 
-func _tap(pos: Vector2, button: int) -> void:
-	var id := studio.tools.tap(pos, button)
-	if id >= 0:
-		_release_mouse()
-		hud.open_sheet("actor", id)
-	elif studio.tools.kind == "" and hud.sheet.visible:
-		hud.close_sheet()
+## Scene click. With a build tool: the tool acts. Otherwise the primary
+## button is the player's action (attack) and the secondary button opens the
+## menu of the character under the cursor. Touch: tapping a character opens
+## their menu.
+func _tap(pos: Vector2, button: int, touch := false) -> void:
+	if studio.tools.kind != "":
+		studio.tools.tap(pos, button)
+		return
+	if button == MOUSE_BUTTON_RIGHT or touch:
+		var id := studio.tools.tap(pos, button)
+		if id >= 0:
+			_release_mouse()
+			hud.open_sheet("actor", id)
+		elif hud.sheet.visible:
+			hud.close_sheet()
+		return
+	if button == MOUSE_BUTTON_LEFT and studio.player:
+		if hud.sheet.visible and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			hud.close_sheet()
+			return
+		studio.player.attack()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -295,13 +313,32 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		_mouse_motion(event)
 	elif event is InputEventMagnifyGesture:
-		_zoom(1.0 / event.factor)
+		if not _over_ui(event.position):
+			_zoom(1.0 / event.factor)
 	elif event is InputEventPanGesture:
+		if _over_ui(event.position):
+			return
 		_look(event.delta.x * 8, event.delta.y * 8, 0.0045)
+
+
+## True when the pointer is over a panel or button (not the 3D scene).
+func _over_ui(pos: Vector2) -> bool:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		return false
+	if hud.sheet.visible and hud.sheet.get_global_rect().has_point(pos):
+		return true
+	for n in [hud.dock, hud.toolbar, hud.top_left, hud.top_right, hud.slate]:
+		var c := n as Control
+		if c.visible and c.get_global_rect().has_point(pos):
+			return true
+	return hud.modal.get_child_count() > 0
 
 
 func _mouse_button(e: InputEventMouseButton) -> void:
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	# Wheel over a panel (e.g. a scroll that hit the end) must not zoom.
+	if e.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and _over_ui(e.position):
+		return
 	if e.button_index == MOUSE_BUTTON_WHEEL_UP and e.pressed:
 		_zoom(0.9)
 		return
@@ -406,7 +443,7 @@ func _touch(e: InputEvent) -> void:
 				if now - _last_tap < 300 and studio.tools.kind == "":
 					_double_tap()
 				else:
-					_tap(t.position, MOUSE_BUTTON_LEFT)
+					_tap(t.position, MOUSE_BUTTON_LEFT, true)
 				_last_tap = now
 		return
 	var d := e as InputEventScreenDrag

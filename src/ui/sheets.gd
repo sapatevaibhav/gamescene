@@ -52,8 +52,14 @@ func _look_icon(look: Dictionary) -> Texture2D:
 
 
 func _build_look(look: Dictionary, style: String) -> Node3D:
-	var r: Dictionary = ModelRig.build(look) if look.has("model") else Rigs.build(look, style)
+	var r: Dictionary = ModelRig.build(look, style) if look.has("model") else Rigs.build(look, style)
 	return r["root"]
+
+
+func _face_icon(look: Dictionary) -> Texture2D:
+	var style := studio.style_key
+	var key := "face|" + style + "|" + JSON.stringify(look).md5_text()
+	return hud.icons.request(key, func(): return _build_look(look, style), "face")
 
 
 func _prop_icon(key: String) -> Texture2D:
@@ -75,7 +81,7 @@ func v_add(_a, b: VBoxContainer) -> String:
 	else:
 		items.append(["tree", "Objects", "Trees, houses, props", func(): hud.push_view("objects")])
 		items.append(["hill", "Ground", "Raise hills, dig valleys", func(): studio.tools.set_tool("terrain"); hud.close_sheet()])
-	items.append(["upload", "3D model", "Import .glb or .vrm", func(): _import_model()])
+	items.append(["upload", "3D model", "Import .glb, .vrm or .fbx", func(): _import_model()])
 	_tiles(b, items)
 	b.add_child(UIK.para("Tip: tap a character in the scene to direct them. Press B for the build tool.", 12))
 	return "Add"
@@ -117,8 +123,10 @@ func _models_section(b: VBoxContainer, on_pick: Callable) -> void:
 	var f := _picks(b)
 	f.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, _import_model))
 	for id in ModelRig.list_models():
-		f.add_child(UIK.pick(_look_icon({"model": id}), str(id).get_basename().left(10), false, func(): on_pick.call(id)))
-	b.add_child(UIK.para("Humanoid .glb/.vrm files work best. Clips named idle, walk, run, dance, wave or sit play automatically.", 12))
+		f.add_child(UIK.pick(_look_icon({"model": id}), ModelRig.display_name(id), false, func(): on_pick.call(id)))
+	b.add_child(UIK.para("Humanoid .glb, .vrm or .fbx files work best. Clips named idle, walk, run, dance, wave or sit play automatically.", 12))
+	if not ModelRig.list_models().is_empty() or not AssetLib.list().is_empty():
+		b.add_child(UIK.btn("Manage imported models", func(): hud.push_view("imports"), false, "trash"))
 
 
 func _add_char(look: Dictionary, p: Dictionary) -> void:
@@ -148,7 +156,7 @@ func _upload_skin() -> void:
 
 
 func _import_model() -> void:
-	hud.pick_file(PackedStringArray(["*.glb, *.vrm, *.gltf ; 3D models"]), func(path: String):
+	hud.pick_file(PackedStringArray(["*.glb, *.GLB, *.vrm, *.VRM, *.gltf, *.GLTF, *.fbx, *.FBX ; 3D characters", "* ; All files"]), func(path: String):
 		hud.toast("Importing " + path.get_file() + "…")
 		var id := ModelRig.import_file(path)
 		if id == "":
@@ -157,6 +165,68 @@ func _import_model() -> void:
 		_add_char({"model": id}, {"label": path.get_file().get_basename().left(18), "group": "mobs"})
 		if hud.view_stack.size() > 0:
 			_rerender(), "Import a 3D model")
+
+
+# ---------------------------------------------------------------- imports
+
+## Lists imported characters and objects with delete buttons, so files can be
+## removed and imported again. Scenes using a deleted file show a placeholder.
+func v_imports(_a, b: VBoxContainer) -> String:
+	var chars := ModelRig.list_models()
+	var objs := AssetLib.list()
+	if chars.is_empty() and objs.is_empty():
+		b.add_child(UIK.para("Nothing imported yet.", 14))
+		return "Imported models"
+	if not chars.is_empty():
+		_section(b, "Characters")
+		for id in chars:
+			var users := studio.actors.filter(func(x): return x.look.get("model", "") == id).size()
+			b.add_child(_import_row(_look_icon({"model": id}), ModelRig.display_name(id), id, users, func():
+				ModelRig.remove(id)
+				hud.icons.clear()
+				hud.toast("Removed " + ModelRig.display_name(id))
+				_rerender()))
+	if not objs.is_empty():
+		_section(b, "Objects")
+		for id in objs:
+			var key: String = AssetLib.PREFIX + id
+			var placed: int = 0 if studio.world.is_voxel else studio.world.props.filter(func(p): return p.key == key).size()
+			b.add_child(_import_row(_prop_icon(key), AssetLib.display_name(key), id, placed, func():
+				AssetLib.remove(id)
+				hud.icons.clear()
+				hud.toast("Removed " + AssetLib.display_name(key))
+				_rerender()))
+	b.add_child(UIK.para("Removing a model deletes its copy from the app's library, not your original file. Characters or objects in saved scenes that use it appear as grey placeholders until you import it again.", 12))
+	return "Imported models"
+
+
+func _import_row(tex: Texture2D, title: String, id: String, in_use: int, on_delete: Callable) -> Control:
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", UIK.box(UIK.GRAY_700, 14, UIK.GRAY_600))
+	var h := UIK.hbox(10)
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.custom_minimum_size = Vector2(UIK.px(44), UIK.px(44))
+	h.add_child(tr)
+	var v := UIK.vbox(0)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var t := UIK.label(title, 15, UIK.INK, true)
+	t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	t.clip_text = true
+	t.custom_minimum_size.x = 1
+	v.add_child(t)
+	var sub := UIK.label(id.get_extension().to_upper() + ("  ·  used %d× in this scene" % in_use if in_use > 0 else ""), 12, UIK.PRIMARY_300 if in_use > 0 else UIK.MUTED)
+	v.add_child(sub)
+	h.add_child(v)
+	var del := UIK.danger("Delete", func():
+		var warn := ("\n\nIt's used %d× in this scene; those will show as grey placeholders until you import it again." % in_use) if in_use > 0 else ""
+		hud.ask("Delete “%s” from the library?%s" % [title, warn], "Delete", on_delete))
+	del.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(del)
+	row.add_child(h)
+	return row
 
 
 # ---------------------------------------------------------------- building
@@ -248,47 +318,83 @@ func v_objects(_a, b: VBoxContainer) -> String:
 		f.add_child(UIK.pick(_prop_icon(k), defs[k]["name"], studio.tools.prop == k, func():
 			studio.tools.set_tool("objects", {"prop": k})
 			hud.close_sheet()))
+	_section(b, "Your 3D objects")
+	var mine := _picks(b)
+	mine.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, _import_props))
+	for id in AssetLib.list():
+		var key: String = AssetLib.PREFIX + id
+		mine.add_child(UIK.pick(_prop_icon(key), AssetLib.display_name(key), studio.tools.prop == key, func():
+			studio.tools.set_tool("objects", {"prop": key})
+			hud.close_sheet()))
+	b.add_child(UIK.para("Import trees, rocks, buildings or whole asset packs (.glb, .gltf, .fbx — pick many files at once). In the anime style they get cel shading, and leaves sway in the wind.", 12))
+	if not AssetLib.list().is_empty() or not ModelRig.list_models().is_empty():
+		b.add_child(UIK.btn("Manage imported models", func(): hud.push_view("imports"), false, "trash"))
 	b.add_child(UIK.btn("Edit placed objects", func():
 		studio.tools.set_tool("objects", {"prop": ""})
 		hud.close_sheet(), false, "pickI"))
 	return "Objects"
 
 
+func _import_props() -> void:
+	hud.pick_files(PackedStringArray(["*.glb, *.GLB, *.gltf, *.GLTF, *.fbx, *.FBX ; 3D objects", "* ; All files"]), func(paths: PackedStringArray):
+		var ok := 0
+		for pth in paths:
+			if AssetLib.import_file(pth) != "":
+				ok += 1
+		hud.toast("Imported %d of %d object%s." % [ok, paths.size(), "" if paths.size() == 1 else "s"])
+		_rerender(), "Import 3D objects")
+
+
 # ---------------------------------------------------------------- cast
 
 func v_cast(_a, b: VBoxContainer) -> String:
+	# Grid of face portraits with name and current action underneath.
+	var g := UIK.grid(3, 8)
 	for a in studio.actors:
-		var row := Button.new()
-		row.focus_mode = Control.FOCUS_NONE
-		row.custom_minimum_size.y = UIK.px(64)
-		row.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 16, UIK.LINE))
-		row.add_theme_stylebox_override("hover", UIK.box(UIK.RAISE_HI, 16, UIK.LINE))
-		var h := UIK.hbox(12)
-		h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		h.offset_left = UIK.px(8)
-		h.offset_right = -UIK.px(10)
-		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var tr := TextureRect.new()
-		tr.texture = _look_icon(a.look)
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.custom_minimum_size = Vector2(UIK.px(48), UIK.px(48))
-		tr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		h.add_child(tr)
-		var v := UIK.vbox(0)
-		v.alignment = BoxContainer.ALIGNMENT_CENTER
+		var card := Button.new()
+		card.focus_mode = Control.FOCUS_NONE
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.custom_minimum_size = Vector2(UIK.px(100), UIK.px(138))
+		card.tooltip_text = a.name
+		card.clip_contents = true
+		UIK._card_states(card, a == studio.player, 16)
+		var v := UIK.vbox(2)
+		v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		v.offset_left = UIK.px(6)
+		v.offset_right = -UIK.px(6)
+		v.offset_top = UIK.px(6)
+		v.offset_bottom = -UIK.px(8)
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var nl := UIK.label(a.name + ("  · you" if a == studio.player else ""), 16, UIK.INK, true)
+		var face := Panel.new()
+		face.clip_contents = true
+		face.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.add_theme_stylebox_override("panel", UIK.box(UIK.GRAY_800, 12))
+		var tr := TextureRect.new()
+		tr.texture = _face_icon(a.look)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.add_child(tr)
+		v.add_child(face)
+		var nl := UIK.label(a.name, 14, UIK.INK, true)
+		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		nl.clip_text = true
+		nl.custom_minimum_size.x = 1
 		nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(nl)
-		var bl := UIK.label("Player" if a == studio.player else Styles.behavior_label(a.base_behavior), 13, UIK.MUTED)
+		var bl := UIK.label("You" if a == studio.player else Styles.behavior_label(a.base_behavior), 12, UIK.PRIMARY_300 if a == studio.player else UIK.MUTED)
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		bl.clip_text = true
+		bl.custom_minimum_size.x = 1
 		bl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(bl)
-		h.add_child(v)
-		row.add_child(h)
-		row.pressed.connect(func(): hud.push_view("actor", a.id))
-		b.add_child(row)
+		card.add_child(v)
+		card.pressed.connect(func(): hud.push_view("actor", a.id))
+		g.add_child(card)
+	b.add_child(g)
 	b.add_child(UIK.btn("Add a character", func(): hud.push_view("addChar"), true, "plus"))
 	_section(b, "Everyone at once")
 	var chips := UIK.flow()
@@ -434,10 +540,12 @@ func v_script(_a, b: VBoxContainer) -> String:
 	_section(b, "Add a line to the script")
 	if new_cue["actor"] == "" or studio.actor_by_name(new_cue["actor"]) == null:
 		new_cue["actor"] = studio.actors[0].name if not studio.actors.is_empty() else ""
+	b.add_child(UIK.label("Who", 13, UIK.MUTED))
 	var who := UIK.flow()
 	for a in studio.actors:
 		who.add_child(UIK.chip(a.name, new_cue["actor"] == a.name, func(): new_cue["actor"] = a.name; _rerender()))
 	b.add_child(who)
+	b.add_child(UIK.label("Action", 13, UIK.MUTED))
 	var acts := UIK.flow()
 	for ca in CUE_ACTIONS:
 		acts.add_child(UIK.chip(ca[1], new_cue["action"] == ca[0], func(): new_cue["action"] = ca[0]; _rerender()))
@@ -634,8 +742,7 @@ func v_film(_a, b: VBoxContainer) -> String:
 		var kind := str(s.get("shot", "orbit")) if s.get("mode", "cine") == "cine" else str(s.get("mode"))
 		var tgt := str(s.get("target", ""))
 		row.text = "%d.  %s   ·  %s%s  ·  %.1fs" % [i + 1, s.get("name", "Shot"), _shot_label(kind), (" on " + tgt) if tgt != "" else "", float(s.get("dur", 4))]
-		row.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 14, UIK.LINE))
-		row.add_theme_stylebox_override("hover", UIK.box(UIK.RAISE_HI, 14, UIK.LINE))
+		UIK._card_states(row, false, 14)
 		row.pressed.connect(func(): hud.push_view("shot", i))
 		b.add_child(row)
 	var sr := UIK.flow()
@@ -785,7 +892,22 @@ func v_settings(_a, b: VBoxContainer) -> String:
 				hud.toast("Couldn’t write that file.")), false, "download"))
 	b.add_child(r)
 	_section(b, "Keys")
-	b.add_child(UIK.para("WASD move · Space jump · Shift walk · drag to look · wheel zoom · C camera · B build · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))
+	b.add_child(UIK.para("WASD move · Space jump · Shift sprint · Ctrl crouch · left click attack · right click a character for their menu · drag to look · wheel zoom · C camera · B build · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))
 	_section(b, "About")
-	b.add_child(UIK.para("GameScene Studio %s — fully offline. Godot %s. Rendering: %s." % [ProjectSettings.get_setting("application/config/version"), Engine.get_version_info()["string"], RenderingServer.get_current_rendering_method()], 12))
+	b.add_child(UIK.para("GameScene Studio is a visual workspace for creating, animating and bringing game scenes to life.", 13, UIK.GRAY_200))
+	var renderer: String = {"forward_plus": "Forward+", "mobile": "Mobile", "gl_compatibility": "Compatibility"}.get(RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_method())
+	b.add_child(UIK.para("Version %s  •  Godot %s  •  %s" % [ProjectSettings.get_setting("application/config/version"), Engine.get_version_info()["string"], renderer], 12))
+	var credits := RichTextLabel.new()
+	credits.bbcode_enabled = true
+	credits.fit_content = true
+	credits.scroll_active = false
+	credits.autowrap_mode = TextServer.AUTOWRAP_OFF
+	credits.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	credits.add_theme_font_size_override("normal_font_size", UIK.px(13))
+	credits.add_theme_font_size_override("bold_font_size", UIK.px(13))
+	credits.add_theme_font_override("bold_font", UIK.font_bold)
+	credits.add_theme_color_override("default_color", UIK.MUTED)
+	credits.text = "Built by [url=https://ekaai.tech][b][color=#%s]ekaai.tech[/color][/b][/url]" % UIK.SECONDARY_300.to_html(false)
+	credits.meta_clicked.connect(func(url): OS.shell_open(str(url)))
+	b.add_child(credits)
 	return "Settings"

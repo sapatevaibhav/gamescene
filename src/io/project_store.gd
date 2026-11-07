@@ -1,5 +1,5 @@
 class_name ProjectStore
-## Offline project storage: one JSON file per scene plus a PNG thumbnail in
+## Project storage: one JSON file per scene plus a PNG thumbnail in
 ## user://projects, an index for the home screen, versioned schema with
 ## migrations, atomic writes, and import/export of portable .json files
 ## (including scenes exported from the old web build).
@@ -108,8 +108,14 @@ static func export_to(id: String, path: String) -> bool:
 		var m: String = (c.get("look", {}) as Dictionary).get("model", "")
 		if m != "" and FileAccess.file_exists(ModelRig.DIR + m):
 			models[m] = Marshalls.raw_to_base64(FileAccess.get_file_as_bytes(ModelRig.DIR + m))
-	if not models.is_empty():
-		d["assets"] = {"models": models}
+	var props := {}
+	for e in (d.get("world", {}) as Dictionary).get("props", []):
+		if e is Array and AssetLib.is_key(str(e[0])):
+			var pid := AssetLib.id_of(str(e[0]))
+			if FileAccess.file_exists(AssetLib.DIR + pid):
+				props[pid] = Marshalls.raw_to_base64(FileAccess.get_file_as_bytes(AssetLib.DIR + pid))
+	if not models.is_empty() or not props.is_empty():
+		d["assets"] = {"models": models, "props": props}
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return false
@@ -132,6 +138,11 @@ static func import_from(path: String) -> String:
 		var f := FileAccess.open(ModelRig.DIR + m, FileAccess.WRITE)
 		if f:
 			f.store_buffer(Marshalls.base64_to_raw(assets["models"][m]))
+	for pid in (assets.get("props", {}) as Dictionary):
+		DirAccess.make_dir_recursive_absolute(AssetLib.DIR)
+		var pf := FileAccess.open(AssetLib.DIR + pid, FileAccess.WRITE)
+		if pf:
+			pf.store_buffer(Marshalls.base64_to_raw(assets["props"][pid]))
 	d.erase("assets")
 	var id := new_id()
 	if not d.has("name"):

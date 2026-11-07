@@ -12,7 +12,7 @@ func _ready() -> void:
 		await m._new_scene(style)
 		var hud: Hud = m.hud
 		var a: Actor = m.studio.actors[1]
-		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null]]
+		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null], ["imports", null]]
 		if m.studio.world.is_voxel:
 			views += [["blocks", null], ["maker", null], ["prefabs", null]]
 		else:

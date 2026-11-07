@@ -3,18 +3,43 @@ class_name UIK
 ## screen, the studio HUD and the sheets. Dark "glass" over the 3D scene with
 ## the clapperboard-tape yellow accent from the web build.
 
-const BG := Color("151C29")
-const SURFACE := Color(0.118, 0.149, 0.212, 0.96)
-const RAISE := Color("263147")
-const RAISE_HI := Color("2f3c56")
-const INK := Color("EDEFF4")
-const MUTED := Color("9AA6BD")
-const LINE := Color(0.93, 0.94, 0.96, 0.12)
-const TAPE := Color("F2C14E")
-const TAPE_INK := Color("1C2433")
-const TAPE_SOFT := Color(0.95, 0.76, 0.31, 0.2)
-const REC := Color("EF4444")
-const GLASS := Color(0.063, 0.086, 0.133, 0.62)
+# ---- Design tokens -----------------------------------------------------
+# One palette for the whole app (like --primary / --secondary / --gray in CSS).
+# Primary: clapperboard amber. Secondary: sky blue. Grays: cool slate.
+const PRIMARY_100 := Color("FDEFC7")
+const PRIMARY_300 := Color("F7D77F")
+const PRIMARY_500 := Color("F2C14E")
+const PRIMARY_700 := Color("B8860F")
+const SECONDARY_100 := Color("D3ECFA")
+const SECONDARY_300 := Color("86C8EE")
+const SECONDARY_500 := Color("3D9BDA")
+const SECONDARY_700 := Color("1F6A9E")
+const GRAY_50 := Color("F3F5F9")
+const GRAY_100 := Color("E2E6EE")
+const GRAY_200 := Color("C2C9D6")
+const GRAY_300 := Color("9AA6BD")
+const GRAY_400 := Color("6F7B92")
+const GRAY_500 := Color("4C576D")
+const GRAY_600 := Color("3A4459")
+const GRAY_700 := Color("2C3548")
+const GRAY_800 := Color("212939")
+const GRAY_900 := Color("171E2B")
+const GRAY_950 := Color("10151F")
+const DANGER := Color("E5484D")
+
+# Semantic aliases used by the widgets (all built from the tokens above).
+const BG := GRAY_900
+const SURFACE := Color(GRAY_800, 0.98)
+const RAISE := GRAY_700
+const RAISE_HI := GRAY_600
+const INK := GRAY_50
+const MUTED := GRAY_300
+const LINE := GRAY_600
+const TAPE := PRIMARY_500
+const TAPE_INK := GRAY_950
+const TAPE_SOFT := Color(PRIMARY_500, 0.22)
+const REC := DANGER
+const GLASS := Color(GRAY_900, 0.82)
 
 static var font: Font
 static var font_bold: Font
@@ -55,12 +80,12 @@ static func make_theme() -> Theme:
 	t.set_color("font_pressed_color", "CheckButton", INK)
 	t.set_color("font_hover_pressed_color", "CheckButton", INK)
 	t.set_color("font_color", "OptionButton", INK)
-	t.set_stylebox("normal", "Button", box(RAISE, 12, LINE))
-	t.set_stylebox("hover", "Button", box(RAISE_HI, 12, LINE))
-	t.set_stylebox("pressed", "Button", box(TAPE, 12))
-	t.set_stylebox("hover_pressed", "Button", box(TAPE, 12))
+	t.set_stylebox("normal", "Button", raised(GRAY_600, 12, GRAY_950, 2))
+	t.set_stylebox("hover", "Button", raised(GRAY_500, 12, GRAY_950, 3))
+	t.set_stylebox("pressed", "Button", raised(PRIMARY_500, 12, PRIMARY_700, 0))
+	t.set_stylebox("hover_pressed", "Button", raised(PRIMARY_500, 12, PRIMARY_700, 0))
 	t.set_stylebox("disabled", "Button", box(Color(RAISE, 0.5), 12))
-	t.set_stylebox("focus", "Button", box(Color(0, 0, 0, 0), 12, TAPE, 2))
+	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	var le := box(RAISE, 12, LINE)
 	le.content_margin_left = px(12)
 	le.content_margin_right = px(12)
@@ -106,6 +131,11 @@ static func make_theme() -> Theme:
 	t.set_color("font_color", "PopupMenu", INK)
 	t.set_color("font_hover_color", "PopupMenu", TAPE_INK)
 	t.set_stylebox("hover", "PopupMenu", box(TAPE, 8))
+	for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		var cb := box(Color(0, 0, 0, 0), 12)
+		if st in ["hover", "hover_pressed"]:
+			cb.bg_color = Color(1, 1, 1, 0.05)
+		t.set_stylebox(st, "CheckButton", cb)
 	t.set_stylebox("normal", "OptionButton", box(RAISE, 12, LINE))
 	t.set_stylebox("hover", "OptionButton", box(RAISE_HI, 12, LINE))
 	t.set_stylebox("pressed", "OptionButton", box(RAISE_HI, 12, LINE))
@@ -131,20 +161,82 @@ static func box(c: Color, radius := 12, border := Color(0, 0, 0, 0), bw := 1) ->
 	s.set_corner_radius_all(px(radius))
 	s.content_margin_left = px(12)
 	s.content_margin_right = px(12)
-	s.content_margin_top = px(8)
-	s.content_margin_bottom = px(8)
+	# The UI font sits high in its line box; 2 px more on top centres text.
+	s.content_margin_top = px(9)
+	s.content_margin_bottom = px(7)
 	if border.a > 0:
 		s.set_border_width_all(bw)
 		s.border_color = border
 	s.anti_aliasing = true
+	s.anti_aliasing_size = 0.5
+	s.corner_detail = 12
 	return s
+
+
+## Raised look: a darker bottom edge makes the control sit up off the page.
+static func raised(c: Color, radius := 12, edge := GRAY_950, lift := 2) -> StyleBoxFlat:
+	var s := box(c, radius, edge, 1)
+	s.border_width_bottom = px(lift) + 1
+	s.content_margin_bottom = px(7) - px(lift) + 1 + px(lift)
+	return s
+
+
+## Applies the shared button states. Resting looks like a soft hover; on
+## hover it lifts slightly (lighter, taller bottom edge); pressed/selected
+## uses the primary colour. variant: neutral | primary | danger | selected | ghost.
+static func style_button(b: BaseButton, variant := "neutral", radius := 12) -> void:
+	var rest: StyleBoxFlat
+	var lift: StyleBoxFlat
+	var press := raised(PRIMARY_500, radius, PRIMARY_700, 0)
+	match variant:
+		"primary":
+			rest = raised(PRIMARY_500, radius, PRIMARY_700, 2)
+			lift = raised(PRIMARY_300, radius, PRIMARY_700, 3)
+			press = raised(PRIMARY_700, radius, PRIMARY_700, 0)
+		"selected":
+			rest = raised(PRIMARY_500, radius, PRIMARY_700, 2)
+			lift = raised(PRIMARY_300, radius, PRIMARY_700, 3)
+		"ghost":
+			rest = box(Color(0, 0, 0, 0), radius)
+			lift = box(Color(1, 1, 1, 0.1), radius)
+		_:
+			rest = raised(GRAY_600, radius, GRAY_950, 2)
+			lift = raised(GRAY_500, radius, GRAY_950, 3)
+	b.add_theme_stylebox_override("normal", rest)
+	b.add_theme_stylebox_override("hover", lift)
+	b.add_theme_stylebox_override("pressed", press)
+	b.add_theme_stylebox_override("hover_pressed", press)
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.add_theme_stylebox_override("disabled", box(Color(GRAY_700, 0.6), radius))
+	var ink := TAPE_INK if variant in ["primary", "selected"] else INK
+	if variant == "danger":
+		ink = DANGER
+	for k in ["font_color", "font_hover_color", "font_focus_color"]:
+		b.add_theme_color_override(k, ink)
+	b.add_theme_color_override("font_pressed_color", TAPE_INK)
+	b.add_theme_color_override("font_hover_pressed_color", TAPE_INK)
+	b.add_theme_color_override("font_disabled_color", GRAY_400)
+
+
+## Card-like buttons (tiles, picker cells): raised, with a primary outline
+## when selected.
+static func _card_states(b: BaseButton, on: bool, radius: int) -> void:
+	var edge := PRIMARY_500 if on else GRAY_950
+	var rest := raised(GRAY_700 if not on else GRAY_600, radius, edge, 2)
+	var lift := raised(GRAY_600, radius, edge, 3)
+	if on:
+		rest.set_border_width_all(2)
+		rest.border_width_bottom = px(3) + 1
+		lift.set_border_width_all(2)
+		lift.border_width_bottom = px(4) + 1
+	b.add_theme_stylebox_override("normal", rest)
+	b.add_theme_stylebox_override("hover", lift)
+	b.add_theme_stylebox_override("pressed", raised(GRAY_600, radius, PRIMARY_500, 0))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 
 static func glass(radius := 16) -> StyleBoxFlat:
-	var s := box(GLASS, radius, Color(1, 1, 1, 0.14))
-	s.shadow_color = Color(0, 0, 0, 0.25)
-	s.shadow_size = px(8)
-	return s
+	return box(GLASS, radius, GRAY_600, 1)
 
 
 static func label(text: String, size := 15, color := INK, bold := false) -> Label:
@@ -207,19 +299,14 @@ static func btn(text: String, cb: Callable, primary := false, icon := "") -> But
 	b.custom_minimum_size.y = px(42)
 	if icon != "":
 		b.icon = Icons.tex(icon, px(20), TAPE_INK if primary else INK)
-	if primary:
-		b.add_theme_stylebox_override("normal", box(TAPE, 12))
-		b.add_theme_stylebox_override("hover", box(TAPE.lightened(0.1), 12))
-		b.add_theme_color_override("font_color", TAPE_INK)
-		b.add_theme_color_override("font_hover_color", TAPE_INK)
+	style_button(b, "primary" if primary else "neutral")
 	b.pressed.connect(cb)
 	return b
 
 
 static func danger(text: String, cb: Callable) -> Button:
 	var b := btn(text, cb)
-	b.add_theme_color_override("font_color", REC)
-	b.add_theme_color_override("font_hover_color", REC)
+	style_button(b, "danger")
 	return b
 
 
@@ -232,11 +319,16 @@ static func icon_btn(icon: String, cb: Callable, tip := "", size := 46, glass_bg
 	b.custom_minimum_size = Vector2(px(size), px(size))
 	b.tooltip_text = tip
 	if glass_bg:
-		b.add_theme_stylebox_override("normal", glass(14))
-		var h := glass(14)
-		h.bg_color = Color(0.1, 0.13, 0.2, 0.78)
-		b.add_theme_stylebox_override("hover", h)
-		b.add_theme_stylebox_override("pressed", box(Color(TAPE, 0.55), 14))
+		var g := glass(14)
+		var gh := glass(14)
+		gh.bg_color = Color(GRAY_700, 0.92)
+		gh.border_color = GRAY_400
+		b.add_theme_stylebox_override("normal", g)
+		b.add_theme_stylebox_override("hover", gh)
+		b.add_theme_stylebox_override("pressed", box(Color(PRIMARY_500, 0.6), 14, PRIMARY_300, 1))
+		b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	else:
+		style_button(b, "neutral")
 	b.pressed.connect(cb)
 	return b
 
@@ -249,18 +341,7 @@ static func chip(text: String, on: bool, cb: Callable) -> Button:
 	b.add_theme_font_override("font", font_bold)
 	b.add_theme_font_size_override("font_size", px(14))
 	b.custom_minimum_size.y = px(38)
-	var n := box(RAISE, 12, LINE)
-	n.content_margin_left = px(13)
-	n.content_margin_right = px(13)
-	var a := box(TAPE, 12)
-	a.content_margin_left = px(13)
-	a.content_margin_right = px(13)
-	b.add_theme_stylebox_override("normal", a if on else n)
-	b.add_theme_stylebox_override("hover", a if on else box(RAISE_HI, 12, LINE))
-	b.add_theme_stylebox_override("pressed", a)
-	if on:
-		b.add_theme_color_override("font_color", TAPE_INK)
-		b.add_theme_color_override("font_hover_color", TAPE_INK)
+	style_button(b, "selected" if on else "neutral")
 	b.pressed.connect(cb)
 	return b
 
@@ -269,12 +350,9 @@ static func chip(text: String, on: bool, cb: Callable) -> Button:
 static func tile(icon: String, title: String, sub: String, on: bool, cb: Callable) -> Button:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(px(140), px(100))
+	b.custom_minimum_size = Vector2(px(140), px(118))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var sb := box(RAISE, 18, TAPE.darkened(0.2) if on else LINE, 2 if on else 1)
-	b.add_theme_stylebox_override("normal", sb)
-	b.add_theme_stylebox_override("hover", box(RAISE_HI, 18, TAPE.darkened(0.2) if on else LINE, 2 if on else 1))
-	b.add_theme_stylebox_override("pressed", box(RAISE_HI, 18, TAPE, 2))
+	_card_states(b, on, 18)
 	var v := vbox(4)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -315,9 +393,7 @@ static func pick(tex: Texture2D, caption: String, on: bool, cb: Callable, pixel 
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(px(size), px(size + 22))
 	b.tooltip_text = caption
-	b.add_theme_stylebox_override("normal", box(RAISE, 16, TAPE.darkened(0.2) if on else LINE, 2 if on else 1))
-	b.add_theme_stylebox_override("hover", box(RAISE_HI, 16, TAPE.darkened(0.2) if on else LINE, 2 if on else 1))
-	b.add_theme_stylebox_override("pressed", box(RAISE_HI, 16, TAPE, 2))
+	_card_states(b, on, 16)
 	var v := vbox(3)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

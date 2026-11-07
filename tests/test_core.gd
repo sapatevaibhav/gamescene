@@ -72,4 +72,14 @@ func _sim() -> void:
 		studio.world.serialize()
 		studio.undo()
 		ok(studio.actors.size() == d["cast"].size(), "%s undo keeps cast" % style)
+	# Old 48 m save: lands centred in the 80 m world, actors shifted with it.
+	var hs := []
+	hs.resize(49 * 49)
+	hs.fill(3.0)
+	var legacy := {"app": "gamescene", "v": 2, "style": "anime", "world": {"h": hs, "path": "0*2304", "water": 2.2, "props": [["stone", 24.0, 24.0, 0.0, 1.0, 5]]},
+		"cast": [{"name": "Old", "look": {"preset": "wanderer"}, "behavior": "idle", "pos": [24.0, 3.0, 20.0], "yaw": 0.0, "player": true}]}
+	ok(studio.load_data(legacy) == "", "legacy 48 m save loads")
+	var w: TerrainWorld = studio.world
+	ok(w.props.size() == 1 and absf(float(w.props[0].x) - 40.0) < 0.01, "legacy prop centred")
+	ok(absf(studio.player.pos.x - 40.0) < 0.6 and absf(studio.player.pos.z - 36.0) < 0.6, "legacy actor shifted (%s)" % studio.player.pos)
 	studio.queue_free()

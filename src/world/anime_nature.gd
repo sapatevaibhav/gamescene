@@ -90,19 +90,20 @@ static func leaf_texture(kind: String) -> Texture2D:
 
 
 ## Painted clump of grass blades (white, alpha cut-out; shader colours it).
-static func grass_texture() -> Texture2D:
-	if _tex.has("grass"):
-		return _tex["grass"]
+static func grass_texture(tall := false) -> Texture2D:
+	var key := "grass_tall" if tall else "grass"
+	if _tex.has(key):
+		return _tex[key]
 	var w := 128
-	var h := 96
+	var h := 128 if tall else 96
 	var img := Image.create(w, h, true, Image.FORMAT_RGBA8)
 	img.fill(Color(1, 1, 1, 0))
-	seed(31337)
-	for k in 13:
+	seed(31337 + (7 if tall else 0))
+	for k in (9 if tall else 15):
 		var bx := 10.0 + randf() * (w - 20.0)
-		var bh := h * (0.45 + randf() * 0.52)
-		var bw := 3.5 + randf() * 2.5
-		var lean := (randf() - 0.5) * 26.0
+		var bh := h * ((0.6 + randf() * 0.4) if tall else (0.4 + randf() * 0.55))
+		var bw := (2.4 + randf() * 1.6) if tall else (3.5 + randf() * 2.5)
+		var lean := (randf() - 0.5) * (40.0 if tall else 26.0)
 		for y in range(int(h - bh), h):
 			var t := float(h - y) / bh  # 0 at ground, 1 at tip
 			var cx := bx + lean * t * t
@@ -117,7 +118,7 @@ static func grass_texture() -> Texture2D:
 				img.set_pixel(x, y, Color(g, g, g, a))
 	img.generate_mipmaps()
 	var tex := ImageTexture.create_from_image(img)
-	_tex["grass"] = tex
+	_tex[key] = tex
 	return tex
 
 
@@ -344,7 +345,7 @@ static func _mi(mesh: Mesh, mat: Material, pos := Vector3.ZERO) -> MeshInstance3
 
 
 static func _canopy(g: Node3D, pal: String, pos: Vector3, radii: Vector3, density: float, r: U.Rng, tex := "leaf") -> void:
-	var cards := int(clampf(radii.x * radii.y * radii.z * 13.0 * density, 26, 200))
+	var cards := int(clampf(radii.x * radii.y * radii.z * 17.0 * density, 30, 240))
 	var variant := int(r.next() * 4)
 	var m := _mi(canopy_mesh(radii, cards, 0.85 if tex == "leaf" else 0.7, variant * 97 + int(radii.x * 10)), foliage_mat(pal, tex), pos)
 	# Only tree crowns cast shadows; low undergrowth isn't worth the cost.

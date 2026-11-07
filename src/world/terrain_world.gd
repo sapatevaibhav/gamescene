@@ -8,8 +8,10 @@ extends Node3D
 
 signal changed
 
-const TN := 48
+const TN := 80
 const AR := 0.28
+## Height a character can step onto without jumping.
+const STEP := 0.45
 const BRUSH_R := 2.6
 
 var is_voxel := false
@@ -35,6 +37,9 @@ var _backdrop: Node3D
 var _skirt_hf: Callable
 var _border_mmi: MultiMeshInstance3D
 var _grass_root: Node3D
+var _tall_card: Mesh
+## Offset applied to old 48-wide saves when loading (actors shift with it).
+var load_offset := 0.0
 var _mat_key := ""
 
 const SH_REAL := preload("res://src/shaders/terrain.gdshader")
@@ -159,8 +164,35 @@ func terrain_h(x: float, z: float) -> float:
 	return d + (c - d) * (1.0 - fx) + (b - d) * (1.0 - fz)
 
 
+## Highest walkable surface: the terrain, or the top of a low prop (rock,
+## log, crate...) you are standing on.
 func ground_at(x: float, z: float) -> float:
-	return terrain_h(x, z)
+	return maxf(terrain_h(x, z), prop_top(x, z))
+
+
+## Top of the climbable prop under (x, z), or -INF. Climbable = box-shaped
+## props (no trunk colliders) up to 3.2 m tall.
+func prop_top(x: float, z: float) -> float:
+	var best := -INF
+	for p in props:
+		if p.cols != null:
+			continue
+		var s: float = p.s
+		var top: float = (p.node as Node3D).position.y + float(p.h) * s
+		if float(p.h) * s > 3.2:
+			continue
+		var dx: float = x - p.x
+		var dz: float = z - p.z
+		if dx * dx + dz * dz > 36.0 * s * s:
+			continue
+		var c := cos(p.rot)
+		var sn := sin(p.rot)
+		var lx := (dx * c - dz * sn) / s
+		var lz := (dx * sn + dz * c) / s
+		# Slightly inset so you don't hover past rounded edges.
+		if absf(lx) < p.hw * 0.85 and absf(lz) < p.hd * 0.85:
+			best = maxf(best, top - float(p.h) * s * 0.06)
+	return best
 
 
 func walkable(x: float, z: float) -> bool:
@@ -290,8 +322,19 @@ func _tri(st: SurfaceTool, pts: Array, flat: bool) -> void:
 		for k in 3:
 			var n := _vn(pts[k][0], pts[k][1])
 			st.set_color(_terrain_color(pts[k][0] - 0.01, pts[k][1] - 0.01, p[k].y, n.y).srgb_to_linear())
+			st.set_uv2(_ground_w(pts[k][0], pts[k][1], p[k].y))
 			st.set_normal(n)
 			st.add_vertex(p[k])
+
+
+## Texture blend weights for a heightmap vertex: x = path, y = sand.
+func _ground_w(i: int, j: int, hh: float) -> Vector2:
+	var pw := 0.0
+	for q in [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]:
+		var a: int = clampi(q[0], 0, TN - 1)
+		var b: int = clampi(q[1], 0, TN - 1)
+		pw += path[b * TN + a]
+	return Vector2(pw / 4.0, 1.0 if hh < water + 0.35 else 0.0)
 
 
 func _terrain_material() -> ShaderMaterial:
@@ -303,6 +346,13 @@ func _terrain_material() -> ShaderMaterial:
 	m.set_shader_parameter("rock_color", U.col(_pal().rock))
 	m.set_shader_parameter("detail_amount", 0.07 if sh == "toon" else (0.05 if sh == "flat" else 0.16))
 	m.set_shader_parameter("rock_mix", 0.0 if sh == "flat" else 0.6)
+	if sh != "flat":
+		for t in ["grass", "dirt", "floor", "rock"]:
+			m.set_shader_parameter(t + "_tex", load("res://assets/textures/%s_color.jpg" % t))
+			m.set_shader_parameter(t + "_nrm", load("res://assets/textures/%s_normal.jpg" % t))
+		# Anime keeps its painted palette and borrows only surface detail;
+		# tactical uses the real photographic colours.
+		m.set_shader_parameter("tex_mode", 1 if sh == "toon" else 2)
 	return m
 
 
@@ -420,10 +470,10 @@ func _motes() -> GPUParticles3D:
 	p.lifetime = 9.0
 	p.preprocess = 9.0
 	p.position = Vector3(TN / 2.0, 5.0, TN / 2.0)
-	p.visibility_aabb = AABB(Vector3(-30, -10, -30), Vector3(60, 25, 60))
+	p.visibility_aabb = AABB(Vector3(-50, -10, -50), Vector3(100, 25, 100))
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	pm.emission_box_extents = Vector3(24, 3, 24)
+	pm.emission_box_extents = Vector3(TN / 2.0, 3, TN / 2.0)
 	pm.gravity = Vector3(0, 0.05, 0)
 	pm.initial_velocity_min = 0.05
 	pm.initial_velocity_max = 0.25
@@ -472,10 +522,10 @@ func _falling_leaves() -> GPUParticles3D:
 	p.lifetime = 12.0
 	p.preprocess = 12.0
 	p.position = Vector3(TN / 2.0, 12.0, TN / 2.0)
-	p.visibility_aabb = AABB(Vector3(-30, -20, -30), Vector3(60, 30, 60))
+	p.visibility_aabb = AABB(Vector3(-50, -20, -50), Vector3(100, 30, 100))
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	pm.emission_box_extents = Vector3(24, 2, 24)
+	pm.emission_box_extents = Vector3(TN / 2.0, 2, TN / 2.0)
 	pm.gravity = Vector3(0.35, -0.55, 0.15)
 	pm.initial_velocity_min = 0.1
 	pm.initial_velocity_max = 0.4
@@ -624,6 +674,12 @@ func _anime_grass() -> void:
 	fm.set_shader_parameter("tint_strength", 0.0)
 	var fcard := _grass_card_mesh(0.28, 0.3)
 	fcard.surface_set_material(0, fm)
+	var tm := gm.duplicate() as ShaderMaterial
+	tm.set_shader_parameter("grass_tex", AnimeNature.grass_texture(true))
+	tm.set_shader_parameter("tip_color", Color(0.78, 0.9, 0.42))
+	var tall := _grass_card_mesh(0.8, 1.0)
+	tall.surface_set_material(0, tm)
+	_tall_card = tall
 	var density := 2.4 * grass_density
 	var lo := -12.0 if _skirt_hf.is_valid() else 0.0
 	var hi := TN + (12.0 if _skirt_hf.is_valid() else 0.0)
@@ -639,6 +695,7 @@ func _anime_grass() -> void:
 func _grass_chunk(card: Mesh, fcard: Mesh, cx: float, cz: float, density: float) -> void:
 	var grass := []
 	var flowers := []
+	var talls := []
 	var n := int(GRASS_CHUNK * GRASS_CHUNK * density)
 	for k in n:
 		var x := cx + randf() * GRASS_CHUNK
@@ -659,11 +716,14 @@ func _grass_chunk(card: Mesh, fcard: Mesh, cx: float, cz: float, density: float)
 			y = _skirt_hf.call(x, z)
 		var sc := 0.75 + randf() * 0.6
 		var xf := Transform3D(Basis(Vector3.UP, randf() * TAU).scaled(Vector3(sc, sc * (0.8 + randf() * 0.45), sc)), Vector3(x, y - 0.03, z))
-		if randf() < 0.04:
+		var roll := randf()
+		if roll < 0.04:
 			flowers.append(xf)
+		elif roll < 0.2:
+			talls.append(xf)
 		else:
 			grass.append(xf)
-	for pair in [[card, grass], [fcard, flowers]]:
+	for pair in [[card, grass], [fcard, flowers], [_tall_card, talls]]:
 		var list: Array = pair[1]
 		if list.is_empty():
 			continue
@@ -756,10 +816,18 @@ func add_prop(key: String, x: float, z: float, rot := 0.0, s := 1.0, seed := -1)
 	var node := Props.build(style_key, key, seed)
 	if node == null:
 		return {}
-	Kit.merge_static(node)
+	if not AssetLib.is_key(key):
+		Kit.merge_static(node)
 	var bb := Kit.bounds(node)
 	var def := _prop_def(key)
 	var cols: Variant = def.get("cols", null)
+	if AssetLib.is_key(key):
+		# Imported: small things don't block, tall narrow-based things are
+		# trees (collide at the trunk), the rest use their bounding box.
+		if bb.size.y < 0.8:
+			cols = []
+		elif bb.size.y > 3.0 and maxf(bb.size.x, bb.size.z) > bb.size.y * 0.45:
+			cols = [[0.0, 0.0, clampf(maxf(bb.size.x, bb.size.z) * 0.08, 0.25, 0.8)]]
 	var p := {"key": key, "x": x, "z": z, "rot": rot, "s": s, "seed": seed, "node": node,
 		"hw": bb.size.x / 2.0, "hd": bb.size.z / 2.0, "h": bb.size.y, "cols": cols, "bb": bb}
 	node.set_meta("prop", p)
@@ -800,7 +868,8 @@ func prop_hit(x: float, z: float, y: float) -> bool:
 		var s: float = p.s
 		if dx * dx + dz * dz > 64.0 * s * s:
 			continue
-		if y > (p.node as Node3D).position.y + p.h * s - 0.2:
+		# Anything lower than a step (or that you've jumped above) doesn't block.
+		if y > (p.node as Node3D).position.y + p.h * s - STEP:
 			continue
 		var c := cos(p.rot)
 		var sn := sin(p.rot)
@@ -818,7 +887,8 @@ func prop_hit(x: float, z: float, y: float) -> bool:
 
 ## True when a character standing with feet at `p` would collide.
 func body_blocked(p: Vector3) -> bool:
-	return p.x < 0.5 or p.z < 0.5 or p.x > TN - 0.5 or p.z > TN - 0.5 or prop_hit(p.x, p.z, p.y) or terrain_h(p.x, p.z) < water - 0.45
+	# Shallow water is wadeable; only deep water (> ~1.1 m) blocks.
+	return p.x < 0.5 or p.z < 0.5 or p.x > TN - 0.5 or p.z > TN - 0.5 or prop_hit(p.x, p.z, p.y) or terrain_h(p.x, p.z) < water - 1.1
 
 
 func free_spot(x: float, z: float, r := 1.2) -> bool:
@@ -862,15 +932,25 @@ func _scatter_props(key: String, n: int, r_min: float, r_max: float, r: U.Rng, a
 	var c := TN / 2.0
 	var placed := 0
 	var t := 0
+	# Layouts were authored for a 48 m world; "fill to the edge" scatters
+	# (r_max >= 20) cover the whole, bigger square.
+	var fill := r_max >= 20.0
+	if fill:
+		n = int(n * TN / 48.0)
 	while t < n * 12 and placed < n:
 		t += 1
 		var a := r.next() * TAU
 		var d := r_min + r.next() * (r_max - r_min)
 		var x := c + cos(a) * d
 		var z := c + sin(a) * d
+		if fill:
+			x = 2.0 + r.next() * (TN - 4.0)
+			z = 2.0 + r.next() * (TN - 4.0)
+			if Vector2(x - c, z - c).length() < r_min:
+				continue
 		if avoid_path and on_path(x, z):
 			continue
-		var spacing := 3.2 if key in ["oak", "tall", "blossom"] else 0.6
+		var spacing := 5.0 if key in ["oak", "tall", "blossom"] else 0.6
 		if not free_spot(x, z, spacing):
 			continue
 		var rot := r.next() * TAU
@@ -914,17 +994,17 @@ func new_world(key: String) -> void:
 		add_prop("lantern", c + 1.6, c - 7.5)
 		add_prop("rocks", c + 9.5, c + 9.5, r.next() * TAU)
 		add_prop("rocks", c - 10.5, c + 7.5, r.next() * TAU)
-		_scatter_props("tall", 12, 15, 23, r)
-		_scatter_props("oak", 18, 11, 23, r)
+		_scatter_props("tall", 7, 15, 23, r)
+		_scatter_props("oak", 12, 11, 23, r)
 		_scatter_props("blossom", 3, 10, 18, r)
 		_scatter_props("rocks", 6, 12, 23, r)
 		_scatter_props("stone", 10, 7, 22, r)
-		_scatter_props("bush", 24, 8, 23, r)
-		_scatter_props("fern", 34, 7, 23, r)
+		_scatter_props("bush", 16, 8, 23, r)
+		_scatter_props("fern", 22, 7, 23, r)
 		_scatter_props("log", 3, 12, 21, r)
 		_scatter_props("stump", 3, 10, 21, r)
-		_scatter_props("mushrooms", 14, 8, 22, r)
-		_scatter_props("flowers", 26, 4, 20, r)
+		_scatter_props("mushrooms", 10, 8, 23, r)
+		_scatter_props("flowers", 20, 4, 23, r)
 	elif key == "tactical":
 		add_prop("warehouse", c + 8, c + 7, -0.4)
 		add_prop("tower", c - 8, c + 8, 0.3)
@@ -1047,7 +1127,8 @@ func clip_cam(from: Vector3, dir: Vector3, dist: float) -> float:
 	for k in range(1, 11):
 		var d := dist * k / 10.0
 		var p := from + dir * d
-		if p.y < terrain_h(p.x, p.z) + 0.3:
+		# Stay above the ground and the water surface.
+		if p.y < maxf(terrain_h(p.x, p.z), water + 0.1) + 0.3:
 			out = maxf(0.5, dist * (k - 1) / 10.0)
 			break
 	# Keep the camera out of buildings (solid props without trunk colliders).
@@ -1102,7 +1183,7 @@ func serialize() -> Dictionary:
 	var ps := []
 	for p in props:
 		ps.append([p.key, U.r2(p.x), U.r2(p.z), U.r2(p.rot), U.r2(p.s), p.seed])
-	return {"h": hs, "path": U.rle_encode(path), "water": water, "props": ps}
+	return {"size": TN, "h": hs, "path": U.rle_encode(path), "water": water, "props": ps}
 
 
 ## Loads a saved world. Pass `style` to switch style first (props are
@@ -1112,12 +1193,24 @@ func load_data(d: Dictionary, style := "") -> void:
 		style_key = style
 	clear_props()
 	var src: Array = d.get("h", [])
-	for i in mini(src.size(), h.size()):
-		h[i] = float(src[i])
-	path = U.rle_decode(str(d.get("path", "")), TN * TN)
+	var n := int(d.get("size", Styles.LEGACY_SIZE))
+	var off := (TN - n) / 2
+	load_offset = float(off)
+	var old_path := U.rle_decode(str(d.get("path", "")), n * n)
+	path.fill(0)
+	for j in TN + 1:
+		for i in TN + 1:
+			# Older, smaller worlds sit in the centre; their rim extends outward.
+			var si := clampi(i - off, 0, n)
+			var sj := clampi(j - off, 0, n)
+			var k := sj * (n + 1) + si
+			h[_hi(i, j)] = float(src[k]) if k < src.size() else 6.0
+	for j in n:
+		for i in n:
+			path[(j + off) * TN + i + off] = old_path[j * n + i]
 	water = float(d.get("water", 2.2))
 	for e in d.get("props", []):
 		if e is Array and e.size() >= 3:
-			add_prop(str(e[0]), float(e[1]), float(e[2]), float(e[3]) if e.size() > 3 else 0.0, float(e[4]) if e.size() > 4 else 1.0, int(e[5]) if e.size() > 5 and e[5] != null else -1)
+			add_prop(str(e[0]), float(e[1]) + off, float(e[2]) + off, float(e[3]) if e.size() > 3 else 0.0, float(e[4]) if e.size() > 4 else 1.0, int(e[5]) if e.size() > 5 and e[5] != null else -1)
 	rebuild()
 	rebuild_grass()

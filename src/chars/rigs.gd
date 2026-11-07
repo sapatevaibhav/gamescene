@@ -8,7 +8,7 @@ const GROUPS := [["people", "People"], ["mobs", "Monsters"], ["animals", "Animal
 
 const DEFAULT_CAST := {
 	"blocky": [["hero", "Rook"], ["farmer", "Tilde", "wander"], ["merchant", "Oza", "talk"], ["chef", "Bao", "talk"], ["dancer", "Mika", "dance"], ["guard", "Hale", "follow"]],
-	"anime": [["wanderer", "Aster"], ["ranger", "Mira", "wander"], ["mage", "Lyra", "talk"], ["keeper", "Sena", "talk"], ["bard", "Pia", "dance"], ["ronin", "Ren", "follow"], ["slimeGreen", "Green slime", "wander"], ["slimeBlue", "Blue slime", "wander"]],
+	"anime": [["wanderer", "Vaibh"], ["ranger", "Mira", "wander"], ["mage", "Lyra", "talk"], ["keeper", "Sena", "talk"], ["bard", "Pia", "dance"], ["ronin", "Ren", "follow"], ["slimeGreen", "Green slime", "wander"], ["slimeBlue", "Blue slime", "wander"]],
 	"tactical": [["rifleman", "Vega"], ["sniper", "Moss", "wander"], ["scout", "Kestrel", "talk"], ["medic", "Ash", "talk"], ["civilian", "Juno", "dance"], ["commander", "Bishop", "follow"]],
 	"lowpoly": [["villager", "Bram"], ["explorer", "Wren", "wander"], ["baker", "Nell", "talk"], ["farmer", "Gus", "talk"], ["kid", "Pip", "dance"], ["knight", "Hale", "follow"]],
 }
@@ -178,4 +178,6 @@ static func build(look: Dictionary, style: String) -> Dictionary:
 		var n: Variant = rig.get(k)
 		if n is Node3D:
 			Kit.merge_children(n)
+	root.set_meta("frame_h", float(rig["height"]) * sc)
+	root.set_meta("head_h", float(rig["headH"]) * sc)
 	return rig

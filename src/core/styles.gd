@@ -1,7 +1,9 @@
 class_name Styles
 ## World styles and atmosphere presets (ported from the web build).
 
-const SIZE := 48
+const SIZE := 80
+## Size of worlds saved before v0.6 (they load centred in the bigger world).
+const LEGACY_SIZE := 48
 
 const STYLES := {
 	"blocky": {"name": "Blocky", "blurb": "Pixel skins and block building", "world": "voxel", "char": "skin", "shade": "lambert", "sky": "#8ec9ff", "mood": "day", "light": 1.0,

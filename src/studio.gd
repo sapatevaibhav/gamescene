@@ -38,6 +38,7 @@ var _fired := {}
 var input_move := Vector2.ZERO
 var input_jump := false
 var input_sprint := false
+var input_crouch := false
 
 var _undo: Array = []
 var _redo: Array = []
@@ -157,6 +158,9 @@ func load_data(d: Dictionary) -> String:
 		world.load_data(d["world"])
 	else:
 		world.load_data(d["world"], style)
+	var off: float = world.load_offset
+	if off != 0.0:
+		_shift_legacy(d, off)
 	var st: Dictionary = d.get("settings", {})
 	for k in st:
 		if App.SCENE_KEYS.has(k):
@@ -164,14 +168,14 @@ func load_data(d: Dictionary) -> String:
 	scene_seed = int(d.get("seed", randi() % 100000))
 	App.sim_rng.seed = scene_seed
 	for c in d.get("cast", []):
-		var p: Array = c.get("pos", [24, 0, 24])
+		var p: Array = c.get("pos", [40, 0, 40])
 		add_actor({"name": c.get("name", "Someone"), "look": c.get("look", {}), "behavior": c.get("behavior", "idle"), "notice": c.get("notice", true),
 			"lines": c.get("lines", []), "x": p[0], "y": p[1], "z": p[2], "yaw": c.get("yaw", 0.0), "isPlayer": c.get("player", false)})
 	if player == null and not actors.is_empty():
 		player = actors[0]
 	if player == null:
 		var presets := Rigs.presets_for(style_key)
-		add_actor({"name": "You", "look": {"preset": presets.keys()[0]}, "isPlayer": true, "x": 24.0, "z": 20.0})
+		add_actor({"name": "You", "look": {"preset": presets.keys()[0]}, "isPlayer": true, "x": 40.0, "z": 36.0})
 	camera.load_view(d.get("view", {}), d.get("cine", {}))
 	cues = d.get("cues", [])
 	shots = d.get("shots", [])
@@ -185,6 +189,26 @@ func load_data(d: Dictionary) -> String:
 	scene_changed.emit()
 	cast_changed.emit()
 	return ""
+
+
+## Moves everything positioned in an old, smaller world into the centre of
+## the current one.
+func _shift_legacy(d: Dictionary, off: float) -> void:
+	var mv := func(p: Array) -> Array: return [float(p[0]) + off, p[1], float(p[2]) + off]
+	for c in d.get("cast", []):
+		c["pos"] = mv.call(c.get("pos", [24, 0, 24]))
+	for c in d.get("cues", []):
+		if c.has("x"):
+			c["x"] = float(c["x"]) + off
+			c["z"] = float(c["z"]) + off
+	for s in d.get("start", []):
+		s["pos"] = mv.call(s.get("pos", [24, 0, 24]))
+	var cine: Dictionary = d.get("cine", {})
+	for pt in cine.get("points", []):
+		pt["p"] = mv.call(pt.get("p", [0, 0, 0]))
+	for sh in d.get("shots", []):
+		for pt in sh.get("points", []):
+			pt["p"] = mv.call(pt.get("p", [0, 0, 0]))
 
 
 func serialize() -> Dictionary:
@@ -309,7 +333,7 @@ func add_actor(o: Dictionary) -> Actor:
 		App.toast("That’s the cast limit for this device’s quality setting.")
 		return null
 	if not o.has("y"):
-		var s := find_spot(float(o.get("x", 24)), float(o.get("z", 24)))
+		var s := find_spot(float(o.get("x", 40)), float(o.get("z", 40)))
 		o["x"] = s.x
 		o["z"] = s.y
 		o["y"] = world.ground_at(s.x, s.y)
@@ -342,7 +366,7 @@ func set_player(a: Actor) -> void:
 
 
 func spawn_near() -> Vector2:
-	var b := player.pos if player else Vector3(24, 0, 24)
+	var b := player.pos if player else Vector3(40, 0, 40)
 	var ang := randf() * TAU
 	var d := 2.0 + randf() * 2.5
 	var size := float(Styles.SIZE)
@@ -352,7 +376,7 @@ func spawn_near() -> Vector2:
 func gather_point() -> Vector3:
 	if player:
 		return player.pos
-	return Vector3(24, 0, 24)
+	return Vector3(40, 0, 40)
 
 
 func count_behavior(b: String) -> int:
@@ -540,7 +564,13 @@ func _update_player(dt: float) -> void:
 		var dx := f.x * mv.y + r.x * mv.x
 		var dz := f.y * mv.y + r.y * mv.x
 		var l := maxf(sqrt(dx * dx + dz * dz), 0.0001)
-		speed = (1.6 if input_sprint else 4.6) * minf(1.0, mv.length())
+		# Shift sprints, Ctrl crouch-walks.
+		var base := 4.6
+		if input_crouch:
+			base = 1.8
+		elif input_sprint:
+			base = 7.8
+		speed = base * minf(1.0, mv.length())
 		a.vel.x = dx / l * speed
 		a.vel.z = dz / l * speed
 		if camera.mode != "first":
@@ -551,7 +581,8 @@ func _update_player(dt: float) -> void:
 		a.vel.z = 0
 	if camera.mode == "first":
 		a.yaw = camera.yaw + PI
-	if input_jump and a.on_ground and not cam_free:
+	a.crouch = input_crouch and a.on_ground
+	if input_jump and a.on_ground and not cam_free and not input_crouch:
 		a.vel.y = 7.6
 	var was := a.blocked
 	a.move_body(dt)

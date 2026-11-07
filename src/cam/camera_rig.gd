@@ -12,7 +12,7 @@ var mode := "third"
 var yaw := PI
 var pitch := 0.3
 var dist := 6.0
-var free_pos := Vector3(24, 14, 36)
+var free_pos := Vector3(40, 14, 52)
 ## Cinematic state, saved with the project.
 var cine := {"shot": "orbit", "dur": 12.0, "dist": 6.0, "height": 2.2, "points": [], "target": 0}
 var cine_t := 0.0

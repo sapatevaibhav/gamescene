@@ -46,6 +46,14 @@ var tag: Node3D = null
 var last_line := ""
 ## Directed walk target from a timeline cue ({} when none).
 var goto := {}
+var crouch := false
+## Seconds left in the current attack swing (0 = not attacking).
+var attack_t := 0.0
+## Seconds left of a hit flinch.
+var hurt_t := 0.0
+const ATTACK_TIME := 0.42
+var knock_t := 0.0
+var flee_t := 0.0
 
 
 func _init(s: Node, o: Dictionary) -> void:
@@ -58,7 +66,7 @@ func _init(s: Node, o: Dictionary) -> void:
 	base_behavior = behavior
 	notice = o.get("notice", true) != false
 	lines = (o.get("lines", []) as Array).duplicate()
-	pos = Vector3(float(o.get("x", 24)), float(o.get("y", 0)), float(o.get("z", 24)))
+	pos = Vector3(float(o.get("x", 40)), float(o.get("y", 0)), float(o.get("z", 40)))
 	home = pos
 	yaw = float(o.get("yaw", 0))
 	t = App.sim_randf() * 100.0
@@ -86,7 +94,7 @@ func set_look(new_look: Dictionary) -> void:
 	look = new_look
 	var r: Dictionary
 	if look.has("model"):
-		r = ModelRig.build(look)
+		r = ModelRig.build(look, studio.style_key)
 	else:
 		r = Rigs.build(look, studio.style_key)
 	if not rig.is_empty():
@@ -255,13 +263,16 @@ func _move_voxel(dt: float, w) -> void:
 func _move_terrain(dt: float, w) -> void:
 	vel.y = maxf(vel.y - 24.0 * dt, -40.0)
 	blocked = false
+	# Already overlapping something (spawned inside, a prop placed on top of
+	# us, deep water)? Let moves through so we can walk back out.
+	var stuck: bool = w.body_blocked(pos)
 	var tv := Vector3(pos.x + vel.x * dt, pos.y, pos.z)
-	if w.body_blocked(tv):
+	if not stuck and w.body_blocked(tv):
 		blocked = true
 	else:
 		pos.x = tv.x
 	tv = Vector3(pos.x, pos.y, pos.z + vel.z * dt)
-	if w.body_blocked(tv):
+	if not stuck and w.body_blocked(tv):
 		blocked = true
 	else:
 		pos.z = tv.z
@@ -301,6 +312,16 @@ func face_to(x: float, z: float, dt: float, rate := 5.0) -> void:
 # ---------------------------------------------------------------- behaviour
 
 func update_npc(dt: float) -> void:
+	if knock_t > 0.0:
+		knock_t -= dt
+		move_body(dt)
+		vel.x *= 0.85
+		vel.z *= 0.85
+		return
+	if flee_t > 0.0:
+		flee_t -= dt
+		if flee_t <= 0.0:
+			set_behavior(base_behavior, false)
 	vel.x = 0
 	vel.z = 0
 	var look_at: Actor = null
@@ -563,6 +584,25 @@ func animate(dt: float, is_player: bool) -> void:
 		if m.get("pose", "") != "zombie":
 			arm_r.rotation.x = -0.6 + sin(t * 5) * 0.35
 		hpitch += sin(t * 7) * 0.06
+	if crouch and not quad:
+		var drop: float = float(m.get("sitDrop", 0.4)) * 0.45
+		model.position.y -= drop
+		leg_l.rotation.x = minf(leg_l.rotation.x, 0.0) - 0.55
+		leg_r.rotation.x = minf(leg_r.rotation.x, 0.0) - 0.55
+		upper.rotation.x += 0.32
+		hpitch -= 0.25
+	if attack_t > 0.0:
+		attack_t = maxf(attack_t - dt, 0.0)
+		var k := 1.0 - attack_t / ATTACK_TIME
+		# Wind up over the shoulder, then slash down and across.
+		var swing := -2.6 + smoothstep(0.15, 0.6, k) * 3.4
+		arm_r.rotation = Vector3(swing, 0, -0.35 + smoothstep(0.2, 0.6, k) * 0.6)
+		upper.rotation.y = sin(k * PI) * 0.45
+		upper.rotation.x += sin(k * PI) * 0.12
+	if hurt_t > 0.0:
+		hurt_t = maxf(hurt_t - dt, 0.0)
+		upper.rotation.x -= sin(hurt_t / 0.35 * PI) * 0.35
+		hpitch -= 0.3 * hurt_t
 	var cape: Node3D = m.get("cape")
 	if cape:
 		cape.rotation.x = 0.14 + amt * 0.5 + sin(t * 3) * 0.03
@@ -585,6 +625,37 @@ func _tick_bubble(dt: float) -> void:
 			if is_instance_valid(bubble):
 				bubble.queue_free()
 			bubble = null
+
+
+## Swing at whoever is in front; they flinch, get knocked back and react.
+func attack() -> void:
+	if attack_t > 0.0 or rig.is_empty():
+		return
+	attack_t = ATTACK_TIME
+	var fwd := Vector3(sin(yaw), 0, cos(yaw))
+	for b in studio.actors:
+		if b == self:
+			continue
+		var d: Vector3 = b.pos - pos
+		d.y = 0
+		var dist := d.length()
+		if dist < 1.8 and (dist < 0.4 or d.normalized().dot(fwd) > 0.35):
+			b.on_hit(self)
+
+
+func on_hit(from: Actor) -> void:
+	hurt_t = 0.35
+	var push := pos - from.pos
+	push.y = 0
+	if push.length() > 0.01:
+		push = push.normalized() * 5.0
+	vel = Vector3(push.x, 3.5, push.z)
+	knock_t = 0.25
+	if studio.player != self:
+		say(["Ow!", "Hey!", "Ouch!", "What was that for?!"][randi() % 4], 1.6)
+		if base_behavior in ["idle", "wander", "talk", "sit", "dance", "wave", "gather"] and App.sim_randf() < 0.5:
+			set_behavior("flee", false)
+			flee_t = 4.0
 
 
 func to_dict(is_player: bool) -> Dictionary:

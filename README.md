@@ -1,6 +1,8 @@
 # GameScene Studio
 
 An offline 3D studio for making game-style animated videos (machinima). You build a scene, place characters, give them behaviours and lines, set up cameras and export a video. Built with Godot 4.7 and GDScript, with no network use at all. 
+See [CHANGELOG.md](CHANGELOG.md) for what's supported (styles, import formats, rig conventions, export options, controls) and what changed in each version.
+
 ## Run
 
 ```sh
@@ -26,8 +28,8 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_voxel` | Blocks, atlas, the 5 world generators, rays, save round trip |
 | `test_terrain` | Every prop, world generation, picking, collisions, save round trip |
 | `test_rigs` | Every character preset in every style, random looks, skins |
-| `test_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- test_perf anime`) |
-| `test_look` | Needs a window: renders a few views of one style to `user://look/` for a visual check (`-- test_look anime`) |
+| `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
+| `look_scene` | Needs a window: renders a few views of one style to `user://look/` for a visual check (`-- look_scene anime`) |
 
 The smoke run builds each style and saves screenshots (third person, cinematic, sunset, night, weather, a panel) to `user://smoke/`. It also exports a short two-shot film per style.
 
@@ -48,7 +50,14 @@ src/io/              ProjectStore: versioned JSON saves, import/export, web-save
 src/ui/              Home, Hud, Sheets (panels), UIK (widgets), Icons, IconStudio (thumbnails)
 src/shaders/         sky, toon, outline, flat, terrain, water, grass, bubble
 legacy/              the original single-file web build, kept for reference
+assets/              bundled CC0 ground textures (see assets/CREDITS.md)
 ```
+
+## Worlds and imported assets
+
+Worlds are 80 m × 80 m (about 2.8× the old 48 m area) and stay bounded. Scenes saved at the old size open centred in the bigger world.
+
+Use **Add → Objects → Import** to bring in trees, rocks or whole asset packs (.glb, .gltf or .fbx, several files at once). Imports are stored as self-contained .glb files in `user://assets/props/` and are embedded in exported project files. In the anime style they get cel shading, and leaves get alpha cut-out and wind. Free CC0 packs that work well include Quaternius's Stylized Nature MegaKit (itch.io).
 
 ## Project files
 

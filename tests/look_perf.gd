@@ -1,6 +1,6 @@
 extends Node
 ## Frame-time breakdown for one style (needs a window):
-##   godot --path . res://tests/runner.tscn -- test_perf anime
+##   godot --path . res://tests/runner.tscn -- look_perf anime
 
 
 func _measure() -> String:
