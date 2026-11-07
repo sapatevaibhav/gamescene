@@ -1,4 +1,4 @@
-extends SceneTree
+extends Node
 
 const KEYS := ["root", "model", "upper", "head", "hc", "armL", "armR", "legL", "legR", "headH", "height", "sitDrop", "kind", "scale"]
 
@@ -24,7 +24,7 @@ func _count(n: Node) -> int:
 		c += _count(ch)
 	return c
 
-func _init() -> void:
+func _ready() -> void:
 	var bad := 0
 	var total := 0
 	for style in ["blocky", "anime", "tactical", "lowpoly"]:
@@ -46,4 +46,4 @@ func _init() -> void:
 	print("validate 40x40: ", Rigs.validate_skin(Image.create_empty(40, 40, false, Image.FORMAT_RGBA8)))
 	print("validate ok: '", Rigs.validate_skin(img), "'")
 	print("RIGS built=%d problems=%d" % [total, bad])
-	quit(1 if bad else 0)
+	get_tree().quit(1 if bad else 0)

@@ -340,7 +340,7 @@ func update_npc(dt: float) -> void:
 			# Walk a loop of four points around the spot the actor was placed.
 			if target.is_empty():
 				var idx := int(wait) % 4 if wait >= 0 else 0
-				var off := [Vector2(3, 0), Vector2(0, 3), Vector2(-3, 0), Vector2(0, -3)][idx]
+				var off: Vector2 = [Vector2(3, 0), Vector2(0, 3), Vector2(-3, 0), Vector2(0, -3)][idx]
 				target = {"x": clampf(home.x + off.x, 1.5, size - 1.5), "z": clampf(home.z + off.y, 1.5, size - 1.5), "t": 10.0, "i": idx}
 			else:
 				target["t"] -= dt
@@ -351,7 +351,7 @@ func update_npc(dt: float) -> void:
 		"gather":
 			var gp: Vector3 = studio.gather_point()
 			var d := Vector2(gp.x - pos.x, gp.z - pos.z).length()
-			var ring := 1.2 + 0.25 * studio.count_behavior("gather")
+			var ring: float = 1.2 + 0.25 * studio.count_behavior("gather")
 			if d > ring:
 				steer(gp.x, gp.z, 2.2, dt)
 			else:

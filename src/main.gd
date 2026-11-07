@@ -39,7 +39,7 @@ func _ready() -> void:
 	var root := Control.new()
 	root.name = "UIRoot"
 	root.theme = theme
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
 
@@ -408,7 +408,7 @@ func _touch(e: InputEvent) -> void:
 	if not _ptrs.has(d.index):
 		return
 	var p: Dictionary = _ptrs[d.index]
-	var delta := d.position - p["pos"]
+	var delta: Vector2 = d.position - p["pos"]
 	p["pos"] = d.position
 	p["moved"] = maxf(p["moved"], d.position.distance_to(p["start"]))
 	match p["role"]:
@@ -454,7 +454,8 @@ func _smoke() -> void:
 	var dir := "user://smoke/"
 	DirAccess.make_dir_recursive_absolute(dir)
 	var log := []
-	await get_tree().process_frame
+	for i in 40:
+		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(dir + "00-home.png")
 	for style in Styles.STYLE_ORDER:
 		var t0 := Time.get_ticks_msec()
@@ -505,6 +506,10 @@ func _smoke() -> void:
 			log.append("%s: film %s (%d frames)" % [style, studio.recorder.out_path, studio.recorder.frames])
 		App.settings["frame"] = "full"
 		await _go_home()
+		for i in 10:
+			await get_tree().process_frame
+	for i in 30:
+		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(dir + "99-home.png")
 	var f := FileAccess.open(dir + "log.txt", FileAccess.WRITE)
 	f.store_string("\n".join(PackedStringArray(log)))

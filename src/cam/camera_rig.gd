@@ -234,7 +234,7 @@ func _update_dof() -> void:
 	if not on:
 		return
 	var focus := 6.0
-	var a := cine_target() if mode == "cine" else studio.player
+	var a: Actor = cine_target() if mode == "cine" else studio.player
 	if a:
 		focus = global_position.distance_to(Vector3(a.pos.x, a.head_y(), a.pos.z))
 	attrs.dof_blur_far_distance = focus + 3.0

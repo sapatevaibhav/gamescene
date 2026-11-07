@@ -1,6 +1,6 @@
-extends SceneTree
+extends Node
 
-func _initialize() -> void:
+func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	Blocks.init()
 	print("blocks: ", Blocks.BLOCKS.size() - 1, " builtin_count=", Blocks.BUILTIN_COUNT, " tiles=", Blocks.BUILTIN_TILES, " init_ms=", Time.get_ticks_msec() - t0)
@@ -15,7 +15,7 @@ func _initialize() -> void:
 		big.blit_rect(im, Rect2i(0, 0, 36, 36), Vector2i(((i - 1) % 16) * 36, ((i - 1) / 16) * 36))
 	big.save_png("user://test-icons.png")
 	var w := VoxelWorld.new()
-	root.add_child(w)
+	add_child(w)
 	for k in ["meadow", "desert", "snow", "plaza", "flat"]:
 		t0 = Time.get_ticks_msec()
 		w.generate(k, 42)
@@ -35,7 +35,7 @@ func _initialize() -> void:
 	var json := JSON.stringify(d)
 	var before := w.data.duplicate()
 	var w2 := VoxelWorld.new()
-	root.add_child(w2)
+	add_child(w2)
 	w2.load_data(JSON.parse_string(json))
 	print("roundtrip equal: ", w2.data == before, " customs=", Blocks.BLOCKS.size() - Blocks.BUILTIN_COUNT, " rle_len=", str(d["rle"]).length())
 	var hit := w.ray(Vector3(24.5, 20, 24.5), Vector3(0, -1, 0), 60)
@@ -48,4 +48,4 @@ func _initialize() -> void:
 	print("legacy remap ok")
 	w.animate(0.016, 1.0)
 	print("lights: ", w._lights.size())
-	quit()
+	get_tree().quit()

@@ -277,7 +277,7 @@ static func tile(icon: String, title: String, sub: String, on: bool, cb: Callabl
 	b.add_theme_stylebox_override("pressed", box(RAISE_HI, 18, TAPE, 2))
 	var v := vbox(4)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = px(14)
 	v.offset_top = px(12)
 	v.offset_right = -px(10)
@@ -320,7 +320,7 @@ static func pick(tex: Texture2D, caption: String, on: bool, cb: Callable, pixel 
 	b.add_theme_stylebox_override("pressed", box(RAISE_HI, 16, TAPE, 2))
 	var v := vbox(3)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.offset_top = px(8)
 	v.offset_bottom = -px(6)
 	v.offset_left = px(4)

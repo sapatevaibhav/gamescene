@@ -1,4 +1,4 @@
-extends SceneTree
+extends Node
 ## Core checks: seeded RNG matches the web build, RLE round trip, project
 ## migration, and a headless simulation of every style with NPC behaviours.
 
@@ -13,7 +13,7 @@ func ok(cond: bool, what: String) -> void:
 		print("ok   ", what)
 
 
-func _init() -> void:
+func _ready() -> void:
 	# mulberry32(42) first values from the JS implementation.
 	var r := U.rng(42)
 	var a := r.next()
@@ -25,16 +25,16 @@ func _init() -> void:
 	ok(m.get("style") == "blocky" and int(m.get("v")) == 3, "migrate blockset v1")
 	var m2 := ProjectStore.migrate({"app": "gamescene", "v": 2, "style": "anime", "world": {}, "settings": {"quality": "high", "fog": 80}})
 	ok(m2["shots"] == [] and not m2["settings"].has("quality") and m2["settings"]["fog"] == 80, "migrate web v2")
-	await process_frame
+	await get_tree().process_frame
 	await _sim()
 	print("FAILS: ", fails)
-	quit(1 if fails else 0)
+	get_tree().quit(1 if fails else 0)
 
 
 func _sim() -> void:
 	var studio := Studio.new()
-	root.add_child(studio)
-	await process_frame
+	add_child(studio)
+	await get_tree().process_frame
 	for style in Styles.STYLE_ORDER:
 		await studio.new_scene(style)
 		studio.in_studio = true

@@ -51,11 +51,11 @@ var down_held := false
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sheets = Sheets.new(self)
 
-	frame_guide.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame_guide.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame_guide.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(frame_guide)
 
@@ -102,7 +102,7 @@ func _ready() -> void:
 	slate.tooltip_text = "Record a take (R)"
 	var sh := UIK.hbox(8)
 	sh.alignment = BoxContainer.ALIGNMENT_CENTER
-	sh.set_anchors_preset(Control.PRESET_FULL_RECT)
+	sh.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	sh.offset_top = UIK.px(12)
 	sh.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var dot_sb := StyleBoxFlat.new()
@@ -215,12 +215,12 @@ func _ready() -> void:
 	countdown.add_theme_constant_override("shadow_offset_y", 6)
 	countdown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	countdown.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	countdown.set_anchors_preset(Control.PRESET_FULL_RECT)
+	countdown.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	countdown.visible = false
 	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(countdown)
 
-	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(modal)
 
@@ -312,8 +312,15 @@ func layout() -> void:
 		var h := vs.y * 0.6
 		sheet.position = Vector2(8, vs.y - h - dock.size.y - m * 2)
 		sheet.size = Vector2(vs.x - 16, h)
-	toast_panel.size = Vector2(minf(vs.x * 0.92, UIK.px(460)), 0)
-	toast_panel.size = toast_panel.get_combined_minimum_size().max(Vector2(minf(vs.x * 0.92, UIK.px(460)), 0))
+	var tw := minf(vs.x * 0.92, UIK.px(460))
+	var font := toast_label.get_theme_font("font")
+	var fs := toast_label.get_theme_font_size("font_size")
+	var text_w := font.get_string_size(toast_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + UIK.px(30)
+	tw = minf(tw, maxf(text_w, UIK.px(120)))
+	toast_label.custom_minimum_size.x = tw - UIK.px(24)
+	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if text_w > tw else TextServer.AUTOWRAP_OFF
+	toast_panel.size = Vector2(tw, 0)
+	toast_panel.size = toast_panel.get_combined_minimum_size()
 	toast_panel.position = Vector2((vs.x - toast_panel.size.x) / 2, UIK.px(72))
 	frame_guide.queue_redraw()
 	for c in modal.get_children():
@@ -323,8 +330,15 @@ func layout() -> void:
 
 func _center(c: Control) -> void:
 	var vs := get_viewport_rect().size
+	c.size = Vector2(c.custom_minimum_size.x, 0)
 	c.size = c.get_combined_minimum_size()
 	c.position = (vs - c.size) / 2
+	# Wrapped labels only know their height after a layout pass.
+	await get_tree().process_frame
+	if is_instance_valid(c) and c.is_inside_tree():
+		c.size = Vector2(c.size.x, 0)
+		c.size = c.get_combined_minimum_size()
+		c.position = (vs - c.size) / 2
 
 
 # ---------------------------------------------------------------- per frame
@@ -399,7 +413,7 @@ func render_sheet() -> void:
 		return
 	var top: Array = view_stack[-1]
 	var scroll := sheet_scroll.scroll_vertical
-	var same := sheet.visible and sheet_title.has_meta("view") and sheet_title.get_meta("view") == top[0]
+	var same: bool = sheet.visible and sheet_title.has_meta("view") and sheet_title.get_meta("view") == top[0]
 	UIK.clear(sheet_body)
 	var title: String = sheets.render(top[0], top[1], sheet_body)
 	if title == "":

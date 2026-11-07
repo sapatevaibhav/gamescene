@@ -50,11 +50,11 @@ func _ready() -> void:
 	add_child(vp)
 	cam.current = true
 	vp.add_child(cam)
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vp.add_child(overlay)
 	fade.color = Color(0, 0, 0, 0)
-	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(fade)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.03, 0.04, 0.07, 0.62)
@@ -73,7 +73,7 @@ func _ready() -> void:
 	title_label.visible = false
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	title_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	title_label.add_theme_color_override("font_color", Color.WHITE)
 	title_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	title_label.add_theme_constant_override("shadow_offset_y", 4)
@@ -136,6 +136,7 @@ func start(size: Vector2i, rate: int, shots: Array = []) -> bool:
 	film = not shots.is_empty()
 	_shots = shots
 	_shot_i = -1
+	_shot_end = 0
 	total_frames = 0
 	for s in shots:
 		total_frames += int(round(float(s.get("dur", 4.0)) * fps))
@@ -147,7 +148,7 @@ func start(size: Vector2i, rate: int, shots: Array = []) -> bool:
 		out_path = dir + "/" + name + ".mp4"
 		var args := ["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % [size.x, size.y], "-r", str(fps), "-i", "-",
 			"-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out_path]
-		_ff = OS.execute_with_pipe(ff, args, false)
+		_ff = OS.execute_with_pipe(ff, args, true)
 		if _ff.is_empty():
 			ff = ""
 	if ff == "":
@@ -210,7 +211,7 @@ func _on_post_draw() -> void:
 	if not _ff.is_empty():
 		var pipe: FileAccess = _ff["stdio"]
 		pipe.store_buffer(img.get_data())
-		if pipe.get_error() != OK:
+		if not OS.is_process_running(int(_ff["pid"])):
 			App.toast("The video encoder stopped unexpectedly.")
 			cancel()
 			return
@@ -294,6 +295,8 @@ func screenshot(size: Vector2i) -> String:
 
 ## Small thumbnail for the home screen.
 func thumbnail() -> Image:
+	if DisplayServer.get_name() == "headless":
+		return null
 	_configure(Vector2i(480, 300))
 	sync_camera(studio.camera)
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE

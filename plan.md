@@ -1,21 +1,27 @@
 # GameScene Studio: plan to production
 
-## Where it stands today
+## Where it stands today (6 Nov 2026)
 
-Most of Phase 1 from your document is done, plus parts of Phases 2 and 3:
-- Four world styles, with blocks, objects and terrain editing.
-- Built-in characters, skin import and 3D model import (.glb and .vrm).
-- NPC behaviours, including chatting with speech bubbles.
-- Follow, first-person, free and cinematic cameras, with camera paths.
-- Mood presets, real-time recording and screenshots.
-- Offline saving.
+**The move to Godot 4.7 is done.** The web build is archived in `legacy/`, and everything it did now runs natively in Godot:
+- Four world styles: about 200 blocks, prefabs, terrain sculpting, and props for every style.
+- Characters: built-in presets, skin import, .glb/.vrm import, creatures and animals.
+- NPC behaviours with chat bubbles, plus patrol and gather.
+- Cameras: follow, first person, free, and cinematic shots and paths.
+- Moods, weather and the day/night cycle.
+- Screenshots, offline saving with migration of web saves, and undo/redo.
 
-The big missing pieces are:
-- the animation timeline
-- Shot mode with proper frame-by-frame export
-- audio
-- the desktop pro layout
-- packaging as installable apps
+**New since the web build:**
+- **Rendering:** real shadows, ambient occlusion, bloom, volumetric fog, a procedural sky, water and wind shaders, particle rain and snow with lightning, lights that switch on at night, depth of field, and four quality tiers.
+- **Script (Phase B simple mode):** timed cues for say, walk to and behaviours. Playback is deterministic and seeded from the scene start.
+- **Shot mode and real export (Phase C core):** off-screen rendering at a fixed timestep, at 720p to 4K, 16:9, 9:16 or 1:1, and 24, 30 or 60 fps. Includes a shot list with cuts, fades and title cards, burned-in subtitles, MP4 through ffmpeg, and an AVI fallback.
+- **Tests:** headless suites plus a rendered smoke run (see README).
+
+**Still open:**
+- **Audio:** Phase D.
+- **Timeline mode:** keyframes and the track UI.
+- **Android, iOS and desktop export presets:** Phase I, now through Godot export templates rather than Capacitor or Tauri.
+- **The desktop pro layout:** Phase H.
+- **Export reliability:** pausing on heat and resuming.
 
 ## Step 0: one architecture decision
 

@@ -110,8 +110,8 @@ static func hash2(x: float, z: float, s: float) -> float:
 
 
 static func noise2(x: float, z: float, s: float) -> float:
-	var ix := floor(x)
-	var iz := floor(z)
+	var ix := floorf(x)
+	var iz := floorf(z)
 	var fx := x - ix
 	var fz := z - iz
 	var sx := fx * fx * (3.0 - 2.0 * fx)
@@ -768,12 +768,34 @@ func _ray_terrain(o: Vector3, d: Vector3, max_d: float) -> float:
 
 ## Shortens a camera boom so it stays above the ground.
 func clip_cam(from: Vector3, dir: Vector3, dist: float) -> float:
+	var out := dist
 	for k in range(1, 11):
 		var d := dist * k / 10.0
 		var p := from + dir * d
 		if p.y < terrain_h(p.x, p.z) + 0.3:
-			return maxf(0.5, dist * (k - 1) / 10.0)
-	return dist
+			out = maxf(0.5, dist * (k - 1) / 10.0)
+			break
+	# Keep the camera out of buildings (solid props without trunk colliders).
+	dir = dir.normalized()
+	for pr in props:
+		if pr.get("cols") != null or float(pr.h) * float(pr.s) < 1.6:
+			continue
+		var n: Node3D = pr.node
+		if Vector2(n.global_position.x - from.x, n.global_position.z - from.z).length() > out + 12.0:
+			continue
+		var xf := n.global_transform
+		var inv := xf.affine_inverse()
+		var lo := inv * from
+		var ld := inv.basis * dir
+		var bb: AABB = pr.bb
+		if bb.has_point(lo):
+			continue
+		var t := _ray_aabb(lo, ld, bb)
+		if t >= 0.0:
+			var wt := (xf * (lo + ld * t) - from).length()
+			if wt < out:
+				out = maxf(0.5, wt - 0.35)
+	return out
 
 
 # ---------------------------------------------------------------- animation

@@ -97,7 +97,7 @@ func v_addChar(_a, b: VBoxContainer) -> String:
 	else:
 		char_group = "people"
 	var f := _picks(b)
-	var vox := studio.world.is_voxel
+	var vox: bool = studio.world.is_voxel
 	for k in presets:
 		var p: Dictionary = presets[k]
 		if groups.size() > 1 and p.get("group", "people") != char_group:
@@ -264,7 +264,7 @@ func v_cast(_a, b: VBoxContainer) -> String:
 		row.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 16, UIK.LINE))
 		row.add_theme_stylebox_override("hover", UIK.box(UIK.RAISE_HI, 16, UIK.LINE))
 		var h := UIK.hbox(12)
-		h.set_anchors_preset(Control.PRESET_FULL_RECT)
+		h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		h.offset_left = UIK.px(8)
 		h.offset_right = -UIK.px(10)
 		h.mouse_filter = Control.MOUSE_FILTER_IGNORE

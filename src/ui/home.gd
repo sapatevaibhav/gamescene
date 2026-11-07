@@ -14,12 +14,12 @@ var _scroll := ScrollContainer.new()
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
 	bg.color = UIK.BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(_scroll)
 	var center := MarginContainer.new()
@@ -94,7 +94,7 @@ func _style_card(k: String) -> Control:
 	b.add_theme_stylebox_override("hover", UIK.box(UIK.RAISE_HI, 20, UIK.TAPE, 2))
 	b.add_theme_stylebox_override("pressed", UIK.box(UIK.RAISE_HI, 20, UIK.TAPE, 2))
 	var v := UIK.vbox(2)
-	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ph := Panel.new()
 	ph.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -116,7 +116,7 @@ func _style_card(k: String) -> Control:
 	tr.texture = icons.request("home|" + k, func(): return Rigs.build({"preset": preset}, k)["root"], "char")
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ph.add_child(tr)
 	v.add_child(ph)
@@ -148,7 +148,7 @@ func _recent_tile(p: Dictionary) -> Control:
 	b.add_theme_stylebox_override("normal", UIK.box(UIK.RAISE, 16, UIK.LINE))
 	b.add_theme_stylebox_override("hover", UIK.box(UIK.RAISE_HI, 16, UIK.TAPE, 2))
 	var v := UIK.vbox(2)
-	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tr := TextureRect.new()
 	tr.texture = ProjectStore.thumb(id)

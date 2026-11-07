@@ -1,6 +1,6 @@
-extends SceneTree
+extends Node
 
-func _init() -> void:
+func _ready() -> void:
 	var fails := 0
 	for style in ["anime", "tactical", "lowpoly"]:
 		Kit.shade = Styles.get_style(style).shade
@@ -15,7 +15,7 @@ func _init() -> void:
 						print("FAIL tiny bounds ", style, " ", key, bb); fails += 1
 					n.free()
 		var w := TerrainWorld.new()
-		root.add_child(w)
+		add_child(w)
 		w.new_world(style)
 		print(style, ": props=", w.props.size(), " grass=", w._grass_mmi.multimesh.visible_instance_count if w._grass_mmi.multimesh else 0)
 		if w.props.size() < 20:
@@ -42,7 +42,7 @@ func _init() -> void:
 		var d := w.serialize()
 		var js := JSON.stringify(d)
 		var w2 := TerrainWorld.new()
-		root.add_child(w2)
+		add_child(w2)
 		w2.load_data(JSON.parse_string(js), style)
 		if w2.props.size() != w.props.size() or absf(w2.terrain_h(10.3, 20.7) - w.terrain_h(10.3, 20.7)) > 0.02:
 			print("FAIL roundtrip"); fails += 1
@@ -52,4 +52,4 @@ func _init() -> void:
 		w.queue_free()
 		w2.queue_free()
 	print("DONE fails=", fails)
-	quit(fails)
+	get_tree().quit(fails)

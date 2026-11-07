@@ -63,6 +63,10 @@ func _pump() -> void:
 		_stage.add_child(node)
 		_frame(node, job[2])
 		render_target_update_mode = SubViewport.UPDATE_ONCE
+		if DisplayServer.get_name() == "headless":
+			_stage.remove_child(node)
+			node.queue_free()
+			continue
 		await RenderingServer.frame_post_draw
 		var img := get_texture().get_image()
 		if img:

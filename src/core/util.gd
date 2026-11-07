@@ -163,7 +163,11 @@ static func image_from_data_url(src: String) -> Image:
 	var comma := src.find(",")
 	if src.begins_with("data:") and comma >= 0:
 		b64 = src.substr(comma + 1)
+	if b64.length() < 8:
+		return null
 	var buf := Marshalls.base64_to_raw(b64)
+	if buf.is_empty():
+		return null
 	var img := Image.new()
 	if img.load_png_from_buffer(buf) != OK:
 		if img.load_jpg_from_buffer(buf) != OK:

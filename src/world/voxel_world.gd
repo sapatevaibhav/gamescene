@@ -191,8 +191,8 @@ static func _hash2(x: float, z: float, s: float) -> float:
 
 
 static func _noise2(x: float, z: float, s: float) -> float:
-	var ix := floor(x)
-	var iz := floor(z)
+	var ix := floorf(x)
+	var iz := floorf(z)
 	var fx := x - ix
 	var fz := z - iz
 	var sx := fx * fx * (3.0 - 2.0 * fx)
