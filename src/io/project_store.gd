@@ -167,4 +167,9 @@ static func migrate(d: Dictionary) -> Dictionary:
 			st.erase(k)
 		d["settings"] = st
 		d["v"] = 3
+	if int(d.get("v", 3)) < 4:
+		# v4 adds timeline keyframes.
+		if not d.has("keys"):
+			d["keys"] = {}
+		d["v"] = 4
 	return d

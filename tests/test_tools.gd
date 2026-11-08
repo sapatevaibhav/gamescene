@@ -25,7 +25,7 @@ func _ready() -> void:
 	cam.mode = "free"
 	cam.free_pos = Vector3(10.5, 20, 10.5)
 	cam.yaw = 0.0
-	cam.pitch = 1.5
+	cam.pitch = PI / 2 - 0.0005  # straight down, so hills never catch the ray
 	cam.update_camera(0.016)
 	var w: VoxelWorld = studio.world
 	var gy := w.ground_y(10.5, 10.5)

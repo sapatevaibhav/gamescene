@@ -47,6 +47,8 @@ var last_line := ""
 ## Directed walk target from a timeline cue ({} when none).
 var goto := {}
 var crouch := false
+## Driven by timeline keyframes this tick (behaviours paused).
+var keyed := false
 ## Seconds left in the current attack swing (0 = not attacking).
 var attack_t := 0.0
 ## Seconds left of a hit flinch.

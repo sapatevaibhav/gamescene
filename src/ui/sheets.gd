@@ -422,9 +422,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	thumb.custom_minimum_size = Vector2(UIK.px(72), UIK.px(72))
 	hero.add_child(thumb)
 	var name_edit := UIK.line_edit(a.name, "Name", func(t: String):
-		a.name = t.strip_edges().left(24) if t.strip_edges() != "" else "Someone"
-		a.refresh_tag()
-		studio.mark_dirty())
+		studio.rename_actor(a, t.strip_edges().left(24) if t.strip_edges() != "" else "Someone"))
 	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_edit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hero.add_child(name_edit)
@@ -503,9 +501,10 @@ const CUE_ACTIONS := [["say", "Say"], ["walkto", "Walk to"], ["runto", "Run to"]
 
 
 func v_script(_a, b: VBoxContainer) -> String:
-	b.add_child(UIK.para("Simple mode: who does what, when. Play runs the script from the scene start; recording and film export follow it too.", 13))
-	var top := UIK.hbox()
+	b.add_child(UIK.para("Simple mode: who does what, when. Play runs the script from the scene start; recording and film export follow it too. For keyframes and a camera track, open the timeline (T).", 13))
+	var top := UIK.flow(8)
 	top.add_child(UIK.btn("Play script", hud.play_script, true, "playtri"))
+	top.add_child(UIK.btn("Timeline", hud.toggle_timeline, false, "film"))
 	top.add_child(UIK.btn("Set scene start here", func():
 		studio.capture_start()
 		studio.mark_dirty()
@@ -722,7 +721,7 @@ func _gradient(a: Color, c: Color) -> Texture2D:
 
 # ---------------------------------------------------------------- film (record & shots)
 
-const SHOT_TYPES := [["orbit", "Orbit"], ["dolly", "Dolly"], ["crane", "Crane"], ["push", "Push in"], ["path", "Path"], ["third", "Follow"], ["first", "First person"]]
+const SHOT_TYPES := [["orbit", "Orbit"], ["dolly", "Dolly"], ["crane", "Crane"], ["push", "Push in"], ["path", "Path"], ["third", "Follow"], ["first", "First person"], ["keys", "Keyframed"]]
 
 
 func v_film(_a, b: VBoxContainer) -> String:
@@ -811,7 +810,7 @@ func v_shot(i: Variant, b: VBoxContainer) -> String:
 	var cur := str(s.get("shot", "orbit")) if s.get("mode", "cine") == "cine" else str(s.get("mode"))
 	for st in SHOT_TYPES:
 		chips.add_child(UIK.chip(st[1], cur == st[0], func():
-			if st[0] in ["third", "first"]:
+			if st[0] in ["third", "first", "keys"]:
 				s["mode"] = st[0]
 			else:
 				s["mode"] = "cine"
@@ -819,6 +818,9 @@ func v_shot(i: Variant, b: VBoxContainer) -> String:
 			studio.mark_dirty()
 			_rerender()))
 	b.add_child(chips)
+	if cur == "keys":
+		var n: int = studio.timeline.track(Timeline.CAM).size()
+		b.add_child(UIK.para("Follows the camera keys from the timeline (%d key%s) at the scene clock." % [n, "" if n == 1 else "s"], 12))
 	if cur == "path":
 		var n: int = (s.get("points", []) as Array).size()
 		b.add_child(UIK.para("Uses %d path point%s copied from the camera panel." % [n, "" if n == 1 else "s"], 12))

@@ -1,142 +1,154 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (6 Nov 2026)
+## Where it stands today (8 Nov 2026, v0.10.0)
 
-**The move to Godot 4.7 is done.** The web build is archived in `legacy/`, and everything it did now runs natively in Godot:
-- Four world styles: about 200 blocks, prefabs, terrain sculpting, and props for every style.
-- Characters: built-in presets, skin import, .glb/.vrm import, creatures and animals.
-- NPC behaviours with chat bubbles, plus patrol and gather.
-- Cameras: follow, first person, free, and cinematic shots and paths.
-- Moods, weather and the day/night cycle.
-- Screenshots, offline saving with migration of web saves, and undo/redo.
+**The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
-**New since the web build:**
-- **Rendering:** real shadows, ambient occlusion, bloom, volumetric fog, a procedural sky, water and wind shaders, particle rain and snow with lightning, lights that switch on at night, depth of field, and four quality tiers.
-- **Script (Phase B simple mode):** timed cues for say, walk to and behaviours. Playback is deterministic and seeded from the scene start.
-- **Shot mode and real export (Phase C core):** off-screen rendering at a fixed timestep, at 720p to 4K, 16:9, 9:16 or 1:1, and 24, 30 or 60 fps. Includes a shot list with cuts, fades and title cards, burned-in subtitles, MP4 through ffmpeg, and an AVI fallback.
-- **Tests:** headless suites plus a rendered smoke run (see README).
+**Done:**
+- **Worlds:** four styles (blocky voxel, anime fantasy, tactical, low-poly), 80 × 80 m bounded worlds, about 190 blocks, prefabs, terrain sculpting, CC0 ground textures and props for every style.
+- **Characters:** built-in presets, monsters and animals, skin PNG import, and `.glb`, `.vrm`, `.gltf` and `.fbx` import with bone matching for 12 rig conventions and rig-aware sizing.
+- **Environment import:** `.glb`, `.gltf` and `.fbx` objects with cel shading, leaf cut-outs, wind and inferred collision.
+- **Behaviours:** idle, wander, chat, dance, wave, sit, follow, chase, flee, gather and patrol, with chat bubbles.
+- **Controls:** sprint, crouch, jump and climb, attack with knockback, and a per-character menu.
+- **Cameras:** follow, first person, free, cinematic orbit, dolly, crane and push-in, user camera paths, and camera shake.
+- **Rendering:** real shadows, ambient occlusion, bloom, volumetric fog, a procedural sky, water and wind shaders, rain and snow with lightning, a day/night cycle with lamps, depth of field, cel shading and four quality tiers.
+- **Script (simple mode):** timed cues for say, walk to and behaviours, with deterministic seeded playback.
+- **Timeline mode:** camera and character tracks, keyframes with easing, scrubbing that replays the scene, loop.
+- **Shot mode and export:** an off-screen fixed-timestep renderer at 720p to 4K, in 16:9, 9:16 or 1:1, at 24, 30 or 60 fps. Shot list with cuts, fades and title cards, burned-in subtitles, MP4 through ffmpeg and an AVI fallback.
+- **Projects:** versioned JSON with migration from web saves, undo/redo, autosave, import and export.
+- **Tests:** headless suites plus rendered visual checks (see README).
 
-**Still open:**
-- **Audio:** Phase D.
-- **Timeline mode:** keyframes and the track UI.
-- **Android, iOS and desktop export presets:** Phase I, now through Godot export templates rather than Capacitor or Tauri.
-- **The desktop pro layout:** Phase H.
-- **Export reliability:** pausing on heat and resuming.
+## Architecture (decided)
 
-## Step 0: one architecture decision
+- **Engine:** Godot 4.x. Forward+ on desktop, the Mobile renderer on phones.
+- **Language:** GDScript, with GDExtension (C++) only if a hot path needs it.
+- **Code layout:** `src/` is split into `core`, `world`, `chars`, `cam`, `fx`, `rec`, `io` and `ui`.
+- **Project format:** a versioned JSON manifest plus asset files, with a migration step on every load. Projects stay portable between phone and desktop.
+- **Storage:** files under `user://`, with no database.
+- **Video export:** off-screen `SubViewport` rendering at a fixed timestep, encoded by ffmpeg. On phones, a bundled encoder or the platform's native encoder is used.
+- **Distribution:** Godot export templates for Android, iOS, Windows, macOS and Linux.
+- **Network:** fully offline, with no accounts, no telemetry and no online asset fetching.
 
-We need to switch to godot now else we will reach a point where we cannot switch the architecture we need to focus on below pointers too.
-- It already works on phones and desktop.
-- It matches our requirement of full 3d game engine.
-- Video encoder (WebCodecs) that solves the export problem the document worried about: rendering frame by frame at a chosen resolution, independent of the screen.
+## Roadmap by version
 
-Ship it as an installable offline app for Android and iOS and windows, macos, linux for desktop. 
+| Version | Focus | Status |
+|---|---|---|
+| 0.5–0.9 | Godot port, rendering, imports, simple script, export core | Done |
+| 0.10 | Timeline and keyframes (Phase B) | Done |
+| **0.11** | **Director mode and more actions (Phase B and E)** | **Next** |
+| 0.12 | Audio and dialogue (Phase D) | |
+| 0.13 | Export reliability and extras (Phase C) | |
+| 0.14 | VRM spring bones, blinking and the animation library (Phase E core) | |
+| 0.15 | Packaging for Android, iOS and desktop (Phase I) | |
+| 0.16 | Templates, onboarding, credits and licence (Phases J and K) | |
+| 1.0 | QA on the device matrix and launch (Phase K) | |
 
-## Phase A: Foundation hardening (about 4–6 weeks)
+## Phase A: Foundation (done)
 
-The single 2,800-line file won't survive more features, so this comes first.
-- **Restructure the code.** Move to TypeScript with Vite and split into modules: scene, characters, world, camera, recording and UI.
-- **Versioned project format.** Every save gets a schema version and an automatic migration path, so old projects always open.
-- **Move all storage to IndexedDB.** localStorage caps at around 5 MB, and that will break once scenes include models and audio.
-- **Undo and redo.** Wrap every edit (blocks, props, cast, settings) in a command stack.
-- **Crash recovery.** Snapshot autosaves so a crash or killed tab never loses more than a few seconds.
-- **Device tiers.** Detect GPU and memory at startup, then set default quality and caps on cast size, object count and shadows.
-- **Automated tests.** Visual snapshot tests on a real GPU in CI, plus unit tests for the project format and behaviours.
+- [x] Split the code into modules: core, world, chars, cam, fx, rec, io and ui.
+- [x] Versioned project format with automatic migration.
+- [x] Storage in `user://` files instead of browser storage.
+- [x] Undo and redo through a command stack.
+- [x] Autosave for crash recovery.
+- [x] Device tiers that pick a default quality level, with FSR on integrated GPUs.
+- [x] Headless test suites and rendered visual checks.
+- [ ] Run the tests in CI on a real GPU.
 
-## Phase B: Animation studio (about 6–8 weeks)
+## Phase B: Animation studio
 
-This is the core of your document's Module D.
-- **Deterministic playback first.** Use a fixed timestep and seeded randomness, so the same scene plays identically on every take. Without this, re-recording a shot gives a different result.
-- **Simple mode.** Your table of character, action, start time and duration, edited as rows on a phone.
-- **Timeline mode.** One track per character and one camera track. Blocks for actions, "walk to" waypoints and dialogue lines, with scrubbing, play/pause and looping.
-- **Keyframes.** Position and rotation for characters and props, and camera keyframes with easing curves.
-- **Director mode.** Pause the scene, reposition actors, change actions and resume.
+- [x] Deterministic playback with a fixed timestep and seeded randomness.
+- [x] Simple mode: rows of character, action, start time and duration.
+- [x] **Timeline mode (0.10).** One track per character and one camera track. Blocks for actions, walk-to targets and dialogue. Scrubbing, play/pause and looping.
+- [x] **Keyframes (0.10).** Position and rotation for characters, and camera keyframes with easing curves.
+- [ ] **Director mode (0.11).** Pause the scene, reposition actors, change their actions and resume.
 
-## Phase C: Shot mode and real export (about 5–7 weeks)
+## Phase C: Shot mode and export
 
-- **Shots.** Several shots per scene, each with its own camera, time range and frame. They join into one video with cuts or simple transitions.
-- **Offline rendering.** Render frame by frame at 720p, 1080p, 1440p or 4K, depending on what the device can handle. Encode with WebCodecs to MP4.
-- **Export reliability.** Progress, cancel and resume. Pause when the device gets hot.
-- **Export extras.** Burned-in subtitles, green-screen background, transparent export where supported, and screenshot presets.
-- **Recording fallback.** Keep the current real-time recording for browsers without WebCodecs, such as older Safari.
+- [x] Several shots per scene, joined with cuts, fades and title cards.
+- [x] Off-screen frame-by-frame rendering from 720p to 4K, encoded to MP4 with ffmpeg and an AVI fallback.
+- [x] Burned-in subtitles and screenshots.
+- [ ] Export reliability: progress, cancel and resume. Pause when the device gets hot.
+- [ ] Green-screen background and transparent export where the codec allows it.
+- [ ] Encoding on phones, either through bundled ffmpeg or the platform's native encoder.
 
-## Phase D: Audio and dialogue (about 3–4 weeks)
+## Phase D: Audio and dialogue
 
-- Background music and imported audio, on an audio track in the timeline.
-- A bundled sound-effects pack: footsteps by surface, ambience, UI sounds. Use only free-licensed sounds.
-- Subtitle styling for the text dialogue you already like.
-- Characters' mouths move while their speech bubble is showing.
-- Everything mixes into the exported video.
+- [ ] Background music and imported audio, on an audio track in the timeline.
+- [ ] A bundled pack of free-licensed sound effects: footsteps by surface, ambience and UI sounds.
+- [ ] Subtitle styling. Dialogue stays as text bubbles, with no voice audio required.
+- [ ] Characters' mouths move while their speech bubble shows.
+- [ ] Audio mixed into the exported video.
 
-## Phase E: Characters and assets (about 6–8 weeks)
+## Phase E: Characters and assets
 
-- **Full VRM support:**
-  - VRM's own toon shading (MToon)
-  - hair and cloth physics (spring bones)
-  - expressions and blinking
-  - the twist constraints that broke the sample's sleeves
-- **Animation library.** Import Mixamo-style clips and retarget them onto any humanoid. Add crouch, run, sleep, attack, point, laugh, cry and celebrate.
-- **Pose library.** Save and reuse poses.
-- **Attachment points.** Weapons and props held in hands or worn on the back.
-- **More import types.** Characters you can save and reuse, per-character size, and imported .glb files as scene objects, not just characters.
+- [x] Import `.glb`, `.vrm`, `.gltf` and `.fbx` characters, with bone matching and rig-aware sizing.
+- [x] Import environment objects.
+- [ ] Full VRM support: MToon shading, spring bones for hair and cloth, expressions and blinking.
+- [ ] Animation library: retarget Mixamo-style clips. Add sleep, attack, point, laugh, cry and celebrate.
+- [ ] A pose library to save and reuse poses.
+- [ ] Attachment points for held weapons and props.
+- [ ] Characters saved as reusable presets, with a size setting per character.
 
-## Phase F: Behaviour system (about 3–4 weeks)
+## Phase F: Behaviour system
 
-- New behaviours: gather, socialise in groups, follow another character, patrol a path, and flee from monsters (not just from you).
-- Triggers such as "when the player enters this area" or "when an object is touched".
-- Relationship settings (friendly, rival, scared) that change how characters react to each other.
+- [x] Wander, chat, follow, chase, flee, gather and patrol.
+- [ ] Socialising in small groups, reacting to nearby events, and fleeing from monsters as well as the player.
+- [ ] Triggers such as "when someone enters this area" or "when an object is touched".
+- [ ] Relationship settings (friendly, rival, scared) that change how characters react to each other.
 
-## Phase G: Environment and visual polish (about 5–6 weeks)
+## Phase G: Environment and visual polish
 
-- **Effects pipeline.** Bloom, depth of field, motion blur and light shafts, each tied to quality tiers.
-- **Particles.** Fire, falling leaves, magic sparkles and dust, plus wind that affects grass and trees.
-- **More content per style.** Additional starter templates (indoor rooms, forest, mountain pass, night city) and a larger prefab library.
-- **Better terrain tools.** Paint brushes, a water tool and a tree-scatter brush.
-- **Bigger blocky worlds.** Chunked voxel worlds with level of detail.
-- **Camera collisions.** Stop the camera clipping through houses and props.
+- [x] Bloom, depth of field, light shafts, rain, snow, falling leaves and wind, each tied to quality tiers.
+- [x] Camera collision for the cinematic camera.
+- [ ] Motion blur, fire, magic sparkles and dust.
+- [ ] More starter templates: indoor rooms, forest, mountain pass and night city.
+- [ ] Terrain paint brushes, a water tool and a tree-scatter brush.
+- [ ] Chunked voxel worlds with level of detail.
 
-## Phase H: Desktop pro layout (about 3–4 weeks)
+## Phase H: Desktop pro layout
 
-- Scene list on the left, viewport in the centre, properties on the right and the timeline along the bottom.
-- Move, rotate and scale handles with snapping, plus multi-select, grouping and duplicate.
-- A full keyboard-shortcut map.
-- Phones keep the current minimal layout, and the same project opens on both.
+- [ ] Scene list on the left, viewport in the centre, properties on the right and the timeline along the bottom.
+- [ ] Move, rotate and scale handles with snapping, plus multi-select, grouping and duplicate.
+- [ ] A full keyboard-shortcut map and controller support.
+- [ ] Phones keep the current minimal layout, and the same project opens on both.
 
-## Phase I: Packaging and distribution (about 3–4 weeks)
+## Phase I: Packaging and distribution
 
-- **Fully offline.** A service worker caches the whole app on first visit, and the font is bundled so nothing needs the network.
-- **Android and iOS (Capacitor).** Save videos to the gallery, use the share sheet, and open project files directly.
-- **Desktop (Tauri).** Windows, macOS and Linux builds with native file dialogs.
-- **Store requirements.** Icons, screenshots, age rating and an offline-first privacy policy.
+- [ ] Export presets for Android, iOS, Windows, macOS and Linux.
+- [ ] On phones: save videos to the gallery, use the share sheet and open project files directly.
+- [ ] On desktop: native file dialogs.
+- [ ] Store requirements: icons, screenshots, an age rating and an offline-first privacy policy.
 
 ## Phase J: Business, legal and trust (runs alongside the others)
 
-- **Content policy.** Bundle only original assets. User uploads stay the user's responsibility, with a clear notice in the app.
-- **Naming.** Keep style names generic. Saying "Minecraft-style" or "Genshin-style" in store listings risks rejection.
-- **Licences.** Track every library and asset licence in an in-app credits page.
-- **Paid tiers.** Free, Creator and Studio, unlocked by a signed licence file checked on the device, so it works with no account and no internet.
-- **Beta.** Recruit 20–50 Shorts and YouTube creators and gather feedback in-app.
+- [x] Asset credits in `assets/CREDITS.md`.
+- [ ] An in-app credits page listing every library and asset licence.
+- [ ] Content policy: bundle only original or CC0 assets, and show a notice that uploads are the user's responsibility.
+- [ ] Naming: keep style names generic, with no game brand names in store listings.
+- [ ] Paid tiers (Free, Creator and Studio), unlocked by a signed licence file checked on the device, with no account needed.
+- [ ] A beta with 20–50 Shorts and YouTube creators, with feedback gathered in the app.
 
-## Phase K: QA and launch (about 3–4 weeks)
+## Phase K: QA and launch
 
-- **Device matrix:**
-  - a low-end Android phone (3 GB RAM)
-  - a mid-range Android
-  - an older iPhone
-  - an iPad
-  - a Chromebook
-  - Windows and Mac laptops
-- **Performance targets.** 30 fps while editing on low-end devices, 60 fps on mid-range and up, and 1080p export that succeeds reliably on mid-range phones.
-- **Acceptance test.** Your document's "A day in a village" demo, start to finish, on an ordinary Android phone.
-- **Onboarding.** A 60-second first-run tutorial and 3–5 ready-made scenes to remix.
-- **Launch.** Store submission, a launch video made in the app itself, and a feedback channel.
+- [ ] **Device matrix:** a low-end Android phone (3 GB RAM), a mid-range Android, an older iPhone, an iPad, a Chromebook, and Windows, macOS and Linux laptops.
+- [ ] **Performance targets:** 30 fps while editing on low-end devices, 60 fps on mid-range and up, and 1080p export that succeeds reliably on mid-range phones.
+- [ ] **Acceptance test:** the "A day in a village" demo, start to finish, on an ordinary Android phone.
+- [ ] **Onboarding:** a 60-second first-run tutorial and 3–5 ready-made scenes to remix.
+- [ ] **Launch:** store submission, a launch video made in the app itself, and a feedback channel.
+
+## Ideas from raw-idea.md that aren't scheduled yet
+
+- Physics effects: falling, ragdolls and explosions.
+- Switching live between several cameras.
+- A random scene generator and automatic character placement.
+- Scene duplication and variations.
+- Long-press and double-tap gestures.
+- Local asset sharing, community templates and plugins (v2.0).
 
 ## Release scope
 
 | Release | Includes |
 |---|---|
-| **v1.0** | Phases A–D, I, J and K, plus the most important parts of E: VRM physics, blinking and the animation library |
+| **v1.0** | Phases A–D, I, J and K, plus the core of E: VRM physics, blinking and the animation library |
 | **v1.x** | The rest of E, then F and G |
 | **v2.0** | H (desktop pro layout), local asset sharing, plugins and community templates |
-
-Since this is a side project alongside a full-time job, expect very roughly 7–10 months part-time to reach v1.0. The timeline (Phase B) and export pipeline (Phase C) are the riskiest parts, so prototype those two first.

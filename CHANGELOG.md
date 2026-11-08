@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.8.0)
+## What's supported (as of 0.10.0)
 
 ### Platforms and engine
 
@@ -69,6 +69,7 @@ run, dance, wave, sit, jump or talk are played when present.
 | Left click / right click | Attack / open the menu of the character under the cursor (with a build tool: place / break) |
 | Wheel | Zoom (only over the scene, not over panels) |
 | C · B · R · P · H | Cycle camera · build tool · record · screenshot · clean view |
+| T | Open or close the timeline |
 | Ctrl+Z / Ctrl+Shift+Z · Ctrl+S | Undo / redo · save |
 
 Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for their menu.
@@ -77,7 +78,8 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 
 - The built-in characters are made from primitive shapes. For anime game-quality characters, import VRM, GLB or FBX models.
 - FBX textures load only if the image files ship alongside the model. Effect, ramp and lightmap maps referenced by game rigs are often missing; they're skipped.
-- No audio yet. No timeline keyframe editor yet; the script panel covers simple cues.
+- No audio yet.
+- Keyframed characters move in straight lines between keys and pass through walls. Scrubbing backwards replays the scene from the start, so it slows down on long scenes.
 - Mobile and desktop export presets (Android, iOS, Windows, macOS) are not configured.
 - Big CC0 model packs (for example Quaternius on itch.io) must be downloaded by hand, then imported.
 
@@ -85,10 +87,33 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-08
+
+### Added
+- **Timeline mode** (Script → Timeline, or T): a panel docked along the bottom with a ruler, a playhead, a camera track and one track per character. Script cues appear as blocks and keyframes as diamonds.
+  - Click or drag the ruler to scrub. The scene is replayed to that moment at a fixed step, so scrubbing shows exactly what playback and export will show, backwards too.
+  - Play/pause, back to start and loop.
+  - Drag a key to retime it. Drag a cue block to move it, or its right edge to change its length.
+- **Character keyframes:** "Key" records the picked character's spot and facing at the playhead; "Place at aim" moves them to where the camera points and keys them there. A keyed character walks from their scene-start spot to the first key, through each key, then goes back to their behaviour. They face where they're walking and snap to the ground. While paused, the character you control can still walk, so you can pose them and key them.
+- **Camera keyframes:** position, rotation and field of view, smooth (ease in/out) by default. "Camera preview" makes the camera follow its keys while you play or scrub.
+- **Linear or smooth easing** per key.
+- **"Keyframed" shot type** in the film shot list, so exported films can use the camera track.
+- Renaming a character now updates their script cues, keyframes and shot subjects.
+- Project schema v4 (`keys`). Older projects open unchanged.
+- Tests: `test_timeline`.
+
+### Fixed
+- `test_tools` sometimes failed on hilly blocky worlds because its camera wasn't looking straight down.
+- `test_rigs` flagged the blocky slime as having "too few meshes" ever since 0.7 started merging rig parts. The minimum is now 3.
+
+## [0.9.0] - 2026-11-08
+
 ### Changed
 - Settings → About rewritten: a one-line description, a version/engine/renderer line, and "Built by ekaai.tech" linking to https://ekaai.tech. It no longer mentions "offline".
 
 ### Fixed
+- The "Add a character" picker (and the other picker sheets) left a wide empty strip on the right. Tiles now sit in a grid that picks its column count from the sheet width and stretches to fill each row.
+- GDScript warnings: incompatible ternaries in random looks and skins (new `U.maybe(value, chance)` helper), and local variables shadowing `tr` and `list`.
 - Characters or objects whose imported file was deleted logged "Can't open file" errors every time their thumbnail or scene loaded. Missing files now quietly use the grey placeholder.
 - Manage imported models shows how many times each model is used in the current scene, and warns before you delete one that's in use.
 

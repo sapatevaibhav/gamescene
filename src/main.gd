@@ -230,6 +230,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			hud.screenshot()
 		KEY_H:
 			hud.set_clean(not hud.clean)
+		KEY_T:
+			hud.toggle_timeline()
 		KEY_C:
 			var order := CameraRig.MODES
 			studio.camera.set_mode(order[(order.find(studio.camera.mode) + 1) % order.size()])
@@ -327,7 +329,7 @@ func _over_ui(pos: Vector2) -> bool:
 		return false
 	if hud.sheet.visible and hud.sheet.get_global_rect().has_point(pos):
 		return true
-	for n in [hud.dock, hud.toolbar, hud.top_left, hud.top_right, hud.slate]:
+	for n in [hud.dock, hud.toolbar, hud.top_left, hud.top_right, hud.slate, hud.timeline_panel]:
 		var c := n as Control
 		if c.visible and c.get_global_rect().has_point(pos):
 			return true

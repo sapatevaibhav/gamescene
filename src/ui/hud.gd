@@ -39,6 +39,7 @@ var joy := Joystick.new()
 var pad := VBoxContainer.new()
 var restore_btn: Button
 var play_bar := PanelContainer.new()
+var timeline_panel: TimelinePanel
 var play_label := Label.new()
 
 var clean := false
@@ -175,6 +176,9 @@ func _ready() -> void:
 	sheet.visible = false
 	add_child(sheet)
 
+	timeline_panel = TimelinePanel.new(self)
+	add_child(timeline_panel)
+
 	# Touch controls.
 	joy.visible = false
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -229,6 +233,8 @@ func _ready() -> void:
 func _on_cast_changed() -> void:
 	if _top_name() == "cast":
 		render_sheet()
+	if timeline_panel.visible:
+		timeline_panel.rebuild_bar()
 
 
 func _dock_button(tab: String, icon: String, text: String) -> Button:
@@ -362,6 +368,17 @@ func layout() -> void:
 		var h := vs.y * 0.6
 		sheet.position = Vector2(8, vs.y - h - dock.size.y - m * 2)
 		sheet.size = Vector2(vs.x - 16, h)
+	if timeline_panel.visible:
+		# Docked above the dock; leaves room for the side panel on wide screens.
+		var right := vs.x - m
+		if sheet.visible and wide():
+			right = sheet.position.x - m
+		var tw_ := maxf(UIK.px(320), right - m)
+		timeline_panel.size = Vector2(tw_, 0)
+		var want := timeline_panel.get_combined_minimum_size().y - timeline_panel.view.custom_minimum_size.y + timeline_panel.view.wanted_height()
+		var th := minf(want, vs.y * 0.45)
+		timeline_panel.size = Vector2(tw_, th)
+		timeline_panel.position = Vector2(m, vs.y - dock.size.y - th - m * 2)
 	var tw := minf(vs.x * 0.92, UIK.px(460))
 	var font := toast_label.get_theme_font("font")
 	var fs := toast_label.get_theme_font_size("font_size")
@@ -408,7 +425,10 @@ func _process(delta: float) -> void:
 		var secs := float(rec.frames) / rec.fps
 		slate_label.text = U.fmt_time(secs)
 		slate_dot.modulate.a = 1.0 if fmod(Time.get_ticks_msec() / 500.0, 2.0) < 1.0 else 0.25
-	if studio.playing and not rec.active:
+	if timeline_panel.visible:
+		timeline_panel.tick()
+		play_bar.visible = false
+	elif studio.playing and not rec.active:
 		play_bar.visible = true
 		var total := studio.script_length()
 		play_label.text = "Script  %s / %s" % [U.fmt_time(studio.play_t), U.fmt_time(total)]
@@ -716,8 +736,19 @@ func screenshot() -> void:
 		toast("Screenshot couldn’t be made here.")
 
 
+## Opens or closes timeline mode (T).
+func toggle_timeline() -> void:
+	if timeline_panel.visible:
+		timeline_panel.close()
+	else:
+		if not wide():
+			close_sheet()
+		timeline_panel.open()
+	layout()
+
+
 func play_script() -> void:
-	if studio.cues.is_empty():
+	if not studio.has_script():
 		toast("Add a few lines to the script first.")
 		return
 	close_sheet()
@@ -725,7 +756,7 @@ func play_script() -> void:
 
 
 func stop_script() -> void:
-	studio.playing = false
+	studio.play_scene(false)
 	for a in studio.actors:
 		a.goto = {}
 		a.set_behavior(a.base_behavior, false)
@@ -735,6 +766,8 @@ func stop_script() -> void:
 
 ## At home only dialogs and toasts show; in the studio everything does.
 func set_home_mode(on: bool) -> void:
+	if on:
+		timeline_panel.close()
 	for c in get_children():
 		if c == modal or c == toast_panel:
 			continue
@@ -748,6 +781,7 @@ func set_home_mode(on: bool) -> void:
 		toolbar.visible = false
 		tool_hint.visible = false
 		play_bar.visible = false
+		timeline_panel.visible = false
 		set_clean(false)
 		render_toolbar()
 
@@ -756,6 +790,7 @@ func set_clean(on: bool) -> void:
 	clean = on
 	if on:
 		close_sheet()
+		timeline_panel.close()
 	for n in [top_left, top_right, slate]:
 		n.visible = not on
 	dock.visible = not on and studio.tools.kind == ""

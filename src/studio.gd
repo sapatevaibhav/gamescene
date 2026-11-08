@@ -30,8 +30,12 @@ var shots: Array = []
 ## Cast state when the scene starts playing (positions, behaviours).
 var start_state: Array = []
 var scene_seed := 1
+## Keyframes for timeline mode (actor and camera tracks).
+var timeline := Timeline.new()
 ## Timeline clock while directing ("Play scene").
 var playing := false
+## Frozen on the playhead (timeline mode): only the player can move.
+var paused := false
 var play_t := 0.0
 var _fired := {}
 
@@ -77,8 +81,10 @@ func _clear() -> void:
 	world = null
 	cues = []
 	shots = []
+	timeline.clear()
 	start_state = []
 	playing = false
+	paused = false
 	_undo.clear()
 	_redo.clear()
 	Kit.clear_cache()
@@ -178,6 +184,7 @@ func load_data(d: Dictionary) -> String:
 		add_actor({"name": "You", "look": {"preset": presets.keys()[0]}, "isPlayer": true, "x": 40.0, "z": 36.0})
 	camera.load_view(d.get("view", {}), d.get("cine", {}))
 	cues = d.get("cues", [])
+	timeline.load_data(d.get("keys", {}))
 	shots = d.get("shots", [])
 	if shots.is_empty():
 		shots = default_shots()
@@ -218,7 +225,7 @@ func serialize() -> Dictionary:
 	return {"app": "gamescene", "v": App.SCHEMA_VERSION, "name": project_name, "style": style_key, "seed": scene_seed,
 		"world": world.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player)),
 		"settings": settings, "cine": camera.cine_dict(), "view": camera.to_dict(),
-		"cues": cues, "shots": shots, "start": start_state}
+		"cues": cues, "keys": timeline.to_data(), "shots": shots, "start": start_state}
 
 
 func mark_dirty() -> void:
@@ -356,6 +363,24 @@ func remove_actor(a: Actor) -> void:
 	cast_changed.emit()
 
 
+## Renames a character and everything that refers to them by name (script
+## cues, keyframe track, shot subjects).
+func rename_actor(a: Actor, new_name: String) -> void:
+	var old := a.name
+	if old == new_name:
+		return
+	a.name = new_name
+	for c in cues:
+		if str(c.get("actor", "")) == old:
+			c["actor"] = new_name
+	for sh in shots:
+		if str(sh.get("target", "")) == old:
+			sh["target"] = new_name
+	timeline.rename_track(old, new_name)
+	a.refresh_tag()
+	mark_dirty()
+
+
 func set_player(a: Actor) -> void:
 	if a == player:
 		return
@@ -415,7 +440,7 @@ func _separate() -> void:
 			var dx := b.pos.x - a.pos.x
 			var dz := b.pos.z - a.pos.z
 			var d := sqrt(dx * dx + dz * dz)
-			if d < 0.62 and d > 1e-4 and absf(a.pos.y - b.pos.y) < 1.5:
+			if d < 0.62 and d > 1e-4 and absf(a.pos.y - b.pos.y) < 1.5 and not (a.keyed or b.keyed):
 				var push := (0.62 - d) / 2.0
 				var nx := dx / d * push
 				var nz := dz / d * push
@@ -456,6 +481,7 @@ func reset_to_start() -> void:
 		a.wait = 0.5
 		a.next_line = 3.0
 		a.turn_t = 0.0
+		a.keyed = false
 	App.sim_rng.seed = scene_seed
 	play_t = 0.0
 	_fired.clear()
@@ -463,8 +489,75 @@ func reset_to_start() -> void:
 
 func play_scene(on: bool) -> void:
 	playing = on
+	paused = false
 	if on:
 		reset_to_start()
+	else:
+		for a in actors:
+			a.keyed = false
+
+
+## Has anything to play: script cues or keyframes.
+func has_script() -> bool:
+	return not cues.is_empty() or not timeline.keys.is_empty()
+
+
+## Jumps the scene to `t` seconds by replaying the simulation from the scene
+## start (or from the current time when seeking forward) at a fixed step, so
+## the result matches what playback shows. Leaves the scene paused there.
+func seek(t: float) -> void:
+	t = maxf(0.0, t)
+	if not playing or t < play_t - 1e-4:
+		reset_to_start()
+		playing = true
+	paused = true
+	var saved := [input_move, input_jump, input_sprint, input_crouch]
+	input_move = Vector2.ZERO
+	input_jump = false
+	input_sprint = false
+	input_crouch = false
+	var step := 1.0 / 30.0
+	var guard := 0
+	while play_t < t - 1e-5 and guard < 100000:
+		_sim_step(minf(step, t - play_t))
+		guard += 1
+	input_move = saved[0]
+	input_jump = saved[1]
+	input_sprint = saved[2]
+	input_crouch = saved[3]
+	for a in actors:
+		a.animate(step, a == player)
+
+
+## Drives keyframed characters at the current time. Moving characters face
+## where they're going; standing ones turn to their keyed facing.
+func _apply_keys(dt: float) -> void:
+	if not playing or timeline.keys.is_empty():
+		return
+	var starts := {}
+	for s in start_state:
+		starts[int(s.get("id", -1))] = s
+	for a in actors:
+		var pose := timeline.actor_pose(a.name, play_t, starts.get(a.id, {}))
+		if pose.is_empty():
+			if a.keyed:
+				a.keyed = false
+				a.vel = Vector3.ZERO
+				a.home = a.pos
+			continue
+		a.keyed = true
+		var p: Vector3 = pose["pos"]
+		var g: float = world.ground_at(p.x, p.z)
+		if absf(g - p.y) < 1.2:
+			p.y = g
+		var v := (p - a.pos) / maxf(dt, 1e-4)
+		a.vel = Vector3(v.x, 0, v.z)
+		a.pos = p
+		a.on_ground = true
+		if Vector2(v.x, v.z).length() > 0.3:
+			a.yaw += clampf(U.wrap_a(atan2(v.x, v.z) - a.yaw), -10 * dt, 10 * dt)
+		else:
+			a.yaw += clampf(U.wrap_a(float(pose["yaw"]) - a.yaw), -6 * dt, 6 * dt)
 
 
 func _run_cues(dt: float) -> void:
@@ -499,7 +592,7 @@ func script_length() -> float:
 	var t := 0.0
 	for c in cues:
 		t = maxf(t, float(c.get("start", 0)) + float(c.get("dur", 3)))
-	return t
+	return maxf(t, timeline.length())
 
 
 func apply_shot(shot: Dictionary) -> void:
@@ -515,6 +608,8 @@ func apply_shot(shot: Dictionary) -> void:
 			camera.cine["points"] = shot["points"]
 		camera.mode = "cine"
 		camera.cine_reset()
+	elif mode == "keys" and not timeline.has_track(Timeline.CAM):
+		camera.set_mode("third")
 	else:
 		camera.set_mode(mode)
 
@@ -524,7 +619,8 @@ func export_film() -> bool:
 		App.toast("Add at least one shot first.")
 		return false
 	reset_to_start()
-	playing = not cues.is_empty()
+	playing = has_script()
+	paused = false
 	var vs := get_viewport().get_visible_rect().size
 	var ok := recorder.start(App.export_size(vs.x / vs.y), int(App.settings["fps"]), shots)
 	if ok:
@@ -535,7 +631,7 @@ func export_film() -> bool:
 func start_take() -> bool:
 	if App.settings.get("restart", true) and camera.mode == "cine":
 		camera.cine_reset()
-	if not cues.is_empty():
+	if has_script():
 		play_scene(true)
 	var vs := get_viewport().get_visible_rect().size
 	var ok := recorder.start(App.export_size(vs.x / vs.y), int(App.settings["fps"]))
@@ -552,7 +648,7 @@ func stop_take() -> void:
 
 func _update_player(dt: float) -> void:
 	var a := player
-	if a == null:
+	if a == null or a.keyed:
 		return
 	var mv := input_move
 	var cam_free := camera.mode == "free"
@@ -601,12 +697,11 @@ func _process(delta: float) -> void:
 		return
 	var dt := App.fixed_dt if App.fixed_dt > 0.0 else minf(delta, 0.05)
 	_time += dt
-	_run_cues(dt)
-	_update_player(dt)
-	for a in actors:
-		if a != player:
-			a.update_npc(dt)
-	_separate()
+	if playing and paused:
+		# Frozen on the playhead: only the one you control moves (to pose them).
+		_update_player(dt)
+	else:
+		_sim_step(dt)
 	for a in actors:
 		a.animate(dt, a == player)
 	if player and is_instance_valid(player.root()):
@@ -621,6 +716,17 @@ func _process(delta: float) -> void:
 		_save_t -= delta
 		if _save_t <= 0:
 			save_now()
+
+
+## One simulation tick: script clock, keyframes, player, NPCs, crowding.
+func _sim_step(dt: float) -> void:
+	_run_cues(dt)
+	_apply_keys(dt)
+	_update_player(dt)
+	for a in actors:
+		if a != player and not a.keyed:
+			a.update_npc(dt)
+	_separate()
 
 
 func _hide_actors_near_camera() -> void:

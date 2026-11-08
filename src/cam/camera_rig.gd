@@ -5,6 +5,8 @@ extends Camera3D
 ## depth of field. Ported from the web `updateCamera` with the same maths.
 
 const MODES := ["third", "first", "cine", "free"]
+## Not in MODES (not cycled with C, not saved): "keys" follows the timeline's
+## camera track at the scene clock.
 const SHOTS := [["orbit", "Orbit"], ["dolly", "Dolly"], ["crane", "Crane"], ["push", "Push in"], ["path", "Camera path"]]
 
 var studio: Node  # Studio
@@ -102,6 +104,14 @@ func update_camera(dt: float) -> void:
 		"first":
 			global_position = Vector3(player.pos.x, player.head_y() + 0.05, player.pos.z)
 			_look_at_safe(global_position + look_dir(yaw, pitch))
+		"keys":
+			var pose: Dictionary = studio.timeline.camera_pose(studio.play_t)
+			if pose.is_empty():
+				mode = "third"
+			else:
+				global_position = pose["pos"]
+				global_basis = Basis(pose["rot"] as Quaternion)
+				fov = pose["fov"]
 		"free":
 			var d := look_dir(yaw, pitch)
 			var r := Vector3(cos(yaw), 0, -sin(yaw))
@@ -245,7 +255,7 @@ func _update_dof() -> void:
 
 
 func to_dict() -> Dictionary:
-	return {"mode": mode, "yaw": yaw, "pitch": pitch, "dist": dist}
+	return {"mode": mode if MODES.has(mode) else "third", "yaw": yaw, "pitch": pitch, "dist": dist}
 
 
 func cine_dict() -> Dictionary:

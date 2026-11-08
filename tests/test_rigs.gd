@@ -13,7 +13,7 @@ func check(rig: Dictionary, label: String) -> int:
 	if rig.get("hc") != null and not (rig["hc"] is Node3D):
 		push_error("%s hc bad" % label); bad += 1
 	var n := _count(rig["root"])
-	if n < 4:
+	if n < 3:  # merged rigs (e.g. the blocky slime) can be just body + face parts
 		push_error("%s too few meshes %d" % [label, n]); bad += 1
 	(rig["root"] as Node).free()
 	return bad

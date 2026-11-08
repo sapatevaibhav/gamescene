@@ -22,7 +22,7 @@ func _ready() -> void:
 	ok(U.rle_decode(U.rle_encode(data), data.size()) == data, "rle round trip")
 	ok(U.rle_encode(data) == "0*3,5*2,5k*1,0*1", "rle web format")
 	var m := ProjectStore.migrate({"app": "blockset", "world": "0*10", "cast": []})
-	ok(m.get("style") == "blocky" and int(m.get("v")) == 3, "migrate blockset v1")
+	ok(m.get("style") == "blocky" and int(m.get("v")) == 4 and m.has("keys"), "migrate blockset v1")
 	var m2 := ProjectStore.migrate({"app": "gamescene", "v": 2, "style": "anime", "world": {}, "settings": {"quality": "high", "fog": 80}})
 	ok(m2["shots"] == [] and not m2["settings"].has("quality") and m2["settings"]["fog"] == 80, "migrate web v2")
 	await get_tree().process_frame
