@@ -39,8 +39,8 @@ func _tiles(b: Control, items: Array) -> void:
 	b.add_child(g)
 
 
-func _picks(b: Control) -> HFlowContainer:
-	var f := UIK.flow(8)
+func _picks(b: Control) -> GridContainer:
+	var f := UIK.pick_grid(8)
 	b.add_child(f)
 	return f
 
@@ -204,12 +204,12 @@ func _import_row(tex: Texture2D, title: String, id: String, in_use: int, on_dele
 	var row := PanelContainer.new()
 	row.add_theme_stylebox_override("panel", UIK.box(UIK.GRAY_700, 14, UIK.GRAY_600))
 	var h := UIK.hbox(10)
-	var tr := TextureRect.new()
-	tr.texture = tex
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.custom_minimum_size = Vector2(UIK.px(44), UIK.px(44))
-	h.add_child(tr)
+	var thumb := TextureRect.new()
+	thumb.texture = tex
+	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	thumb.custom_minimum_size = Vector2(UIK.px(44), UIK.px(44))
+	h.add_child(thumb)
 	var v := UIK.vbox(0)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var t := UIK.label(title, 15, UIK.INK, true)
@@ -370,13 +370,13 @@ func v_cast(_a, b: VBoxContainer) -> String:
 		face.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		face.add_theme_stylebox_override("panel", UIK.box(UIK.GRAY_800, 12))
-		var tr := TextureRect.new()
-		tr.texture = _face_icon(a.look)
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		face.add_child(tr)
+		var thumb := TextureRect.new()
+		thumb.texture = _face_icon(a.look)
+		thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		thumb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.add_child(thumb)
 		v.add_child(face)
 		var nl := UIK.label(a.name, 14, UIK.INK, true)
 		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -416,11 +416,11 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	if a == null:
 		return ""
 	var hero := UIK.hbox(14)
-	var tr := TextureRect.new()
-	tr.texture = _look_icon(a.look)
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.custom_minimum_size = Vector2(UIK.px(72), UIK.px(72))
-	hero.add_child(tr)
+	var thumb := TextureRect.new()
+	thumb.texture = _look_icon(a.look)
+	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	thumb.custom_minimum_size = Vector2(UIK.px(72), UIK.px(72))
+	hero.add_child(thumb)
 	var name_edit := UIK.line_edit(a.name, "Name", func(t: String):
 		a.name = t.strip_edges().left(24) if t.strip_edges() != "" else "Someone"
 		a.refresh_tag()

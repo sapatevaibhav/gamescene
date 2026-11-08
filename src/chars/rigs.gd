@@ -7,7 +7,7 @@ const CHATTER := ["Nice weather today.", "Did you hear that?", "I’m off to the
 const GROUPS := [["people", "People"], ["mobs", "Monsters"], ["animals", "Animals"]]
 
 const DEFAULT_CAST := {
-	"blocky": [["hero", "Rook"], ["farmer", "Tilde", "wander"], ["merchant", "Oza", "talk"], ["chef", "Bao", "talk"], ["dancer", "Mika", "dance"], ["guard", "Hale", "follow"]],
+	"blocky": [["hero", "Vaibh"], ["farmer", "Tilde", "wander"], ["merchant", "Oza", "talk"], ["chef", "Bao", "talk"], ["dancer", "Mika", "dance"], ["guard", "Hale", "follow"]],
 	"anime": [["wanderer", "Vaibh"], ["ranger", "Mira", "wander"], ["mage", "Lyra", "talk"], ["keeper", "Sena", "talk"], ["bard", "Pia", "dance"], ["ronin", "Ren", "follow"], ["slimeGreen", "Green slime", "wander"], ["slimeBlue", "Blue slime", "wander"]],
 	"tactical": [["rifleman", "Vega"], ["sniper", "Moss", "wander"], ["scout", "Kestrel", "talk"], ["medic", "Ash", "talk"], ["civilian", "Juno", "dance"], ["commander", "Bishop", "follow"]],
 	"lowpoly": [["villager", "Bram"], ["explorer", "Wren", "wander"], ["baker", "Nell", "talk"], ["farmer", "Gus", "talk"], ["kid", "Pip", "dance"], ["knight", "Hale", "follow"]],
@@ -106,11 +106,11 @@ static func random_cfg(style: String) -> Dictionary:
 	if style == "tactical":
 		var camo: String = pk.call(R["drab"])
 		return {"skin": pk.call(R["skins"]), "eyes": pk.call(["#4a3a2a", "#2e7d4f", "#3a5f8a"]), "head": pk.call(["helmet", "cap", "beret", "hood", "hair"]), "hatC": pk.call(R["drab"]),
-			"hair": pk.call(R["hairs"].slice(0, 6)), "shirt": camo, "vest": U.shade_hex(camo, 0.8) if randf() < 0.7 else null, "pack": randf() < 0.6, "pants": pk.call(R["drab"]),
-			"shoes": "#2b2b24", "gun": pk.call([null, "rifle", "rifle", "sniper"]), "mask": U.shade_hex(camo, 0.7) if randf() < 0.2 else null}
+			"hair": pk.call(R["hairs"].slice(0, 6)), "shirt": camo, "vest": U.maybe(U.shade_hex(camo, 0.8), 0.7), "pack": randf() < 0.6, "pants": pk.call(R["drab"]),
+			"shoes": "#2b2b24", "gun": pk.call([null, "rifle", "rifle", "sniper"]), "mask": U.maybe(U.shade_hex(camo, 0.7), 0.2)}
 	return {"skin": pk.call(R["skins"]), "hair": pk.call(R["hairs"].slice(0, 7)), "hairStyle": pk.call(["short", "long"]), "hat": pk.call([null, null, "straw", "chef", "ranger", "hood"]),
 		"hatC": pk.call(R["cloth"]), "shirt": pk.call(R["cloth"]), "pants": pk.call(["#5b4a3a", "#4a6fa5", "#34495e", "#6b5a4a"]), "shoes": "#3a2a20",
-		"apron": "#f6f4ef" if randf() < 0.25 else null, "beard": "#ecebe7" if randf() < 0.15 else null}
+		"apron": U.maybe("#f6f4ef", 0.25), "beard": U.maybe("#ecebe7", 0.15)}
 
 
 static func validate_skin(img: Image) -> String:

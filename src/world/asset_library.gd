@@ -286,10 +286,10 @@ static func build(style: String, key: String) -> Node3D:
 		_toonify(inst, bb.size.y)
 	for a in _find_all(inst, "AnimationPlayer"):
 		var ap := a as AnimationPlayer
-		var list := ap.get_animation_list()
-		if not list.is_empty():
-			ap.get_animation(list[0]).loop_mode = Animation.LOOP_LINEAR
-			ap.play(list[0])
+		var clips := ap.get_animation_list()
+		if not clips.is_empty():
+			ap.get_animation(clips[0]).loop_mode = Animation.LOOP_LINEAR
+			ap.play(clips[0])
 	return g
 
 

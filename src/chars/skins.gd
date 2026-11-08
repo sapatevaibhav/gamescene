@@ -61,6 +61,13 @@ static func ov(s: Dictionary) -> Dictionary:
 	return o
 
 
+## Overlay spec for a limb, or null for legacy 64x32 skins that have no overlay layer.
+static func _ov_opt(s: Dictionary, legacy: bool) -> Variant:
+	if legacy:
+		return null
+	return ov(s)
+
+
 static func faces(s: Dictionary) -> Dictionary:
 	var u: int = s["u"]
 	var v: int = s["v"]
@@ -284,8 +291,8 @@ static func random_skin_cfg() -> Dictionary:
 		"shoes": U.pick(["#2b2b2b", "#5a3b22", "#3a3d42"]),
 		"sleeves": U.pick(["short", "long"]),
 		"belt": randf() < 0.4, "overalls": randf() < 0.2,
-		"hat": {"type": U.pick(["straw", "cap", "hood"]), "color": U.pick(shirts)} if randf() < 0.3 else null,
-		"beard": "#3b2a1e" if randf() < 0.15 else null,
+		"hat": U.maybe({"type": U.pick(["straw", "cap", "hood"]), "color": U.pick(shirts)}, 0.3),
+		"beard": U.maybe("#3b2a1e", 0.15),
 		"seed": randi() % 1000000,
 	}
 
@@ -354,7 +361,7 @@ static func build_model(img: Image, legacy: bool, slim: bool) -> Dictionary:
 			pv.add_child(o)
 		parent.add_child(pv)
 		return pv
-	var leg_r: Node3D = limb.call(S["legR"], null if legacy else ov(S["legR"]), -2.0, 12.0, -6.0, false, model)
+	var leg_r: Node3D = limb.call(S["legR"], _ov_opt(S["legR"], legacy), -2.0, 12.0, -6.0, false, model)
 	var leg_l: Node3D = limb.call(S["legR"], null, 2.0, 12.0, -6.0, true, model) if legacy else limb.call(S["legL"], ov(S["legL"]), 2.0, 12.0, -6.0, false, model)
 	var upper := Kit.group(0, 12 * PX, 0)
 	model.add_child(upper)
@@ -370,7 +377,7 @@ static func build_model(img: Image, legacy: bool, slim: bool) -> Dictionary:
 	var a_l: Dictionary = (S["armL"] as Dictionary).duplicate()
 	a_l["w"] = aw
 	var ax := 4.0 + aw / 2.0
-	var arm_r: Node3D = limb.call(a_r, null if legacy else ov(a_r), -ax, 10.0, -4.0, false, upper)
+	var arm_r: Node3D = limb.call(a_r, _ov_opt(a_r, legacy), -ax, 10.0, -4.0, false, upper)
 	var arm_l: Node3D = limb.call(a_r, null, ax, 10.0, -4.0, true, upper) if legacy else limb.call(a_l, ov(a_l), ax, 10.0, -4.0, false, upper)
 	return {"root": root, "model": model, "upper": upper, "head": head, "hc": null, "armL": arm_l, "armR": arm_r, "legL": leg_l, "legR": leg_r,
 		"height": 1.8, "headH": 1.58, "sitDrop": 0.58, "kind": "human", "skin": img}

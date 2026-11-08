@@ -282,6 +282,22 @@ static func flow(sep := 6) -> HFlowContainer:
 	return f
 
 
+## Grid whose column count follows its width; cells stretch so rows fill edge to edge.
+static func pick_grid(sep := 8, min_cell := 80) -> GridContainer:
+	var g := grid(1, sep)
+	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var relayout := func():
+		var cols := maxi(1, int((g.size.x + px(sep)) / (px(min_cell) + px(sep))))
+		if g.columns != cols:
+			g.columns = cols
+	g.resized.connect(relayout)
+	g.child_entered_tree.connect(func(c: Node):
+		if c is Control:
+			c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			c.custom_minimum_size.x = px(min_cell))
+	return g
+
+
 static func grid(cols: int, sep := 8) -> GridContainer:
 	var g := GridContainer.new()
 	g.columns = cols
@@ -414,7 +430,6 @@ static func pick(tex: Texture2D, caption: String, on: bool, cb: Callable, pixel 
 	var l := label(caption, 12, INK, true)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	l.custom_minimum_size.x = px(size - 10)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(l)
 	b.add_child(v)

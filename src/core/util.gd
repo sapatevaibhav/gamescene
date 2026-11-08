@@ -45,6 +45,13 @@ static func pick(arr: Array) -> Variant:
 	return arr[randi() % arr.size()]
 
 
+## Returns `v` with probability `p`, otherwise null (for optional random look parts).
+static func maybe(v: Variant, p: float) -> Variant:
+	if randf() < p:
+		return v
+	return null
+
+
 static func col(hex: String) -> Color:
 	if hex.is_empty():
 		return Color.WHITE
