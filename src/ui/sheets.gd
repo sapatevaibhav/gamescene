@@ -81,7 +81,10 @@ func v_add(_a, b: VBoxContainer) -> String:
 	else:
 		items.append(["tree", "Objects", "Trees, houses, props", func(): hud.push_view("objects")])
 		items.append(["hill", "Ground", "Raise hills, dig valleys", func(): studio.tools.set_tool("terrain"); hud.close_sheet()])
-	items.append(["upload", "3D model", "Import .glb, .vrm or .fbx", func(): _import_model()])
+	if AssetTags.can_import_models(studio.style_key):
+		items.append(["upload", "3D character", "Import " + AssetTags.formats_text(studio.style_key), func(): _import_model()])
+	else:
+		items.append(["upload", "Skin", "Upload a 64×64 character PNG", func(): _upload_skin()])
 	_tiles(b, items)
 	b.add_child(UIK.para("Tip: tap a character in the scene to direct them. Press B for the build tool.", 12))
 	return "Add"
@@ -119,14 +122,27 @@ func v_addChar(_a, b: VBoxContainer) -> String:
 
 
 func _models_section(b: VBoxContainer, on_pick: Callable) -> void:
+	var style := studio.style_key
+	if not AssetTags.can_import_models(style):
+		return
 	_section(b, "3D models")
 	var f := _picks(b)
 	f.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, _import_model))
-	for id in ModelRig.list_models():
+	var mine := _style_models()
+	for id in mine:
 		f.add_child(UIK.pick(_look_icon({"model": id}), ModelRig.display_name(id), false, func(): on_pick.call(id)))
-	b.add_child(UIK.para("Humanoid .glb, .vrm or .fbx files work best. Clips named idle, walk, run, dance, wave or sit play automatically.", 12))
-	if not ModelRig.list_models().is_empty() or not AssetLib.list().is_empty():
+	b.add_child(UIK.para("Humanoid %s files work best. Clips named idle, walk, run, dance, wave, sit, sleep, cheer, laugh, cry, point or attack play automatically; other actions use built-in poses. Models imported here stay in %s worlds.%s" % [AssetTags.formats_text(style), Styles.get_style(style)["name"], (" Low-poly models only: up to %s triangles." % AssetTags._k(AssetTags.max_tris(style, "models"))) if AssetTags.max_tris(style, "models") > 0 else ""], 12))
+	if not mine.is_empty() or not _style_props().is_empty():
 		b.add_child(UIK.btn("Manage imported models", func(): hud.push_view("imports"), false, "trash"))
+
+
+## Imported characters and objects that belong to this world's style.
+func _style_models() -> Array:
+	return AssetTags.only("models", ModelRig.list_models(), studio.style_key)
+
+
+func _style_props() -> Array:
+	return AssetTags.only("props", AssetLib.list(), studio.style_key)
 
 
 func _add_char(look: Dictionary, p: Dictionary) -> void:
@@ -156,12 +172,29 @@ func _upload_skin() -> void:
 
 
 func _import_model() -> void:
-	hud.pick_file(PackedStringArray(["*.glb, *.GLB, *.vrm, *.VRM, *.gltf, *.GLTF, *.fbx, *.FBX ; 3D characters", "* ; All files"]), func(path: String):
+	var style := studio.style_key
+	if not AssetTags.can_import_models(style):
+		hud.toast("Blocky worlds use skins instead of 3D models.")
+		return
+	hud.pick_file(AssetTags.model_filters(style), func(path: String):
+		var ext := path.get_extension().to_lower()
+		if not (AssetTags.rules(style)["formats"] as Array).has(ext):
+			hud.toast("%s worlds take %s characters." % [Styles.get_style(style)["name"], AssetTags.formats_text(style)])
+			return
 		hud.toast("Importing " + path.get_file() + "…")
+		var before := ModelRig.list_models()
 		var id := ModelRig.import_file(path)
 		if id == "":
 			hud.toast("That model couldn’t be loaded.")
 			return
+		var why := AssetTags.check_import(style, "models", ModelRig.DIR + id)
+		if why != "":
+			# Keep the file only if another style already had it.
+			if not before.has(id):
+				ModelRig.remove(id)
+			hud.toast(why)
+			return
+		AssetTags.tag("models", id, style)
 		_add_char({"model": id}, {"label": path.get_file().get_basename().left(18), "group": "mobs"})
 		if hud.view_stack.size() > 0:
 			_rerender(), "Import a 3D model")
@@ -172,8 +205,10 @@ func _import_model() -> void:
 ## Lists imported characters and objects with delete buttons, so files can be
 ## removed and imported again. Scenes using a deleted file show a placeholder.
 func v_imports(_a, b: VBoxContainer) -> String:
-	var chars := ModelRig.list_models()
-	var objs := AssetLib.list()
+	var style := studio.style_key
+	var chars := _style_models()
+	var objs := _style_props()
+	b.add_child(UIK.para("The library for %s worlds. Each world style keeps its own imports." % Styles.get_style(style)["name"], 12))
 	if chars.is_empty() and objs.is_empty():
 		b.add_child(UIK.para("Nothing imported yet.", 14))
 		return "Imported models"
@@ -182,7 +217,9 @@ func v_imports(_a, b: VBoxContainer) -> String:
 		for id in chars:
 			var users := studio.actors.filter(func(x): return x.look.get("model", "") == id).size()
 			b.add_child(_import_row(_look_icon({"model": id}), ModelRig.display_name(id), id, users, func():
-				ModelRig.remove(id)
+				# Only delete the file when no other style still uses it.
+				if AssetTags.untag("models", id, style):
+					ModelRig.remove(id)
 				hud.icons.clear()
 				hud.toast("Removed " + ModelRig.display_name(id))
 				_rerender()))
@@ -192,7 +229,8 @@ func v_imports(_a, b: VBoxContainer) -> String:
 			var key: String = AssetLib.PREFIX + id
 			var placed: int = 0 if studio.world.is_voxel else studio.world.props.filter(func(p): return p.key == key).size()
 			b.add_child(_import_row(_prop_icon(key), AssetLib.display_name(key), id, placed, func():
-				AssetLib.remove(id)
+				if AssetTags.untag("props", id, style):
+					AssetLib.remove(id)
 				hud.icons.clear()
 				hud.toast("Removed " + AssetLib.display_name(key))
 				_rerender()))
@@ -321,13 +359,13 @@ func v_objects(_a, b: VBoxContainer) -> String:
 	_section(b, "Your 3D objects")
 	var mine := _picks(b)
 	mine.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, _import_props))
-	for id in AssetLib.list():
+	for id in _style_props():
 		var key: String = AssetLib.PREFIX + id
 		mine.add_child(UIK.pick(_prop_icon(key), AssetLib.display_name(key), studio.tools.prop == key, func():
 			studio.tools.set_tool("objects", {"prop": key})
 			hud.close_sheet()))
-	b.add_child(UIK.para("Import trees, rocks, buildings or whole asset packs (.glb, .gltf, .fbx — pick many files at once). In the anime style they get cel shading, and leaves sway in the wind.", 12))
-	if not AssetLib.list().is_empty() or not ModelRig.list_models().is_empty():
+	b.add_child(UIK.para("Import trees, rocks, buildings or whole asset packs (.glb, .gltf, .fbx — pick many files at once). Objects imported here stay in %s worlds.%s" % [Styles.get_style(studio.style_key)["name"], " They get cel shading, and leaves sway in the wind." if studio.style_key == "anime" else ""], 12))
+	if not _style_props().is_empty() or not _style_models().is_empty():
 		b.add_child(UIK.btn("Manage imported models", func(): hud.push_view("imports"), false, "trash"))
 	b.add_child(UIK.btn("Edit placed objects", func():
 		studio.tools.set_tool("objects", {"prop": ""})
@@ -338,10 +376,23 @@ func v_objects(_a, b: VBoxContainer) -> String:
 func _import_props() -> void:
 	hud.pick_files(PackedStringArray(["*.glb, *.GLB, *.gltf, *.GLTF, *.fbx, *.FBX ; 3D objects", "* ; All files"]), func(paths: PackedStringArray):
 		var ok := 0
+		var too_big := 0
+		var before := AssetLib.list()
 		for pth in paths:
-			if AssetLib.import_file(pth) != "":
-				ok += 1
-		hud.toast("Imported %d of %d object%s." % [ok, paths.size(), "" if paths.size() == 1 else "s"])
+			var pid := AssetLib.import_file(pth)
+			if pid == "":
+				continue
+			if AssetTags.check_import(studio.style_key, "props", AssetLib.DIR + pid) != "":
+				too_big += 1
+				if not before.has(pid):
+					AssetLib.remove(pid)
+				continue
+			AssetTags.tag("props", pid, studio.style_key)
+			ok += 1
+		var msg := "Imported %d of %d object%s." % [ok, paths.size(), "" if paths.size() == 1 else "s"]
+		if too_big > 0:
+			msg += " %d %s too detailed for a low-poly world (over %s triangles)." % [too_big, "was" if too_big == 1 else "were", AssetTags._k(AssetTags.max_tris(studio.style_key, "props"))]
+		hud.toast(msg)
 		_rerender(), "Import 3D objects")
 
 
@@ -492,6 +543,8 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 		studio.mark_dirty()
 		_rerender(), false, 74))
 	for mid in ModelRig.list_models():
+		if not _style_models().has(mid) and a.look.get("model", "") != mid:
+			continue
 		f.add_child(UIK.pick(_look_icon({"model": mid}), str(mid).get_basename().left(10), a.look.get("model", "") == mid, func():
 			a.set_look({"model": mid})
 			studio.mark_dirty()

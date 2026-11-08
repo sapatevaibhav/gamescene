@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.11.0)
+## What's supported (as of 0.12.0)
 
 ### Platforms and engine
 
@@ -36,9 +36,9 @@ Worlds are bounded. Scenes saved at the old 48 m size open centred in the 80 m w
 
 | What | Formats | Where in the app | Notes |
 |---|---|---|---|
-| Characters | `.glb`, `.vrm`, `.gltf`, `.fbx` | Add → Character → 3D models | Converted to self-contained `.glb`; textures gathered from nearby folders; cel-shaded in the anime style |
-| Environment objects | `.glb`, `.gltf`, `.fbx` (pick many at once) | Add → Objects → Your 3D objects | Leaves get alpha cut-out and wind; small objects don't collide; trees collide at the trunk |
-| Blocky skins | `.png` 64×64 or legacy 64×32 | Add → Character → Upload skin | Slim arms supported |
+| Characters | Anime: `.glb`, `.vrm`, `.gltf`, `.fbx`. Tactical and low-poly: `.glb`, `.gltf`, `.fbx` (low-poly up to 15k triangles). Not in blocky | Add → Character → 3D models | Converted to self-contained `.glb`; textures gathered from nearby folders; cel-shaded in the anime style. Each import belongs to the style it was imported in |
+| Environment objects | `.glb`, `.gltf`, `.fbx` (pick many at once; low-poly up to 20k triangles). Not in blocky | Add → Objects → Your 3D objects | Leaves get alpha cut-out and wind; small objects don't collide; trees collide at the trunk. Per style, like characters |
+| Blocky skins | `.png` 64×64 or legacy 64×32. Blocky only | Add → Character → Upload skin, or Add → Skin | Slim arms supported |
 | Custom blocks | `.png` / `.jpg` / `.webp` (scaled to 16×16), or pattern + colours | Blocks → Make your own block | Saved inside the scene |
 | Scenes | `.json` (this app, web build v1 "blockset" and v2) | Home → Open a file | Imported models are embedded in exported scene files |
 
@@ -87,6 +87,23 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 ---
 
 ## [Unreleased]
+
+## [0.12.0] - 2026-11-09
+
+### Added
+- **Name your scene** when you create one (Enter or "Create"). Names are kept unique: a second "Harbour" becomes "Harbour 2". Rename uses the same dialog.
+- **Each world style keeps its own imports:**
+  - **Blocky** takes skins only (64×64 PNG). There is no 3D model or object import; its characters, mobs and buildings are made from blocks. The Add sheet offers "Skin" in place of "3D model".
+  - **Anime** takes `.glb`, `.vrm`, `.gltf` and `.fbx` characters, plus 3D objects.
+  - **Tactical** and **Low-poly** take `.glb`, `.gltf` and `.fbx` (VRM is anime-specific), plus 3D objects.
+  - **Low-poly caps detail:** characters up to 15k triangles and objects up to 20k. Anything heavier is turned away with the count and a hint to use another style.
+  - A model or object only appears in the style it was imported into. Importing the same file in another style adds it there too, and deleting it from one style keeps it for the others. Files imported before this belong to the anime style. Saved scenes that already use them keep working.
+- **Four new blocky mobs:** Bog walker, Frost golem, Necromancer and Bandit.
+- Tests: `test_styles` covers the import rules, the triangle cap, per-style tags, unique names and every action on each imported model in the library, measured from bone positions.
+
+### Fixed
+- **Imported characters didn't do most actions.** Models without their own clips only swung their upper arms and legs, so chat, dance, sit, cry, laugh and the rest looked like standing still, and sitting hovered in the air. Built-in poses now also bend elbows and knees, lean the spine, drop the hips to sit on the ground, bounce for dance and celebrate, gesture while talking and nod the head. The elbows and knees are found by following the skeleton chain, so any rig naming works. Models that have clips get the pose on top of their idle clip when there's no clip for that action.
+- **Test runs no longer touch your data.** Scenes, imported files and style tags made by tests go to a scratch folder that's wiped before and after each run. Before, `test_ui` added four scenes to the home screen on every run.
 
 ## [0.11.0] - 2026-11-08
 

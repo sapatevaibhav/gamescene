@@ -339,26 +339,9 @@ func _tile_action(id: String, p: Dictionary, item: int) -> void:
 
 func _rename(id: String, p: Dictionary) -> void:
 	var hud: Hud = get_parent().get_node("Hud")
-	UIK.clear(hud.modal)
-	var card := hud._card()
-	var v: VBoxContainer = card.get_child(0)
-	v.add_child(UIK.label("Rename scene", 20, UIK.INK, true))
-	var e := UIK.line_edit(p.get("name", ""), "Scene name", func(_t): pass)
-	v.add_child(e)
-	var row := UIK.hbox()
-	row.alignment = BoxContainer.ALIGNMENT_END
-	row.add_child(UIK.btn("Cancel", func(): UIK.clear(hud.modal)))
-	row.add_child(UIK.btn("Save", func():
-		var n := e.text.strip_edges()
-		if n != "":
-			ProjectStore.rename(id, n.left(40))
-		UIK.clear(hud.modal)
-		refresh(), true))
-	v.add_child(row)
-	hud.modal.add_child(card)
-	hud._center(card)
-	e.grab_focus()
-	e.select_all()
+	hud.prompt("Rename scene", p.get("name", ""), "Scene name", "Save", func(n: String):
+		ProjectStore.rename(id, ProjectStore.unique_name(n, id))
+		refresh())
 
 
 func _open_file() -> void:

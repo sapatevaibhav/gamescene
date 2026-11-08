@@ -733,6 +733,32 @@ func ask(msg: String, yes: String, cb: Callable) -> void:
 	_center(card)
 
 
+## Asks for a short piece of text (a name). Enter or the button confirms;
+## an empty answer keeps the suggested text.
+func prompt(title: String, suggested: String, placeholder: String, yes: String, cb: Callable) -> void:
+	UIK.clear(modal)
+	var card := _card()
+	var v: VBoxContainer = card.get_child(0)
+	v.add_child(UIK.label(title, 20, UIK.INK, true))
+	var e := UIK.line_edit(suggested, placeholder, func(_t): pass)
+	e.max_length = 40
+	v.add_child(e)
+	var done := func():
+		var n := e.text.strip_edges()
+		UIK.clear(modal)
+		cb.call(n if n != "" else suggested)
+	e.text_submitted.connect(func(_t): done.call())
+	var row := UIK.hbox()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(UIK.btn("Cancel", func(): UIK.clear(modal)))
+	row.add_child(UIK.btn(yes, done, true))
+	v.add_child(row)
+	modal.add_child(card)
+	_center(card)
+	e.grab_focus()
+	e.select_all()
+
+
 func screenshot() -> void:
 	close_sheet()
 	var vs := get_viewport_rect().size

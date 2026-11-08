@@ -6,7 +6,8 @@ class_name AssetLib
 ## their materials are swapped for cel shading (texture kept), leaves get
 ## alpha cut-out and wind sway.
 
-const DIR := "user://assets/props/"
+## Imported object files. Tests point this at a scratch folder.
+static var DIR := "user://assets/props/"
 const TOON_TEX := preload("res://src/shaders/toon_tex.gdshader")
 const TOON_TEX_DS := preload("res://src/shaders/toon_tex_ds.gdshader")
 const PREFIX := "glb:"

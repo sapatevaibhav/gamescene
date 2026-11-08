@@ -52,7 +52,7 @@ func _ready() -> void:
 	hud.studio = studio
 	hud.icons = icons
 	root.add_child(hud)
-	home.new_scene.connect(_new_scene)
+	home.new_scene.connect(_ask_new_scene)
 	home.open_project.connect(_open_project)
 	hud.go_home.connect(_go_home)
 
@@ -78,15 +78,24 @@ func _show_busy(on: bool) -> void:
 	await get_tree().process_frame
 
 
-func _new_scene(style: String) -> void:
-	await _show_busy(true)
-	await studio.new_scene(style)
+## Home screen: asks what to call the new scene, then makes it.
+func _ask_new_scene(style: String) -> void:
+	hud.prompt("Name your scene", _suggested_name(style), "Scene name", "Create", func(n: String): _new_scene(style, n))
+
+
+func _suggested_name(style: String) -> String:
 	var n := 1
 	for p in ProjectStore.index():
 		if p.get("style") == style:
 			n += 1
+	return ProjectStore.unique_name(Styles.STYLES[style]["name"] + " scene " + str(n))
+
+
+func _new_scene(style: String, scene_name := "") -> void:
+	await _show_busy(true)
+	await studio.new_scene(style)
 	studio.project_id = ProjectStore.new_id()
-	studio.project_name = Styles.STYLES[style]["name"] + " scene " + str(n)
+	studio.project_name = ProjectStore.unique_name(scene_name) if scene_name != "" else _suggested_name(style)
 	_enter_studio()
 	# Let the camera settle on the cast before taking the thumbnail.
 	for i in 12:

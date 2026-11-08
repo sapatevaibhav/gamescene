@@ -4,7 +4,8 @@ class_name ModelRig
 ## carries animation clips they are matched by name (idle, walk, run, dance...);
 ## otherwise humanoid bones are swung procedurally.
 
-const DIR := "user://assets/models/"
+## Imported character files. Tests point this at a scratch folder.
+static var DIR := "user://assets/models/"
 const CLIP_PATTERNS := {
 	"idle": ["idle", "stand", "breath"], "walk": ["walk"], "run": ["run", "sprint", "jog"], "dance": ["dance"],
 	"wave": ["wave", "hello", "greet"], "sit": ["sit"], "jump": ["jump"], "talk": ["talk", "speak"],
@@ -212,6 +213,8 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 						break
 			for clip in ap.get_animation_list():
 				ap.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
+			# Advanced by hand each frame, so action poses can be laid on top.
+			ap.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 		var sk := _main_skeleton(scene)
 		if sk:
 			rig["skel"] = sk
@@ -224,6 +227,7 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 			var up := (skel_xf.basis.inverse() * Vector3.UP).normalized()
 			rig["axes"] = {}
 			rig["side"] = side
+			rig["fwd"] = (skel_xf.basis.inverse() * Vector3.BACK).normalized()
 			rig["grest"] = {}
 			rig["base"] = {}
 			for slot in rig["bones"]:
@@ -375,7 +379,41 @@ static func find_bones(sk: Skeleton3D) -> Dictionary:
 					break
 		if found >= 0:
 			out[slot] = found
+	# Elbows and knees: the main child of the upper arm / thigh, whatever the
+	# rig calls them (Mixamo "LeftForeArm", VRM "J_Bip_L_LowerArm", ...).
+	for pair in [["upperArmL", "lowerArmL"], ["upperArmR", "lowerArmR"], ["upperLegL", "lowerLegL"], ["upperLegR", "lowerLegR"]]:
+		if out.has(pair[0]):
+			var c := _main_child(sk, out[pair[0]])
+			if c >= 0:
+				out[pair[1]] = c
 	return out
+
+
+## The child that continues a limb: not a twist/helper bone, and with the
+## most bones below it (the hand or foot chain).
+static func _main_child(sk: Skeleton3D, b: int) -> int:
+	var best := -1
+	var best_n := -1
+	for c in sk.get_bone_children(b):
+		var bn := _norm_bone(sk.get_bone_name(c))
+		var skip := false
+		for x in BONE_EXCLUDE:
+			if bn.contains(x):
+				skip = true
+		if skip:
+			continue
+		var n := _subtree(sk, c)
+		if n > best_n:
+			best_n = n
+			best = c
+	return best
+
+
+static func _subtree(sk: Skeleton3D, b: int) -> int:
+	var n := 1
+	for c in sk.get_bone_children(b):
+		n += _subtree(sk, c)
+	return n
 
 
 static func _find(n: Node, cls: String) -> Node:
@@ -404,7 +442,11 @@ static func _state(a: Actor, sp: float) -> String:
 	return "idle"
 
 
-static func animate(a: Actor, _dt: float, sp: float, _is_player: bool) -> void:
+## States that don't need a clip of their own: any idle/walk clip will do.
+const BASIC_STATES := ["idle", "walk", "run", "jump"]
+
+
+static func animate(a: Actor, dt: float, sp: float, _is_player: bool) -> void:
 	var m := a.rig
 	var state := _state(a, sp)
 	var ap: AnimationPlayer = m.get("anim")
@@ -415,7 +457,6 @@ static func animate(a: Actor, _dt: float, sp: float, _is_player: bool) -> void:
 		var h := a.height()
 		r.rotation = Vector3(-PI / 2, a.yaw, 0)
 		r.position = a.pos + Vector3(sin(a.yaw), 0, cos(a.yaw)) * h * 0.45 + Vector3(0, h * 0.08, 0)
-		state = "idle"
 	if ap and not clips.is_empty():
 		var fallback := "idle"
 		if state == "run":
@@ -423,58 +464,172 @@ static func animate(a: Actor, _dt: float, sp: float, _is_player: bool) -> void:
 		elif state == "fight":
 			fallback = "attack" if clips.has("attack") else "idle"
 		var clip: String = clips.get(state, clips.get(fallback, ""))
-		if clip == "" and not clips.is_empty():
+		if clip == "":
 			clip = clips.values()[0]
-		if clip != "" and ap.current_animation != clip:
+		if ap.current_animation != clip:
 			ap.play(clip, 0.25)
 		ap.speed_scale = clampf(sp / 1.7, 0.6, 2.2) if state in ["walk", "run"] else 1.0
-		return
+		ap.advance(dt)
+		if clips.has(state) or state in BASIC_STATES:
+			return
+		# No clip for this action: lay the built-in pose over the idle clip.
+	_pose(a, state, sp)
+
+
+## Built-in poses for rigs without a clip for the action. Angles are in the
+## character's frame: x swings forward (negative) / back, y moves an arm out
+## to the side. Elbows bend forward with negative x, knees back with positive.
+static func _pose_angles(a: Actor, state: String, sp: float) -> Dictionary:
+	var t := a.t
+	var amt := minf(1.0, sp / 3.2)
+	var sw := sin(a.walk) * 0.7 * amt
+	var p := {"upperLegL": Vector2(sw, 0), "upperLegR": Vector2(-sw, 0), "upperArmL": Vector2(-sw * 0.8, 0), "upperArmR": Vector2(sw * 0.8, 0),
+		"lowerArmL": Vector2(-0.15 - amt * 0.3, 0), "lowerArmR": Vector2(-0.15 - amt * 0.3, 0),
+		"lowerLegL": Vector2(maxf(0.0, -sw) * 0.9, 0), "lowerLegR": Vector2(maxf(0.0, sw) * 0.9, 0),
+		"spine": Vector2(sin(t * 1.7) * 0.015, 0), "lift": 0.0, "headPitch": 0.0, "spin": 0.0}
+	match state:
+		"talk":
+			p["upperArmR"] = Vector2(-0.55 + sin(t * 5.0) * 0.25, 0.1)
+			p["lowerArmR"] = Vector2(-1.0 + sin(t * 5.0 + 1.0) * 0.2, 0)
+			p["upperArmL"] = Vector2(-0.2, 0.05)
+			p["lowerArmL"] = Vector2(-0.5, 0)
+			p["headPitch"] = sin(t * 7.0) * 0.06
+		"dance":
+			var b := absf(sin(t * 8.0))
+			p["lift"] = b * 0.05
+			if int(floor(t / 4.0)) % 2 == 0:
+				p["upperArmL"] = Vector2(-2.6 + sin(t * 8.0) * 0.35, 0.2)
+				p["upperArmR"] = Vector2(-2.6 - sin(t * 8.0) * 0.35, 0.2)
+				p["lowerArmL"] = Vector2(-0.4, 0)
+				p["lowerArmR"] = Vector2(-0.4, 0)
+				p["upperLegL"] = Vector2(maxf(0.0, sin(t * 8.0)) * -0.5, 0)
+				p["upperLegR"] = Vector2(maxf(0.0, -sin(t * 8.0)) * -0.5, 0)
+				p["lowerLegL"] = Vector2(maxf(0.0, sin(t * 8.0)) * 0.7, 0)
+				p["lowerLegR"] = Vector2(maxf(0.0, -sin(t * 8.0)) * 0.7, 0)
+			else:
+				p["upperArmL"] = Vector2(-0.3, 1.2 + sin(t * 6.0) * 0.4)
+				p["upperArmR"] = Vector2(-0.3, 1.2 - sin(t * 6.0) * 0.4)
+				p["lowerArmL"] = Vector2(-0.9, 0)
+				p["lowerArmR"] = Vector2(-0.9, 0)
+				p["lowerLegL"] = Vector2(b * 0.4, 0)
+				p["lowerLegR"] = Vector2(b * 0.4, 0)
+				p["spin"] = sin(t * 3.0) * 0.6
+			p["headPitch"] = sin(t * 8.0) * 0.1
+		"wave":
+			p["upperArmR"] = Vector2(-2.5, 0.35)
+			p["lowerArmR"] = Vector2(-0.4 + sin(t * 9.0) * 0.45, 0)
+		"sit":
+			# On the ground, legs out in front.
+			p["upperLegL"] = Vector2(-1.5, 0.08)
+			p["upperLegR"] = Vector2(-1.5, 0.08)
+			p["lowerLegL"] = Vector2(0.1, 0)
+			p["lowerLegR"] = Vector2(0.1, 0)
+			p["upperArmL"] = Vector2(-0.35, 0.15)
+			p["upperArmR"] = Vector2(-0.35, 0.15)
+			p["lowerArmL"] = Vector2(-0.4, 0)
+			p["lowerArmR"] = Vector2(-0.4, 0)
+			p["spine"] = Vector2(-0.05, 0)
+			p["lift"] = -0.27
+		"sleep":
+			for k in ["upperLegL", "upperLegR", "lowerLegL", "lowerLegR", "upperArmL", "upperArmR"]:
+				p[k] = Vector2(0, 0.05 if k.begins_with("upperArm") else 0.0)
+			p["lowerArmL"] = Vector2(-0.2, 0)
+			p["lowerArmR"] = Vector2(-0.2, 0)
+			p["spine"] = Vector2.ZERO
+		"celebrate":
+			var j := absf(sin(t * 7.0))
+			p["lift"] = j * 0.06
+			p["upperArmL"] = Vector2(-2.9 + sin(t * 14.0) * 0.2, 0.35)
+			p["upperArmR"] = Vector2(-2.9 - sin(t * 14.0) * 0.2, 0.35)
+			p["lowerArmL"] = Vector2(-0.25, 0)
+			p["lowerArmR"] = Vector2(-0.25, 0)
+			p["lowerLegL"] = Vector2((1.0 - j) * 0.35, 0)
+			p["lowerLegR"] = Vector2((1.0 - j) * 0.35, 0)
+			p["upperLegL"] = Vector2(-(1.0 - j) * 0.2, 0)
+			p["upperLegR"] = Vector2(-(1.0 - j) * 0.2, 0)
+			p["headPitch"] = -0.25
+		"laugh":
+			# Lean back, hands on the belly, shaking.
+			p["spine"] = Vector2(-0.18 + sin(t * 16.0) * 0.05, 0)
+			p["upperArmL"] = Vector2(-0.2, 0.1)
+			p["upperArmR"] = Vector2(-0.2, 0.1)
+			p["lowerArmL"] = Vector2(-1.1, 0)
+			p["lowerArmR"] = Vector2(-1.1, 0)
+			p["headPitch"] = -0.3 + sin(t * 16.0) * 0.08
+		"cry":
+			# Head down, hands to the face, shoulders shaking.
+			p["spine"] = Vector2(0.25 + sin(t * 18.0) * 0.03, 0)
+			p["upperArmL"] = Vector2(-1.1, -0.05)
+			p["upperArmR"] = Vector2(-1.1, -0.05)
+			p["lowerArmL"] = Vector2(-2.0, 0)
+			p["lowerArmR"] = Vector2(-2.0, 0)
+			p["headPitch"] = 0.4
+		"point":
+			p["upperArmR"] = Vector2(-1.5, 0.05)
+			p["lowerArmR"] = Vector2(0.0, 0)
+		"fight":
+			# Guard up, knees soft.
+			p["upperArmL"] = Vector2(-0.8, 0.15)
+			p["upperArmR"] = Vector2(-0.6, 0.15)
+			p["lowerArmL"] = Vector2(-1.8, 0)
+			p["lowerArmR"] = Vector2(-1.8, 0)
+			p["upperLegL"] = Vector2(-0.25, 0.1)
+			p["upperLegR"] = Vector2(0.15, 0.1)
+			p["lowerLegL"] = Vector2(0.35, 0)
+			p["lowerLegR"] = Vector2(0.35, 0)
+		"attack":
+			var k := 1.0 - a.attack_t / Actor.ATTACK_TIME
+			p["upperArmR"] = Vector2(-2.6 + smoothstep(0.15, 0.6, k) * 3.0, 0.2)
+			p["lowerArmR"] = Vector2(-0.3, 0)
+			p["spine"] = Vector2(sin(k * PI) * -0.12, 0)
+	return p
+
+
+static func _pose(a: Actor, state: String, sp: float) -> void:
+	var m := a.rig
 	var sk: Skeleton3D = m.get("skel")
 	if sk == null:
 		return
 	var bones: Dictionary = m["bones"]
-	var amt := minf(1.0, sp / 3.2)
-	var sw := sin(a.walk) * 0.7 * amt
-	var t := a.t
-	var swing := {"upperLegL": sw, "upperLegR": -sw, "upperArmL": -sw * 0.8, "upperArmR": sw * 0.8}
-	if state == "dance":
-		swing = {"upperArmL": -2.4 + sin(t * 8) * 0.3, "upperArmR": -2.4 - sin(t * 8) * 0.3, "upperLegL": maxf(0, sin(t * 8)) * -0.4, "upperLegR": maxf(0, -sin(t * 8)) * -0.4}
-	elif state == "wave":
-		swing["upperArmR"] = -2.6 + sin(t * 9) * 0.3
-	elif state == "sit":
-		swing = {"upperLegL": -1.4, "upperLegR": -1.4, "upperArmL": -0.4, "upperArmR": -0.4}
-	elif state == "celebrate":
-		swing = {"upperArmL": -2.8 + sin(t * 14) * 0.25, "upperArmR": -2.8 - sin(t * 14) * 0.25}
-	elif state == "point":
-		swing["upperArmR"] = -1.5
-	elif state == "cry":
-		swing = {"upperArmL": -2.0, "upperArmR": -2.0}
-	elif state == "laugh":
-		swing = {"upperArmL": -0.6 + sin(t * 16) * 0.1, "upperArmR": -0.6 - sin(t * 16) * 0.1}
-	elif state == "fight":
-		swing = {"upperArmL": -1.2, "upperArmR": -1.0}
-	elif state == "attack":
-		var k := 1.0 - a.attack_t / Actor.ATTACK_TIME
-		swing["upperArmR"] = -2.6 + smoothstep(0.15, 0.6, k) * 3.4
-	if state == "sleep":
-		swing = {"upperArmL": 0.0, "upperArmR": 0.0, "upperLegL": 0.0, "upperLegR": 0.0}
-	for slot in swing:
-		if bones.has(slot):
-			var b: int = bones[slot]
-			var rest := sk.get_bone_rest(b).basis.get_rotation_quaternion()
-			if m.has("grest"):
-				# Swing in skeleton space on top of the relaxed base pose,
-				# then express it in the bone's local frame.
-				var gq: Quaternion = m["grest"][slot]
-				var base: Quaternion = m["base"][slot]
-				var q := Quaternion(m["side"], swing[slot]) * base
-				sk.set_bone_pose_rotation(b, rest * (gq.inverse() * q * gq))
-			else:
-				var axis: Vector3 = (m.get("axes", {}) as Dictionary).get(slot, Vector3.RIGHT)
-				sk.set_bone_pose_rotation(b, rest * Quaternion(axis, swing[slot]))
+	var p := _pose_angles(a, state, sp)
+	var h := a.height()
+	var r := a.root()
+	if state != "sleep":
+		r.position = a.pos + Vector3(0, float(p["lift"]) * h, 0)
+		r.rotation = Vector3(0, a.yaw + float(p["spin"]), 0)
+	var side: Vector3 = m.get("side", Vector3.RIGHT)
+	var fwd: Vector3 = m.get("fwd", Vector3.BACK)
+	for slot in bones:
+		if not p.has(slot):
+			continue
+		var ang: Vector2 = p[slot]
+		var b: int = bones[slot]
+		var rest := sk.get_bone_rest(b).basis.get_rotation_quaternion()
+		if not m.has("grest"):
+			var axis: Vector3 = (m.get("axes", {}) as Dictionary).get(slot, Vector3.RIGHT)
+			sk.set_bone_pose_rotation(b, rest * Quaternion(axis, ang.x))
+			continue
+		var gq: Quaternion = m["grest"][slot]
+		var base: Quaternion = m["base"].get(slot, Quaternion.IDENTITY)
+		var q: Quaternion
+		if slot.begins_with("lower"):
+			# Bend in the frame the (relaxed) upper limb carries it in.
+			var up_slot: String = str(slot).replace("lower", "upper")
+			var pb: Quaternion = m["base"].get(up_slot, Quaternion.IDENTITY)
+			q = Quaternion((pb.inverse() * side).normalized(), ang.x)
+		else:
+			# Out to the side: left arm/leg rolls one way, right the other.
+			var out_sign := 1.0 if slot.ends_with("L") else -1.0
+			q = Quaternion(side, ang.x) * Quaternion(fwd, ang.y * out_sign) * base
+		sk.set_bone_pose_rotation(b, rest * (gq.inverse() * q * gq))
 	if bones.has("head"):
 		var hb: int = bones["head"]
 		var hr := sk.get_bone_rest(hb).basis.get_rotation_quaternion()
 		a.head_yaw = lerpf(a.head_yaw, a.hy, 0.15)
 		var haxis: Vector3 = (m.get("axes", {}) as Dictionary).get("head", Vector3.UP)
-		sk.set_bone_pose_rotation(hb, hr * Quaternion(haxis, a.head_yaw * 0.7))
+		var pitch := float(p["headPitch"]) + a.hp * 0.5
+		var hq := Quaternion(haxis, a.head_yaw * 0.7)
+		if m.has("grest"):
+			var hg: Quaternion = m["grest"]["head"]
+			hq = hq * (hg.inverse() * Quaternion(side, pitch) * hg)
+		sk.set_bone_pose_rotation(hb, hr * hq)

@@ -4,8 +4,9 @@ class_name ProjectStore
 ## migrations, atomic writes, and import/export of portable .json files
 ## (including scenes exported from the old web build).
 
-const DIR := "user://projects/"
-const INDEX := DIR + "index.json"
+## Where scenes are saved. The test runner points this at a scratch folder
+## so test runs never add scenes to the real home screen.
+static var DIR := "user://projects/"
 
 
 static func _ensure() -> void:
@@ -14,14 +15,14 @@ static func _ensure() -> void:
 
 static func index() -> Array:
 	_ensure()
-	if not FileAccess.file_exists(INDEX):
+	if not FileAccess.file_exists(_index_path()):
 		return []
-	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(INDEX))
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(_index_path()))
 	return d if d is Array else []
 
 
 static func _save_index(i: Array) -> void:
-	_write_atomic(INDEX, JSON.stringify(i))
+	_write_atomic(_index_path(), JSON.stringify(i))
 
 
 static func _write_atomic(path: String, text: String) -> bool:
@@ -133,12 +134,15 @@ static func import_from(path: String) -> String:
 	if d.is_empty() or not Styles.STYLES.has(d.get("style", "")) or not d.has("world"):
 		return "!That file isn’t a GameScene project."
 	var assets: Dictionary = d.get("assets", {})
+	var style: String = d["style"]
 	for m in (assets.get("models", {}) as Dictionary):
+		AssetTags.tag("models", m, style)
 		DirAccess.make_dir_recursive_absolute(ModelRig.DIR)
 		var f := FileAccess.open(ModelRig.DIR + m, FileAccess.WRITE)
 		if f:
 			f.store_buffer(Marshalls.base64_to_raw(assets["models"][m]))
 	for pid in (assets.get("props", {}) as Dictionary):
+		AssetTags.tag("props", pid, style)
 		DirAccess.make_dir_recursive_absolute(AssetLib.DIR)
 		var pf := FileAccess.open(AssetLib.DIR + pid, FileAccess.WRITE)
 		if pf:
@@ -173,3 +177,24 @@ static func migrate(d: Dictionary) -> Dictionary:
 			d["keys"] = {}
 		d["v"] = 4
 	return d
+
+
+static func _index_path() -> String:
+	return DIR + "index.json"
+
+
+## `name`, or "name 2", "name 3"... if another scene already uses it.
+static func unique_name(name: String, except_id := "") -> String:
+	var taken := {}
+	for p in index():
+		if p.get("id", "") != except_id:
+			taken[str(p.get("name", "")).to_lower()] = true
+	var n := name.strip_edges().left(40)
+	if n == "":
+		n = "Untitled scene"
+	var out := n
+	var k := 2
+	while taken.has(out.to_lower()):
+		out = "%s %d" % [n, k]
+		k += 1
+	return out
