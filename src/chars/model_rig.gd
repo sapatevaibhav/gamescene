@@ -8,7 +8,12 @@ const DIR := "user://assets/models/"
 const CLIP_PATTERNS := {
 	"idle": ["idle", "stand", "breath"], "walk": ["walk"], "run": ["run", "sprint", "jog"], "dance": ["dance"],
 	"wave": ["wave", "hello", "greet"], "sit": ["sit"], "jump": ["jump"], "talk": ["talk", "speak"],
+	"sleep": ["sleep", "lie", "lying", "laydown"], "celebrate": ["celebrat", "cheer", "victory", "win"],
+	"laugh": ["laugh"], "cry": ["cry", "sad", "sob"], "point": ["point"],
+	"attack": ["attack", "punch", "slash", "swing", "hit"], "fight": ["fight", "combat", "boxing", "guard"],
 }
+## Behaviours that play their own clip (or a built-in pose) while standing.
+const POSE_STATES := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point", "fight"]
 ## Body-part bone names by rig convention, after normalisation (lower case,
 ## spaces removed, "." -> "_", numeric suffixes like "_059" dropped,
 ## "mixamorig:" stripped). Most specific names first: matching tries exact
@@ -384,6 +389,8 @@ static func _find(n: Node, cls: String) -> Node:
 
 
 static func _state(a: Actor, sp: float) -> String:
+	if a.attack_t > 0.0:
+		return "attack"
 	if not a.on_ground and a.vel.y > 1:
 		return "jump"
 	if sp > 3.3:
@@ -392,7 +399,7 @@ static func _state(a: Actor, sp: float) -> String:
 		return "walk"
 	if a.speak_t > 0:
 		return "talk"
-	if a.behavior in ["dance", "wave", "sit"]:
+	if a.behavior in POSE_STATES:
 		return a.behavior
 	return "idle"
 
@@ -402,8 +409,20 @@ static func animate(a: Actor, _dt: float, sp: float, _is_player: bool) -> void:
 	var state := _state(a, sp)
 	var ap: AnimationPlayer = m.get("anim")
 	var clips: Dictionary = m["clips"]
+	if state == "sleep" and not clips.has("sleep"):
+		# No lying clip: tip the whole model onto its back, centred on the spot.
+		var r := a.root()
+		var h := a.height()
+		r.rotation = Vector3(-PI / 2, a.yaw, 0)
+		r.position = a.pos + Vector3(sin(a.yaw), 0, cos(a.yaw)) * h * 0.45 + Vector3(0, h * 0.08, 0)
+		state = "idle"
 	if ap and not clips.is_empty():
-		var clip: String = clips.get(state, clips.get("walk" if state == "run" else "idle", ""))
+		var fallback := "idle"
+		if state == "run":
+			fallback = "walk"
+		elif state == "fight":
+			fallback = "attack" if clips.has("attack") else "idle"
+		var clip: String = clips.get(state, clips.get(fallback, ""))
 		if clip == "" and not clips.is_empty():
 			clip = clips.values()[0]
 		if clip != "" and ap.current_animation != clip:
@@ -424,6 +443,21 @@ static func animate(a: Actor, _dt: float, sp: float, _is_player: bool) -> void:
 		swing["upperArmR"] = -2.6 + sin(t * 9) * 0.3
 	elif state == "sit":
 		swing = {"upperLegL": -1.4, "upperLegR": -1.4, "upperArmL": -0.4, "upperArmR": -0.4}
+	elif state == "celebrate":
+		swing = {"upperArmL": -2.8 + sin(t * 14) * 0.25, "upperArmR": -2.8 - sin(t * 14) * 0.25}
+	elif state == "point":
+		swing["upperArmR"] = -1.5
+	elif state == "cry":
+		swing = {"upperArmL": -2.0, "upperArmR": -2.0}
+	elif state == "laugh":
+		swing = {"upperArmL": -0.6 + sin(t * 16) * 0.1, "upperArmR": -0.6 - sin(t * 16) * 0.1}
+	elif state == "fight":
+		swing = {"upperArmL": -1.2, "upperArmR": -1.0}
+	elif state == "attack":
+		var k := 1.0 - a.attack_t / Actor.ATTACK_TIME
+		swing["upperArmR"] = -2.6 + smoothstep(0.15, 0.6, k) * 3.4
+	if state == "sleep":
+		swing = {"upperArmL": 0.0, "upperArmR": 0.0, "upperLegL": 0.0, "upperLegR": 0.0}
 	for slot in swing:
 		if bones.has(slot):
 			var b: int = bones[slot]

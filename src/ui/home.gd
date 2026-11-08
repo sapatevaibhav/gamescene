@@ -53,8 +53,9 @@ func refresh() -> void:
 	UIK.clear(_col)
 	var top := UIK.hbox(10)
 	var mark := TextureRect.new()
-	mark.texture = load("res://icon.svg")
+	mark.texture = load("res://assets/brand/mark.png")
 	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	mark.custom_minimum_size = Vector2(UIK.px(30), UIK.px(30))
 	top.add_child(mark)
 	top.add_child(UIK.label("GameScene", 18, UIK.INK, true))

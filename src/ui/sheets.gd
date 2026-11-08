@@ -427,18 +427,28 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	name_edit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hero.add_child(name_edit)
 	b.add_child(hero)
-	if a != studio.player:
+	var directing := studio.directing()
+	if directing:
+		_section(b, "What they do from %s" % TimelinePanel._fmt(studio.play_t))
+		b.add_child(UIK.para("Director mode: picking an action adds a 5 s cue to the script at the playhead. Drag its edge in the timeline to change how long it lasts.", 12))
+	elif a != studio.player:
 		_section(b, "What they do")
+	if directing or a != studio.player:
 		var g := UIK.grid(3, 8)
 		for beh in Styles.BEHAVIORS:
-			var t := UIK.chip(beh[1], a.base_behavior == beh[0], func():
-				a.set_behavior(beh[0])
-				studio.capture_start()
+			var t := UIK.chip(beh[1], a.behavior == beh[0] if directing else a.base_behavior == beh[0], func():
+				if studio.directing():
+					studio.direct_action(a, beh[0])
+					hud.toast("%s: %s from %s" % [a.name, beh[1], TimelinePanel._fmt(studio.play_t)])
+				else:
+					a.set_behavior(beh[0])
+					studio.capture_start()
 				studio.mark_dirty()
 				_rerender())
 			t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			g.add_child(t)
 		b.add_child(g)
+	if a != studio.player:
 		b.add_child(UIK.toggle("Notice the player (turn to look)", a.notice, func(on: bool): a.notice = on; studio.mark_dirty()))
 	_section(b, "Lines (one per line, said when chatting)")
 	var te := TextEdit.new()
@@ -455,7 +465,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	b.add_child(say)
 	_section(b, "Direct")
 	var r1 := UIK.flow(8)
-	r1.add_child(UIK.btn("Move", func():
+	r1.add_child(UIK.btn("Move from here" if directing else "Move", func():
 		studio.tools.set_tool("move_actor", {"actor_id": a.id})
 		hud.close_sheet(), false, "move"))
 	r1.add_child(UIK.btn("Film them", func():
@@ -497,7 +507,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 
 # ---------------------------------------------------------------- script (timeline cues)
 
-const CUE_ACTIONS := [["say", "Say"], ["walkto", "Walk to"], ["runto", "Run to"], ["idle", "Stand"], ["wander", "Wander"], ["talk", "Chat"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"], ["follow", "Follow"], ["flee", "Run away"], ["gather", "Gather"]]
+const CUE_ACTIONS := [["say", "Say"], ["walkto", "Walk to"], ["runto", "Run to"], ["idle", "Stand"], ["wander", "Wander"], ["talk", "Chat"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"], ["follow", "Follow"], ["flee", "Run away"], ["gather", "Gather"], ["sleep", "Sleep"], ["celebrate", "Celebrate"], ["laugh", "Laugh"], ["cry", "Cry"], ["point", "Point"], ["fight", "Fight"]]
 
 
 func v_script(_a, b: VBoxContainer) -> String:
@@ -894,8 +904,14 @@ func v_settings(_a, b: VBoxContainer) -> String:
 				hud.toast("Couldn’t write that file.")), false, "download"))
 	b.add_child(r)
 	_section(b, "Keys")
-	b.add_child(UIK.para("WASD move · Space jump · Shift sprint · Ctrl crouch · left click attack · right click a character for their menu · drag to look · wheel zoom · C camera · B build · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))
+	b.add_child(UIK.para("WASD move · Space jump · Shift sprint · Ctrl crouch · left click attack · right click a character for their menu · drag to look · wheel zoom · C camera · B build · T timeline · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))
 	_section(b, "About")
+	var logo := TextureRect.new()
+	logo.texture = load("res://assets/brand/wordmark.png")
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(0, UIK.px(110))
+	b.add_child(logo)
 	b.add_child(UIK.para("GameScene Studio is a visual workspace for creating, animating and bringing game scenes to life.", 13, UIK.GRAY_200))
 	var renderer: String = {"forward_plus": "Forward+", "mobile": "Mobile", "gl_compatibility": "Compatibility"}.get(RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_method())
 	b.add_child(UIK.para("Version %s  •  Godot %s  •  %s" % [ProjectSettings.get_setting("application/config/version"), Engine.get_version_info()["string"], renderer], 12))

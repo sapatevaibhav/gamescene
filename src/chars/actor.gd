@@ -409,6 +409,27 @@ func update_npc(dt: float) -> void:
 				steer(clampf(pos.x + tdx / l * 4, 1.5, size - 1.5), clampf(pos.z + tdz / l * 4, 1.5, size - 1.5), 4.4, dt)
 			else:
 				hy = 0
+		"fight":
+			# Square up to the nearest character and swing every so often.
+			var foe: Actor = null
+			var fd := 6.0
+			for b in studio.actors:
+				if b == self:
+					continue
+				var dd := Vector2(b.pos.x - pos.x, b.pos.z - pos.z).length()
+				if dd < fd:
+					fd = dd
+					foe = b
+			if foe:
+				if fd > 1.3:
+					steer(foe.pos.x, foe.pos.z, 2.6, dt)
+				else:
+					face_to(foe.pos.x, foe.pos.z, dt, 8)
+					wait -= dt
+					if wait <= 0:
+						wait = 0.9 + App.sim_randf() * 0.8
+						attack()
+				look_at = foe
 		"talk":
 			if partner == null or partner.behavior != "talk" or not studio.actors.has(partner):
 				partner = null
@@ -448,7 +469,7 @@ func update_npc(dt: float) -> void:
 				if next_line <= 0:
 					next_line = 5.0 + App.sim_randf() * 4.0
 					say(line())
-	if look_at == null and notice and player and player != self and pd < 7 and behavior != "dance" and behavior != "flee":
+	if look_at == null and notice and player and player != self and pd < 7 and not behavior in ["dance", "flee", "sleep", "cry"]:
 		look_at = player
 	move_body(dt)
 	if look_at:
@@ -466,7 +487,7 @@ func update_npc(dt: float) -> void:
 
 
 func _head_idle() -> void:
-	hy = sin(t * 0.45 + id) * 0.45
+	hy = 0.0 if behavior == "sleep" else sin(t * 0.45 + id) * 0.45
 	hp = 0.0
 
 
@@ -491,7 +512,9 @@ func animate(dt: float, is_player: bool) -> void:
 	var r := root()
 	if m.get("kind", "human") == "model":
 		r.position = pos
-		r.rotation.y = yaw
+		r.rotation = Vector3(0, yaw, 0)
+		attack_t = maxf(attack_t - dt, 0.0)
+		hurt_t = maxf(hurt_t - dt, 0.0)
 		ModelRig.animate(self, dt, sp, is_player)
 		_tick_bubble(dt)
 		return
@@ -523,7 +546,7 @@ func animate(dt: float, is_player: bool) -> void:
 		model.position.y = h2 * 0.35
 		upper.scale = Vector3(1 + (1 - h2) * amt * 0.12, 1 - (1 - h2) * amt * 0.15, 1 + (1 - h2) * amt * 0.12)
 	var still := sp < 0.2 and not is_player
-	if quad and still and not ["idle", "wander", "follow", "chase", "flee", "patrol", "gather"].has(behavior):
+	if quad and still and not ["idle", "wander", "follow", "chase", "flee", "patrol", "gather", "fight"].has(behavior):
 		match behavior:
 			"dance":
 				model.position.y = absf(sin(t * 8)) * 0.18
@@ -539,6 +562,21 @@ func animate(dt: float, is_player: bool) -> void:
 			"talk":
 				if speak_t > 0:
 					hpitch += sin(t * 9) * 0.12
+			"sleep":
+				leg_l.rotation.x = -1.3
+				leg_r.rotation.x = -1.3
+				arm_l.rotation.x = 1.3
+				arm_r.rotation.x = 1.3
+				model.position.y = -float(m.get("sitDrop", 0.1)) * 1.6
+				hyaw = 0.4
+				hpitch = 0.5
+			"celebrate":
+				model.position.y = absf(sin(t * 7)) * 0.2
+				model.rotation.y = sin(t * 3.5) * 0.35
+			"laugh", "cry":
+				hpitch += sin(t * 15) * 0.08 + (0.35 if behavior == "cry" else -0.2)
+			"point":
+				hpitch -= 0.15
 		if speak_t > 0:
 			speak_t -= dt
 		_finish_head(dt, hyaw, hpitch, head, r)
@@ -581,6 +619,46 @@ func animate(dt: float, is_player: bool) -> void:
 			"idle", "gather", "talk":
 				# Subtle breathing so nobody stands frozen.
 				upper.rotation.x = sin(t * 1.7) * 0.015
+			"sleep":
+				# Lie on their back, centred on where they stood.
+				model.rotation.x = -PI / 2
+				model.position = Vector3(0, hgt * 0.08 + sin(t * 1.2) * 0.004, hgt * 0.45)
+				leg_l.rotation = Vector3.ZERO
+				leg_r.rotation = Vector3.ZERO
+				arm_l.rotation = Vector3(0, 0, 0.12)
+				arm_r.rotation = Vector3(0, 0, -0.12)
+				hyaw = 0.0
+				hpitch = 0.0
+			"celebrate":
+				var j := absf(sin(t * 7))
+				model.position.y = j * hgt * 0.07
+				arm_l.rotation = Vector3(-2.9 + sin(t * 14) * 0.25, 0, 0.25)
+				arm_r.rotation = Vector3(-2.9 - sin(t * 14) * 0.25, 0, -0.25)
+				leg_l.rotation.x = -j * 0.3
+				leg_r.rotation.x = -j * 0.3
+				hpitch = -0.25
+			"laugh":
+				# Lean back, hands on the belly, shaking.
+				upper.rotation.x = -0.12 + sin(t * 16) * 0.05
+				arm_l.rotation = Vector3(-0.55, 0, -0.18)
+				arm_r.rotation = Vector3(-0.55, 0, 0.18)
+				hpitch = -0.35 + sin(t * 16) * 0.08
+				model.position.y = absf(sin(t * 16)) * hgt * 0.01
+			"cry":
+				# Head down, hands to the face, shoulders shaking.
+				upper.rotation.x = 0.18 + sin(t * 18) * 0.025
+				arm_l.rotation = Vector3(-2.3, 0, -0.55)
+				arm_r.rotation = Vector3(-2.3, 0, 0.55)
+				hyaw = 0.0
+				hpitch = 0.45
+			"point":
+				arm_r.rotation = Vector3(-1.55, 0, 0)
+				hpitch = 0.0
+			"fight":
+				# Guard up between swings.
+				arm_l.rotation = Vector3(-1.3, 0, 0.35)
+				arm_r.rotation = Vector3(-1.1, 0, -0.35)
+				upper.rotation.x = 0.08
 	if speak_t > 0 and not quad:
 		speak_t -= dt
 		if m.get("pose", "") != "zombie":
@@ -654,7 +732,8 @@ func on_hit(from: Actor) -> void:
 	vel = Vector3(push.x, 3.5, push.z)
 	knock_t = 0.25
 	if studio.player != self:
-		say(["Ow!", "Hey!", "Ouch!", "What was that for?!"][randi() % 4], 1.6)
+		# The scene's random stream keeps fights the same on every take.
+		say(["Ow!", "Hey!", "Ouch!", "What was that for?!"][int(App.sim_randf() * 4.0) % 4], 1.6)
 		if base_behavior in ["idle", "wander", "talk", "sit", "dance", "wave", "gather"] and App.sim_randf() < 0.5:
 			set_behavior("flee", false)
 			flee_t = 4.0

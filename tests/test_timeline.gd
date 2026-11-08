@@ -59,6 +59,7 @@ func _studio(studio: Studio) -> void:
 		if x != studio.player:
 			a = x
 			break
+	a.set_behavior("idle")
 	studio.capture_start()
 	var p0 := a.pos
 	var target := Vector3(p0.x + 6.0, 0, p0.z)
@@ -108,3 +109,68 @@ func _studio(studio: Studio) -> void:
 	ok(d.has("keys") and (d["keys"] as Dictionary).has("Renamed") and int(d["v"]) == 4, "keys are saved (schema v4)")
 	var err := studio.load_data(JSON.parse_string(JSON.stringify(d)))
 	ok(err == "" and studio.timeline.track("Renamed").size() == 2 and studio.timeline.track(Timeline.CAM).size() == 2, "keys load back")
+	await _director(studio)
+	await _actions(studio)
+
+
+## Director mode: pausing, moving someone from a moment on (a jump key) and
+## giving them an action at the playhead, then replaying it all.
+func _director(studio: Studio) -> void:
+	studio.cues.clear()
+	studio.timeline.clear()
+	var b: Actor = null
+	for x in studio.actors:
+		if x != studio.player and x.base_behavior == "wander":
+			b = x
+			break
+	if b == null:
+		b = studio.actors[1]
+		b.set_behavior("wander")
+	studio.capture_start()
+	studio.seek(3.0)
+	ok(studio.directing(), "seek puts the scene in director mode")
+	var before := b.pos
+	var spot := Vector3(b.pos.x - 5.0, 0, b.pos.z + 2.0)
+	spot.y = studio.world.ground_at(spot.x, spot.z)
+	studio.direct_move(b, spot)
+	studio.direct_action(b, "celebrate", 2.0)
+	var jk: Array = studio.timeline.track(b.name)
+	ok(jk.size() == 1 and jk[0].get("j", false), "director move adds a jump key")
+	ok(studio.cues.size() == 1 and is_equal_approx(float(studio.cues[0]["start"]), 3.0), "director action adds a cue at the playhead")
+	studio.seek(2.0)
+	ok(not b.keyed and b.pos.distance_to(spot) > 1.0, "before the jump they follow their behaviour")
+	ok(b.pos.distance_to(before) < 3.0, "no walking towards the jump key (%.2f from where they were)" % b.pos.distance_to(before))
+	studio.seek(3.5)
+	ok(b.pos.distance_to(spot) < 0.3 and b.behavior == "celebrate", "after the jump they're there, celebrating")
+	studio.seek(5.5)
+	ok(b.behavior == b.base_behavior, "the action ends with its cue")
+	studio.play_scene(false)
+
+
+## Every new action runs on every kind of rig without errors, and fights
+## replay identically.
+func _actions(studio: Studio) -> void:
+	var acts := ["sleep", "celebrate", "laugh", "cry", "point", "fight"]
+	studio.cues.clear()
+	studio.timeline.clear()
+	for i in studio.actors.size():
+		if studio.actors[i] != studio.player:
+			studio.actors[i].set_behavior(acts[i % acts.size()])
+	studio.capture_start()
+	studio.seek(4.0)
+	var snap := studio.actors.map(func(x): return x.pos)
+	studio.seek(1.0)
+	studio.seek(4.0)
+	var same := true
+	for j in studio.actors.size():
+		if studio.actors[j].pos.distance_to(snap[j]) > 1e-3:
+			same = false
+	ok(same, "new actions (including fights) replay identically")
+	var sleeper: Actor = null
+	for x in studio.actors:
+		if x.behavior == "sleep" and x.rig.get("kind", "human") == "human":
+			sleeper = x
+	if sleeper:
+		var model: Node3D = sleeper.rig["model"]
+		ok(absf(model.rotation.x + PI / 2) < 0.01, "sleepers lie down")
+	studio.play_scene(false)

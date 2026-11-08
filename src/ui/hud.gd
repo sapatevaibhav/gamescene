@@ -41,6 +41,7 @@ var restore_btn: Button
 var play_bar := PanelContainer.new()
 var timeline_panel: TimelinePanel
 var play_label := Label.new()
+var play_pause: Button
 
 var clean := false
 var view_stack: Array = []
@@ -137,6 +138,8 @@ func _ready() -> void:
 	# Script playback bar.
 	play_bar.add_theme_stylebox_override("panel", UIK.glass(14))
 	var pr := UIK.hbox(8)
+	play_pause = UIK.icon_btn("pause", toggle_pause, "Pause and direct", 36, false)
+	pr.add_child(play_pause)
 	pr.add_child(UIK.icon_btn("stop", func(): stop_script(), "Stop", 36, false))
 	play_label.add_theme_color_override("font_color", Color.WHITE)
 	pr.add_child(play_label)
@@ -431,9 +434,13 @@ func _process(delta: float) -> void:
 	elif studio.playing and not rec.active:
 		play_bar.visible = true
 		var total := studio.script_length()
-		play_label.text = "Script  %s / %s" % [U.fmt_time(studio.play_t), U.fmt_time(total)]
+		if studio.paused:
+			play_label.text = "Directing at %s · tap a character to change what they do  " % TimelinePanel._fmt(studio.play_t)
+		else:
+			play_label.text = "Script  %s / %s" % [U.fmt_time(studio.play_t), U.fmt_time(total)]
 		play_bar.size = play_bar.get_combined_minimum_size()
-		if studio.play_t > total + 1.0:
+		play_bar.position.x = (get_viewport_rect().size.x - play_bar.size.x) / 2
+		if studio.play_t > total + 1.0 and not studio.paused:
 			stop_script()
 	else:
 		play_bar.visible = false
@@ -753,6 +760,19 @@ func play_script() -> void:
 		return
 	close_sheet()
 	studio.play_scene(true)
+	play_pause.icon = Icons.tex("pause", UIK.px(22), UIK.INK)
+
+
+## Director mode from the script play bar: freeze the scene on the current
+## moment so characters can be moved or given new actions, then carry on.
+func toggle_pause() -> void:
+	studio.paused = not studio.paused
+	play_pause.icon = Icons.tex("playtri" if studio.paused else "pause", UIK.px(22), UIK.INK)
+	play_pause.tooltip_text = "Resume" if studio.paused else "Pause and direct"
+	if studio.paused and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if _top_name() == "actor":
+		render_sheet()
 
 
 func stop_script() -> void:

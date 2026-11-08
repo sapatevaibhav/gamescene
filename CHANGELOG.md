@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.10.0)
+## What's supported (as of 0.11.0)
 
 ### Platforms and engine
 
@@ -70,6 +70,7 @@ run, dance, wave, sit, jump or talk are played when present.
 | Wheel | Zoom (only over the scene, not over panels) |
 | C · B · R · P · H | Cycle camera · build tool · record · screenshot · clean view |
 | T | Open or close the timeline |
+| Pause button on the play bar | Director mode: move characters or change what they do from that moment |
 | Ctrl+Z / Ctrl+Shift+Z · Ctrl+S | Undo / redo · save |
 
 Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for their menu.
@@ -86,6 +87,23 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 ---
 
 ## [Unreleased]
+
+## [0.11.0] - 2026-11-08
+
+### Added
+- **Director mode.** Pause a playing script (the new pause button on the play bar) or pause the timeline, and the scene freezes on that moment. Edits made there are recorded into the script from that moment on:
+  - **Move from here** (character menu): tap the ground and they're put there at the playhead. This is a *jump* key (drawn as a square on the timeline): their behaviour runs before it, and they are not walked towards it.
+  - **What they do from 0:04.2** (character menu): picking an action adds a 5-second cue at the playhead. Drag its edge on the timeline to change how long it lasts.
+  - Press play to carry on. Every take replays the edits exactly.
+- **Six new actions** for behaviours and script cues: **Sleep** (lie down), **Celebrate** (jump with arms up), **Laugh**, **Cry**, **Point** and **Fight** (square up to the nearest character and swing; whoever gets hit flinches and may run off). They work on built-in characters, animals and imported models. Imported models use a clip whose name matches (`sleep`, `cheer`, `laugh`, `cry`, `point`, `attack`, `fight`, …), or a built-in pose if there isn't one. Models without a lying clip are tipped onto their back to sleep.
+- Tests: director mode and the new actions in `test_timeline`.
+
+### Changed
+- **New logo.** The app icon (window and taskbar), the home-screen mark, a boot splash with the wordmark on black, and the wordmark in Settings → About all use it. Brand files live in `assets/brand/`: `icon.png`, `mark.png`, `wordmark.png` and `splash.png`. The original artwork is kept in `assets/brand/source/`, which a `.gdignore` file keeps Godot from importing. The old `icon.svg` was removed.
+
+### Fixed
+- Imported models could attack only once: their attack timer never ran down.
+- Being hit picked the "Ow!" line with the global random generator, so fights didn't replay the same way on every take.
 
 ## [0.10.0] - 2026-11-08
 

@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (8 Nov 2026, v0.10.0)
+## Where it stands today (8 Nov 2026, v0.11.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -8,12 +8,13 @@
 - **Worlds:** four styles (blocky voxel, anime fantasy, tactical, low-poly), 80 × 80 m bounded worlds, about 190 blocks, prefabs, terrain sculpting, CC0 ground textures and props for every style.
 - **Characters:** built-in presets, monsters and animals, skin PNG import, and `.glb`, `.vrm`, `.gltf` and `.fbx` import with bone matching for 12 rig conventions and rig-aware sizing.
 - **Environment import:** `.glb`, `.gltf` and `.fbx` objects with cel shading, leaf cut-outs, wind and inferred collision.
-- **Behaviours:** idle, wander, chat, dance, wave, sit, follow, chase, flee, gather and patrol, with chat bubbles.
+- **Behaviours:** idle, wander, chat, dance, wave, sit, follow, chase, flee, gather, patrol, sleep, celebrate, laugh, cry, point and fight, with chat bubbles.
 - **Controls:** sprint, crouch, jump and climb, attack with knockback, and a per-character menu.
 - **Cameras:** follow, first person, free, cinematic orbit, dolly, crane and push-in, user camera paths, and camera shake.
 - **Rendering:** real shadows, ambient occlusion, bloom, volumetric fog, a procedural sky, water and wind shaders, rain and snow with lightning, a day/night cycle with lamps, depth of field, cel shading and four quality tiers.
 - **Script (simple mode):** timed cues for say, walk to and behaviours, with deterministic seeded playback.
 - **Timeline mode:** camera and character tracks, keyframes with easing, scrubbing that replays the scene, loop.
+- **Director mode:** pause on any moment and move characters or change their action from there.
 - **Shot mode and export:** an off-screen fixed-timestep renderer at 720p to 4K, in 16:9, 9:16 or 1:1, at 24, 30 or 60 fps. Shot list with cuts, fades and title cards, burned-in subtitles, MP4 through ffmpeg and an AVI fallback.
 - **Projects:** versioned JSON with migration from web saves, undo/redo, autosave, import and export.
 - **Tests:** headless suites plus rendered visual checks (see README).
@@ -35,8 +36,8 @@
 |---|---|---|
 | 0.5–0.9 | Godot port, rendering, imports, simple script, export core | Done |
 | 0.10 | Timeline and keyframes (Phase B) | Done |
-| **0.11** | **Director mode and more actions (Phase B and E)** | **Next** |
-| 0.12 | Audio and dialogue (Phase D) | |
+| 0.11 | Director mode and more actions (Phase B and E) | Done |
+| **0.12** | **Audio and dialogue (Phase D)** | **Next** |
 | 0.13 | Export reliability and extras (Phase C) | |
 | 0.14 | VRM spring bones, blinking and the animation library (Phase E core) | |
 | 0.15 | Packaging for Android, iOS and desktop (Phase I) | |
@@ -60,7 +61,7 @@
 - [x] Simple mode: rows of character, action, start time and duration.
 - [x] **Timeline mode (0.10).** One track per character and one camera track. Blocks for actions, walk-to targets and dialogue. Scrubbing, play/pause and looping.
 - [x] **Keyframes (0.10).** Position and rotation for characters, and camera keyframes with easing curves.
-- [ ] **Director mode (0.11).** Pause the scene, reposition actors, change their actions and resume.
+- [x] **Director mode (0.11).** Pause the scene, reposition actors, change their actions and resume.
 
 ## Phase C: Shot mode and export
 
@@ -84,7 +85,8 @@
 - [x] Import `.glb`, `.vrm`, `.gltf` and `.fbx` characters, with bone matching and rig-aware sizing.
 - [x] Import environment objects.
 - [ ] Full VRM support: MToon shading, spring bones for hair and cloth, expressions and blinking.
-- [ ] Animation library: retarget Mixamo-style clips. Add sleep, attack, point, laugh, cry and celebrate.
+- [x] Add sleep, fight, point, laugh, cry and celebrate (0.11).
+- [ ] Animation library: retarget Mixamo-style clips onto any humanoid.
 - [ ] A pose library to save and reuse poses.
 - [ ] Attachment points for held weapons and props.
 - [ ] Characters saved as reusable presets, with a size setting per character.

@@ -180,6 +180,12 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 				return -1
 			var pt: Vector3 = hit["point"]
 			var s := studio.find_spot(pt.x, pt.z)
+			if studio.directing():
+				# Director mode: they're put there from this moment on.
+				studio.direct_move(a, Vector3(s.x, w.ground_at(s.x, s.y), s.y))
+				set_tool("")
+				App.toast("%s moves there at %s." % [a.name, U.fmt_time(studio.play_t)])
+				return -1
 			studio.checkpoint()
 			a.pos = Vector3(s.x, w.ground_at(s.x, s.y), s.y)
 			a.home = a.pos

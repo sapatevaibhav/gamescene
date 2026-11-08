@@ -4,7 +4,9 @@ extends RefCounted
 ## camera track (position, rotation, field of view). Saved with the project as
 ##   {"cam": [{t, p, q, fov, e}], "<actor name>": [{t, p, yaw, e}]}
 ## Keys in each track are kept sorted by time. `e` is the easing into the
-## next key: "s" (smooth in/out) or "l" (linear).
+## next key: "s" (smooth in/out) or "l" (linear). A character key with
+## `j: true` is a jump (set by director mode): the character is put there at
+## that moment and is not walked towards it, so their behaviour runs before.
 
 const CAM := "cam"
 ## Two keys closer than this count as the same moment.
@@ -104,8 +106,16 @@ func key_index_near(name: String, t: float, tol: float) -> int:
 	return best
 
 
-static func actor_key(t: float, a: Actor) -> Dictionary:
-	return {"t": snappedf(t, 0.01), "p": [U.r2(a.pos.x), U.r2(a.pos.y), U.r2(a.pos.z)], "yaw": snappedf(a.yaw, 0.001), "e": "l"}
+static func actor_key(t: float, a: Actor, jump := false) -> Dictionary:
+	var k := {"t": snappedf(t, 0.01), "p": [U.r2(a.pos.x), U.r2(a.pos.y), U.r2(a.pos.z)], "yaw": snappedf(a.yaw, 0.001), "e": "l"}
+	if jump:
+		k["j"] = true
+	return k
+
+
+## Jump keys of a track with t0 < t <= t1 (the ones the clock just crossed).
+func jumps_crossed(name: String, t0: float, t1: float) -> Array:
+	return track(name).filter(func(k): return k.get("j", false) and float(k["t"]) > t0 and float(k["t"]) <= t1)
 
 
 static func camera_key(t: float, cam: Camera3D) -> Dictionary:
@@ -148,7 +158,8 @@ static func _segment(arr: Array, t: float) -> Array:
 
 ## Character pose at `t`, or {} when the track doesn't drive the character at
 ## that moment. A track drives its character from the scene start (moving
-## from `start` towards the first key) until its last key.
+## from `start` towards the first key) until its last key, except on the way
+## into a jump key, where the character is left to their behaviour.
 func actor_pose(name: String, t: float, start: Dictionary) -> Dictionary:
 	var arr := track(name)
 	if arr.is_empty() or t > float(arr[-1]["t"]) + 1e-4:
@@ -156,7 +167,9 @@ func actor_pose(name: String, t: float, start: Dictionary) -> Dictionary:
 	var ka: Dictionary
 	var kb: Dictionary
 	var w: float
-	if t < float(arr[0]["t"]) and not start.is_empty():
+	if t < float(arr[0]["t"]):
+		if start.is_empty() or arr[0].get("j", false):
+			return {}
 		ka = {"t": 0.0, "p": start["pos"], "yaw": start.get("yaw", 0.0)}
 		kb = arr[0]
 		w = t / maxf(float(kb["t"]), 1e-4)
@@ -165,6 +178,8 @@ func actor_pose(name: String, t: float, start: Dictionary) -> Dictionary:
 		ka = seg[0]
 		kb = seg[1]
 		w = seg[2]
+		if kb != ka and kb.get("j", false):
+			return {}
 	return {"pos": _v(ka).lerp(_v(kb), w), "yaw": lerp_angle(float(ka.get("yaw", 0.0)), float(kb.get("yaw", 0.0)), w)}
 
 

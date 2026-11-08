@@ -381,6 +381,36 @@ func rename_actor(a: Actor, new_name: String) -> void:
 	mark_dirty()
 
 
+# ---------------------------------------------------------------- director mode
+# While the scene is paused on the playhead, edits are recorded into the
+# script at that moment instead of changing the scene start.
+
+func directing() -> bool:
+	return playing and paused
+
+
+## Puts a character somewhere from this moment on (a jump key).
+func direct_move(a: Actor, p: Vector3) -> void:
+	a.pos = p
+	a.vel = Vector3.ZERO
+	a.home = p
+	a.goto = {}
+	a.target = {}
+	timeline.set_key(a.name, Timeline.actor_key(play_t, a, true))
+	a.animate(0.0, a == player)
+	mark_dirty()
+
+
+## Starts an action for a character from this moment (a script cue).
+func direct_action(a: Actor, action: String, dur := 5.0) -> void:
+	var t := snappedf(play_t, 0.01)
+	cues.append({"actor": a.name, "action": action, "start": t, "dur": dur})
+	a.goto = {}
+	a.set_behavior(action, false)
+	_fired[cues.size() - 1] = true
+	mark_dirty()
+
+
 func set_player(a: Actor) -> void:
 	if a == player:
 		return
@@ -537,7 +567,16 @@ func _apply_keys(dt: float) -> void:
 	var starts := {}
 	for s in start_state:
 		starts[int(s.get("id", -1))] = s
+	var prev := play_t - dt if play_t - dt > 1e-5 else -1.0
 	for a in actors:
+		for k in timeline.jumps_crossed(a.name, prev, play_t):
+			var kp: Array = k["p"]
+			a.pos = Vector3(kp[0], kp[1], kp[2])
+			a.yaw = float(k.get("yaw", a.yaw))
+			a.vel = Vector3.ZERO
+			a.home = a.pos
+			a.goto = {}
+			a.target = {}
 		var pose := timeline.actor_pose(a.name, play_t, starts.get(a.id, {}))
 		if pose.is_empty():
 			if a.keyed:

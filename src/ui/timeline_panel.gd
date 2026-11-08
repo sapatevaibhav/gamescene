@@ -373,10 +373,15 @@ class TimelineView:
 		var r := float(UIK.px(6))
 		for i in arr.size():
 			var x := t_to_x(float(arr[i]["t"]))
-			if i + 1 < arr.size():
+			# No line into a jump key: the character isn't walked there.
+			if i + 1 < arr.size() and not arr[i + 1].get("j", false):
 				draw_line(Vector2(x, cy), Vector2(t_to_x(float(arr[i + 1]["t"])), cy), Color(UIK.TAPE, 0.45), 2.0)
 			var sel := on_row and i == sel_key
 			var col := UIK.TAPE if sel else (UIK.SECONDARY_300 if tn == Timeline.CAM else UIK.INK)
+			if arr[i].get("j", false):
+				var q := r * 0.8
+				draw_rect(Rect2(x - q, cy - q, q * 2, q * 2), col)
+				continue
 			var pts := PackedVector2Array([Vector2(x, cy - r), Vector2(x + r, cy), Vector2(x, cy + r), Vector2(x - r, cy)])
 			draw_colored_polygon(pts, col)
 			if arr[i].get("e", "l") == "s":
