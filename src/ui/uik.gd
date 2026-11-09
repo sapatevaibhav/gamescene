@@ -399,6 +399,13 @@ static func tile(icon: String, title: String, sub: String, on: bool, cb: Callabl
 		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(sl)
 	b.add_child(v)
+	# Grow to fit the text (a wrapped subtitle needs more room on narrow cards).
+	var fit := func():
+		var want := maxf(px(118), v.get_combined_minimum_size().y + px(22))
+		if absf(b.custom_minimum_size.y - want) > 0.5:
+			b.custom_minimum_size.y = want
+	v.resized.connect(fit)
+	v.minimum_size_changed.connect(fit)
 	b.pressed.connect(cb)
 	return b
 

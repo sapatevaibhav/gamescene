@@ -88,6 +88,14 @@ func _clip(from: Vector3, dir: Vector3, d: float) -> float:
 
 
 func update_camera(dt: float) -> void:
+	if studio.world and studio.world.get("is_side") == true:
+		_update_side(dt)
+		return
+	if studio.world and studio.world.get("is_top") == true:
+		_update_top(dt)
+		return
+	if projection != PROJECTION_PERSPECTIVE:
+		projection = PROJECTION_PERSPECTIVE
 	fov = App.settings["fov"]
 	var player: Actor = studio.player
 	var head := Vector3(Styles.SIZE / 2.0, 8, Styles.SIZE / 2.0)
@@ -180,6 +188,148 @@ func _update_cine(dt: float) -> void:
 		off /= len
 		global_position = s + off * _clip(s, off, len)
 	_look_at_safe(s)
+
+
+# ---------------------------------------------------------------- Pixel 2D
+
+## View height in metres for the side camera (zoom follows `dist`).
+func side_size() -> float:
+	return clampf(dist * 2.2, 4.0, 40.0)
+
+
+## Pixel 2D: an orthographic camera looking straight at the tile plane.
+## Follow tracks the player, free pans, cinematic shots pan, rise and zoom,
+## and "keys" follows the timeline. The view snaps to the pixel grid so
+## sprites don't shimmer.
+func _update_side(dt: float) -> void:
+	projection = PROJECTION_ORTHOGONAL
+	attrs.dof_blur_far_enabled = false
+	attrs.dof_blur_near_enabled = false
+	var lane := PixelWorld.LANE
+	var focus := Vector2(Styles.SIZE / 2.0, 16.0)
+	var sz := side_size()
+	match mode:
+		"keys":
+			var pose: Dictionary = studio.timeline.camera_pose(studio.play_t)
+			if pose.is_empty():
+				mode = "third"
+			else:
+				var pp: Vector3 = pose["pos"]
+				focus = Vector2(pp.x, pp.y)
+				sz = float(pose.get("size", sz))
+		"free":
+			var sp := 9.0 * dt * sz / 13.0
+			free_pos += Vector3(move_input.x, move_input.y + up_input, 0) * sp
+			focus = Vector2(free_pos.x, free_pos.y)
+		"cine":
+			var a := cine_target()
+			if not _cine_init:
+				cine_reset()
+			if a:
+				_smooth = _smooth.lerp(Vector3(a.pos.x, a.pos.y + 1.2, lane), 1.0 - exp(-dt * 4.0))
+			cine_t += dt
+			var dur: float = maxf(1.0, float(cine["dur"]))
+			var u := fmod(cine_t, dur) / dur
+			var pp := U.ease_io(u * 2.0 if u < 0.5 else 2.0 - u * 2.0)
+			var r: float = cine["dist"]
+			var h: float = cine["height"]
+			focus = Vector2(_smooth.x, _smooth.y)
+			sz = clampf(r * 2.0, 4.0, 40.0)
+			var pts: Array = cine["points"]
+			match str(cine["shot"]):
+				"path":
+					if pts.size() >= 2:
+						var p3 := _path_point(pts, u)
+						focus = Vector2(p3.x, p3.y)
+				"dolly":
+					focus.x += lerpf(-r, r, pp)
+				"crane":
+					focus.y += lerpf(-1.0, h + 4.0, pp)
+				"push":
+					sz = clampf(lerpf(r * 3.0, r * 0.9, pp), 3.0, 40.0)
+				_:
+					focus.x += sin(u * TAU) * r * 0.8
+		_:
+			var pl: Actor = studio.player
+			if pl:
+				# Frame a little above them: more sky, less dirt.
+				var want := Vector3(pl.pos.x, pl.pos.y + 1.0 + sz * 0.14, lane)
+				if _smooth.z != lane:
+					_smooth = want
+				_smooth = _smooth.lerp(want, 1.0 - exp(-dt * 6.0))
+				focus = Vector2(_smooth.x, _smooth.y)
+			if mode == "first":
+				sz *= 0.6
+	size = sz
+	focus.y = clampf(focus.y, sz * 0.5 - 2.0, PixelWorld.H)
+	var px := 1.0 / PixelWorld.PPM
+	global_position = Vector3(snappedf(focus.x, px), snappedf(focus.y, px), lane + 30.0)
+	global_basis = Basis.IDENTITY
+
+
+## Pixel 2D top view: orthographic, straight down, north at the top of the
+## screen. Same modes as the side view, moving over the ground instead.
+func _update_top(dt: float) -> void:
+	projection = PROJECTION_ORTHOGONAL
+	attrs.dof_blur_far_enabled = false
+	attrs.dof_blur_near_enabled = false
+	yaw = 0.0
+	var focus := Vector2(Styles.SIZE / 2.0, Styles.SIZE / 2.0)
+	var sz := side_size()
+	match mode:
+		"keys":
+			var pose: Dictionary = studio.timeline.camera_pose(studio.play_t)
+			if pose.is_empty():
+				mode = "third"
+			else:
+				var pp: Vector3 = pose["pos"]
+				focus = Vector2(pp.x, pp.z)
+				sz = float(pose.get("size", sz))
+		"free":
+			var sp := 9.0 * dt * sz / 13.0
+			free_pos += Vector3(move_input.x, 0, -move_input.y) * sp
+			focus = Vector2(free_pos.x, free_pos.z)
+		"cine":
+			var a := cine_target()
+			if not _cine_init:
+				cine_reset()
+			if a:
+				_smooth = _smooth.lerp(Vector3(a.pos.x, 0, a.pos.z), 1.0 - exp(-dt * 4.0))
+			cine_t += dt
+			var dur: float = maxf(1.0, float(cine["dur"]))
+			var u := fmod(cine_t, dur) / dur
+			var pp := U.ease_io(u * 2.0 if u < 0.5 else 2.0 - u * 2.0)
+			var r: float = cine["dist"]
+			focus = Vector2(_smooth.x, _smooth.z)
+			sz = clampf(r * 2.0, 4.0, 40.0)
+			var pts: Array = cine["points"]
+			match str(cine["shot"]):
+				"path":
+					if pts.size() >= 2:
+						var p3 := _path_point(pts, u)
+						focus = Vector2(p3.x, p3.z)
+				"dolly":
+					focus.x += lerpf(-r, r, pp)
+				"crane":
+					sz = clampf(lerpf(r * 1.2, r * 3.2, pp), 3.0, 40.0)
+				"push":
+					sz = clampf(lerpf(r * 3.0, r * 0.9, pp), 3.0, 40.0)
+				_:
+					focus += Vector2(sin(u * TAU), cos(u * TAU)) * r * 0.6
+		_:
+			var pl: Actor = studio.player
+			if pl:
+				var want := Vector3(pl.pos.x, 0, pl.pos.z)
+				if _smooth.y != 0.0 or _smooth.distance_to(want) > 30.0:
+					_smooth = want
+				_smooth = _smooth.lerp(want, 1.0 - exp(-dt * 6.0))
+				focus = Vector2(_smooth.x, _smooth.z)
+			if mode == "first":
+				sz *= 0.6
+	size = sz
+	var px := 1.0 / PixelWorld.PPM
+	global_position = Vector3(snappedf(focus.x, px), 60.0, snappedf(focus.y, px))
+	global_basis = Basis(Vector3.RIGHT, -PI / 2)
 
 
 func _q(p: Dictionary) -> Quaternion:

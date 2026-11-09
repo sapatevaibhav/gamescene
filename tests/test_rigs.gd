@@ -4,6 +4,16 @@ const KEYS := ["root", "model", "upper", "head", "hc", "armL", "armR", "legL", "
 
 func check(rig: Dictionary, label: String) -> int:
 	var bad := 0
+	if rig.get("kind", "") == "sprite":
+		# Pixel 2D: one quad showing a frame of a painted sprite sheet.
+		for k in ["root", "mesh", "mat", "height", "headH", "scale"]:
+			if not rig.has(k):
+				push_error("%s missing %s" % [label, k]); bad += 1
+		var tex: Texture2D = (rig["mat"] as ShaderMaterial).get_shader_parameter("tex")
+		if tex == null or tex.get_width() != PixelSprites.FRAME * PixelSprites.COLS:
+			push_error("%s has no sprite sheet" % label); bad += 1
+		(rig["root"] as Node).free()
+		return bad
 	for k in KEYS:
 		if not rig.has(k):
 			push_error("%s missing %s" % [label, k]); bad += 1
@@ -27,7 +37,7 @@ func _count(n: Node) -> int:
 func _ready() -> void:
 	var bad := 0
 	var total := 0
-	for style in ["blocky", "anime", "tactical", "lowpoly"]:
+	for style in ["blocky", "anime", "lowpoly", "pixel", "pixeltop"]:
 		var P := Rigs.presets_for(style)
 		for key in P:
 			bad += check(Rigs.build({"preset": key}, style), style + "/" + key); total += 1

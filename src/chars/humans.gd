@@ -1,5 +1,5 @@
 class_name Humans
-## Styled humanoids: anime (cel-shaded), tactical and low-poly, plus the
+## Styled humanoids: anime (cel-shaded) and low-poly, plus the
 ## anime creatures (slime, wisp, wolf). Ported from the web build.
 
 static var _decals := {}
@@ -58,22 +58,14 @@ static func _decal_node(w: float, h: float, mat: Material) -> MeshInstance3D:
 	return p
 
 
-## Tactical / old-style eye (JS eyeMat), with an added catch-light.
+## Old-style eye (JS eyeMat) for the low-poly people.
 static func eye_mat(kind: String, color: String) -> Material:
 	var key := "eye" + kind + color
 	if _decals.has(key):
 		return _decals[key]
 	var img := Painter.new_img(64, 80)
-	var c := U.col(color)
-	if kind == "tactical":
-		Painter.ellipse(img, 32, 46, 24, 13, U.col("#f3f0ea"))
-		Painter.circle(img, 32, 46, 11, c)
-		Painter.circle(img, 32, 46, 5, U.col("#16120e"))
-		Painter.circle(img, 28, 42, 2.6, Color(1, 1, 1, 0.9))
-		Painter.rect(img, 6, 18, 52, 8, U.col("#3a2a20"))
-	else:
-		Painter.ellipse(img, 32, 44, 14, 22, U.col("#1c1a22"))
-		Painter.circle(img, 27, 36, 5, Color.WHITE)
+	Painter.ellipse(img, 32, 44, 14, 22, U.col("#1c1a22"))
+	Painter.circle(img, 27, 36, 5, Color.WHITE)
 	return _decal_mat(key, img)
 
 
@@ -138,7 +130,7 @@ static func face_decal(hc: Node3D, mat: Material, x: float, y: float, r: float, 
 
 # ---------------------------------------------------------------- humanoid
 
-## Generic segmented humanoid used by tactical and low-poly (JS humanoid).
+## Generic segmented humanoid used by low-poly (JS humanoid).
 static func humanoid(p: Dictionary) -> Dictionary:
 	var root := Kit.group()
 	var model := Kit.group()
@@ -545,102 +537,6 @@ static func build_anime_creature(cfg: Dictionary) -> Dictionary:
 	var out := {"root": root, "model": model, "upper": upper, "head": head, "hc": null, "kind": "quad", "armR": nub.call(), "armL": nub.call(), "legR": nub.call(), "legL": nub.call(), "sitDrop": 0.05}
 	out.merge(rig, true)
 	return out
-
-
-# ---------------------------------------------------------------- tactical
-
-static func _gun(kind: String) -> Node3D:
-	var g := Kit.group()
-	var mm := M("#2b2d2f", {"rough": 0.5, "metal": 0.4})
-	var ms := M("#4a473d")
-	var bl := 0.62 if kind == "sniper" else 0.42
-	g.add_child(Kit.box(0.05, 0.09, 0.5, mm, 0, 0, 0.12))
-	var barrel := Kit.cyl(0.014, 0.014, bl, 8, mm, 0, 0.015, 0.37 + bl / 2.0)
-	barrel.rotation.x = PI / 2
-	g.add_child(barrel)
-	g.add_child(Kit.box(0.045, 0.1, 0.2, ms, 0, -0.01, -0.22))
-	g.add_child(Kit.box(0.04, 0.12, 0.05, mm, 0, -0.09, 0.1))
-	if kind == "sniper":
-		var sc := Kit.cyl(0.025, 0.025, 0.2, 10, mm, 0, 0.08, 0.12)
-		sc.rotation.x = PI / 2
-		g.add_child(sc)
-	return g
-
-
-static func build_tactical(cfg: Dictionary) -> Dictionary:
-	var g := func(k: String, d: String) -> String: return str(cfg[k]) if cfg.get(k) else d
-	var skin: String = g.call("skin", "#d8a982")
-	var mS := M(skin)
-	var shirt: String = g.call("shirt", "#6b7350")
-	var mSh := M(shirt)
-	var p := {"seg": 10, "hip": 0.92, "legLen": 0.9, "legW": 0.095, "legX": 0.11, "bootH": 0.24, "torsoH": 0.56, "torsoW": 0.42, "torsoD": 0.24, "torsoBox": true, "chest": 1.0, "waist": 1.0, "neck": 0.07, "headR": 0.125, "headLift": 1.05, "armLen": 0.64, "armW": 0.066,
-		"sleeve": float(cfg["sleeve"]) if cfg.get("sleeve") != null else 1.0,
-		"mPants": M(g.call("pants", "#5a5f45")), "mShoes": M(g.call("shoes", "#2b2b24")), "mShirt": mSh, "mSkin": mS, "mArm": mSh, "mHand": M(g.call("gloves", skin))}
-	p["headGeo"] = func(q: Dictionary) -> Node3D:
-		var o := _sph(q["headR"], 16, 12, mS)
-		o.scale = Vector3(0.92, 1.08, 1)
-		return o
-	var rig := humanoid(p)
-	var r: float = p["headR"]
-	var hc: Node3D = rig["hc"]
-	var sc := [0.92, 1.08, 1.0]
-	var eyes: String = g.call("eyes", "#4a3a2a")
-	decal(hc, eye_mat("tactical", eyes), r, sc, [-0.34, 0.02, 0.94], r * 0.3, r * 0.3)
-	decal(hc, eye_mat("tactical", eyes), r, sc, [0.34, 0.02, 0.94], r * 0.3, r * 0.3)
-	decal(hc, mouth_mat("tactical"), r, sc, [0, -0.5, 0.87], r * 0.3, r * 0.14)
-	var m_hat := M(g.call("hatC", shirt))
-	var hair := M(g.call("hair", "#2a211b"))
-	var head_kind: String = g.call("head", "")
-	if head_kind == "helmet":
-		var helm := _capgeo(r * 1.24, 14, 0.53, m_hat)
-		helm.position = Vector3(0, r * 0.12, -r * 0.03)
-		hc.add_child(helm)
-		hc.add_child(Kit.cyl(r * 1.26, r * 1.26, 0.02, 14, m_hat, 0, r * 0.12, -r * 0.03))
-	elif head_kind == "cap":
-		var capm := _capgeo(r * 1.08, 14, 0.5, m_hat)
-		capm.position.y = r * 0.1
-		hc.add_child(capm)
-		hc.add_child(Kit.box(r * 1.3, 0.016, r * 0.8, m_hat, 0, r * 0.16, r * 0.88))
-	elif head_kind == "beret":
-		var b := _sph(r * 1.1, 14, 8, m_hat)
-		b.scale = Vector3(1.12, 0.42, 1.1)
-		b.position = Vector3(r * 0.14, r * 0.62, 0)
-		b.rotation.z = -0.28
-		hc.add_child(b)
-		var bh := _capgeo(r * 1.05, 14, 0.48, hair)
-		bh.rotation.x = -0.3
-		hc.add_child(bh)
-	elif head_kind == "hood":
-		var h := _sph(r * 1.32, 14, 10, m_hat)
-		h.position = Vector3(0, r * 0.1, -r * 0.32)
-		hc.add_child(h)
-	else:
-		var hr := _capgeo(r * 1.06, 14, 0.5, hair)
-		hr.rotation.x = -0.32
-		hc.add_child(hr)
-	if cfg.get("mask"):
-		hc.add_child(Kit.box(r * 1.7, r * 0.62, r * 0.55, M(cfg["mask"]), 0, -r * 0.5, r * 0.62))
-	var tw: float = p["torsoW"]
-	var th: float = p["torsoH"]
-	var td: float = p["torsoD"]
-	var upper: Node3D = rig["upper"]
-	if cfg.get("vest"):
-		var vest: String = cfg["vest"]
-		upper.add_child(Kit.box(tw * 1.12, th * 0.62, td * 1.45, M(vest), 0, th * 0.6, 0))
-		for x in [-0.12, 0.0, 0.12]:
-			upper.add_child(Kit.box(0.09, 0.1, 0.05, M(U.shade_hex(vest, 0.8)), x, th * 0.36, td * 0.78))
-	if cfg.get("pack", false):
-		var pc: String = str(cfg["packC"]) if cfg.get("packC") else U.shade_hex(str(cfg["vest"]) if cfg.get("vest") else shirt, 0.85)
-		upper.add_child(Kit.box(tw * 0.78, th * 0.72, 0.17, M(pc), 0, th * 0.56, -(td * 0.73 + 0.09)))
-	if cfg.get("armband", false):
-		(rig["armL"] as Node3D).add_child(Kit.cyl(float(p["armW"]) * 1.18, float(p["armW"]) * 1.18, 0.06, 12, M("#f2f2ee"), 0, -0.14, 0))
-	upper.add_child(Kit.box(tw * 1.04, 0.06, td * 1.06, M("#2e2a22"), 0, 0.04, 0))
-	if cfg.get("gun"):
-		var gun := _gun(cfg["gun"])
-		gun.position = Vector3(0, -float(p["armLen"]) - 0.03, 0.02)
-		(rig["armR"] as Node3D).add_child(gun)
-	rig["height"] = float(rig["headH"]) + r * 1.35
-	return rig
 
 
 # ---------------------------------------------------------------- low-poly

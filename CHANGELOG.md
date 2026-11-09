@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.12.0)
+## What's supported (as of 0.14.0)
 
 ### Platforms and engine
 
@@ -27,7 +27,8 @@ Update this file in the same change as the code: add entries under
 |---|---|---|---|
 | Blocky | Voxel, 80 × 24 × 80 blocks | Lambert, pixel textures | ~190 built-in blocks, custom blocks, 7 prefabs |
 | Anime fantasy | Heightmap, 80 × 80 m | Cel shading with tinted shadows and rim light | Forest glade, leaf-card trees, painted grass, ruins |
-| Tactical | Heightmap, 80 × 80 m | PBR-ish, photo textures | Outpost layout |
+| Pixel 2D · side view | Side-on tiles, 80 × 40 tiles (1 tile = 1 m), parallax backdrop | Unlit pixel art, 16 px per tile, orthographic camera snapped to the pixel grid | 25 tiles, 6 buildings, sprite characters with every action, ladders, see-through water |
+| Pixel 2D · top view | Top-down ground, 80 × 80 tiles | Same pixel shading, camera straight down | 10 ground tiles, 14 objects, characters facing front, back and sides |
 | Low-poly | Heightmap, 80 × 80 m | Flat-faceted | Village layout |
 
 Worlds are bounded. Scenes saved at the old 48 m size open centred in the 80 m world.
@@ -36,8 +37,9 @@ Worlds are bounded. Scenes saved at the old 48 m size open centred in the 80 m w
 
 | What | Formats | Where in the app | Notes |
 |---|---|---|---|
-| Characters | Anime: `.glb`, `.vrm`, `.gltf`, `.fbx`. Tactical and low-poly: `.glb`, `.gltf`, `.fbx` (low-poly up to 15k triangles). Not in blocky | Add → Character → 3D models | Converted to self-contained `.glb`; textures gathered from nearby folders; cel-shaded in the anime style. Each import belongs to the style it was imported in |
+| Characters | Anime: `.glb`, `.vrm`, `.gltf`, `.fbx`. Low-poly: `.glb`, `.gltf`, `.fbx` (up to 15k triangles). Not in blocky | Add → Character → 3D models | Converted to self-contained `.glb`; textures gathered from nearby folders; cel-shaded in the anime style. Each import belongs to the style it was imported in |
 | Environment objects | `.glb`, `.gltf`, `.fbx` (pick many at once; low-poly up to 20k triangles). Not in blocky | Add → Objects → Your 3D objects | Leaves get alpha cut-out and wind; small objects don't collide; trees collide at the trunk. Per style, like characters |
+| Pixel sprites (characters and objects) | `.png`, `.webp` sheets (strip, RPG grid, single), `.ase`, `.aseprite` (frames, layers, tags as actions). Pixel 2D only, per view | Add → Sprite; Add a character → Your sprites; Buildings/Objects → Your sprites | Aseprite tags with `_down`/`_up`/`_left`/`_right` set top-view directions |
 | Blocky skins | `.png` 64×64 or legacy 64×32. Blocky only | Add → Character → Upload skin, or Add → Skin | Slim arms supported |
 | Custom blocks | `.png` / `.jpg` / `.webp` (scaled to 16×16), or pattern + colours | Blocks → Make your own block | Saved inside the scene |
 | Scenes | `.json` (this app, web build v1 "blockset" and v2) | Home → Open a file | Imported models are embedded in exported scene files |
@@ -87,6 +89,57 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 ---
 
 ## [Unreleased]
+
+### Changed
+- Popups (scene name, rename, confirmations) dim and blur everything behind them, so the popup stands out.
+
+### Fixed
+- Card text overflowed in the new-scene popup and the Add sheet. Cards now grow to fit their text, and the shortest wording is used.
+- Top view: walking up (seen from behind) drew the hero's cape over the stomach area. From behind, the cape now covers the back; from the front, only the shoulder clasps show.
+
+## [0.14.0] - 2026-11-09
+
+### Added
+- **Pixel 2D top view.** Creating a Pixel 2D scene now asks for a name and a view: **Side view** (platforms and ladders) or **Top view** (explore from above, like a top-down RPG). The two are separate kinds of world, each with its own import library.
+  - **Top-view world:** an 80 × 80 tile village with crossroads, a plaza and well, four houses, two market stalls, lamp posts, a fenced farm with crops, a pond with a sandy shore, a campfire, and woods of trees, pines, bushes, rocks and flowers around the edges.
+  - **Ground tiles:** 10, painted in code (grass, meadow, path, sand, water, plaza, wood floor, farmland, dark grass, snow). Water can't be walked on.
+  - **Objects:** 14 front-facing pixel objects (tree, pine, rock, bush, flowers, fence, house, well, lamp post, crate, crops, campfire, sign, market stall). Each stands on a footprint of tiles that blocks walking. Things further south draw on top, so characters walk behind trees and in front of them. Lamp posts and campfires glow at night.
+  - **Characters:** they face front, back or sideways as they walk (front and back art is painted for every pose), and they face the viewer while doing an action.
+  - **Controls:** WASD walks north, west, south and east, and Shift runs. The camera looks straight down; follow, free pan, cinematic shots and camera keys all work.
+  - **Building:** Add → Ground paints with a tap or drag, and right-drag removes objects. Add → Objects places objects; you can't stack two on one spot.
+- **Pixel sprite imports** for both 2D views, as characters (Add → Sprite, or Add a character → Your sprites) and as objects (Buildings/Objects → Your sprites):
+  - **`.png` / `.webp` sheets:** a strip of square frames (the walk cycle), an RPG grid of 3 or 4 columns × 4 rows (down, left, right, up), or a single picture.
+  - **Aseprite `.ase` / `.aseprite`:** every frame, with visible layers flattened (layer and cel opacity included). Compressed, raw and linked cels are supported, in RGBA, grayscale or indexed colour.
+  - **Tags name the actions:** idle, walk, run, jump, dance, wave, sit, sleep, cheer/celebrate, laugh, cry, point, attack, fight, talk, hurt and climb. `_down`, `_up`, `_left` and `_right` (or front/back/side) suffixes set the top-view direction. Actions without a tag fall back to idle.
+  - Imported objects block walking in the top view and stand behind the characters in the side view.
+  - Each view keeps its own sprites, and Manage imported models lists and deletes them.
+- `look_pixel` now renders the top view too.
+- Tests: `test_pixel_top` (top view, passing, names) and `test_sprites` (PNG sheets, and Aseprite files written byte by byte and imported).
+
+### Changed
+- **Names:** the player is **Vaibh** in every style. Default NPCs have Indian names (Om, Vaish, Jay, Shri, Anju, Siddu, Meera, Arjun, Vikram…), and pets are Moti, Golu and Chintu. Characters you add get names from a list of 30 Indian names.
+- Side view: walking into a one-tile step hops up it, as in the blocky style (with auto-jump on).
+
+### Removed
+- **The Tactical style is gone completely:** its characters (rifleman, sniper, scout, medic, pilot, civilian, commander), props (container, tent, sandbags, watchtower, warehouse, jeep, crate), outpost layout, realistic terrain shader and colour settings. Old Tactical scenes no longer open.
+
+### Fixed
+- **Side view: characters got stuck on each other** and blocked you from exploring. The "personal space" push from the 3D styles kept everyone on the shared lane from passing. In side view, characters (and you) now walk past each other.
+
+## [0.13.0] - 2026-11-09
+
+### Added
+- **Pixel 2D style**, replacing Tactical for new scenes. It's a side-on pixel world, built inside the 3D engine as a flat slice, so behaviours, script cues, the timeline, director mode, recording and film export all work in it.
+  - **World:** an 80 × 40 tile village with rolling hills, a pond with a bridge, cottages, a market stall, a watchtower with a ladder, trees, a well, flowers and lanterns. There are three parallax backdrop layers and a pixel sky that follow the mood and time of day. Lanterns and windows glow at night.
+  - **Tiles:** 25 tiles painted in code, in two layers. Ground, stone, brick, planks, roofs and glass stand in the way; walls, windows, doors, ladders, trees and flowers sit behind the characters. Water is see-through and drawn in front, so wading looks submerged.
+  - **Building:** Add → Tiles paints with a tap or drag (right-drag erases; Pick copies a tile). Add → Buildings stamps a cottage, watchtower, tree, bridge, market stall or well, and can be flipped. B opens the tile tool, and undo works.
+  - **Characters:** sprite sheets painted in code, 32 frames each, with a 1 px outline. They show idle with blinking, a 4-frame walk, jump, crouch, climb, sit, sleep, wave, talk, dance, celebrate, laugh, cry, point, fight guard, attack and hurt. There are 11 people (hero, farmer, merchant, knight, wizard, chef, ranger, miner, princess, villager, kid), 7 mobs (skeleton, zombie, goblin, witch, ghost, slimes, bat) and 6 animals (chicken, pig, dog, cat, sheep, frog). Random looks work too.
+  - **Controls:** A/D walk, Shift runs, W or Space jumps, W/S climb ladders, Ctrl crouches. The mouse is never captured; dragging pans the free camera, and the wheel zooms.
+  - **Camera:** an orthographic side view. Follow, free pan, and cinematic shots (pan, dolly, crane rise, push-in zoom, path) all work, and camera keys remember the zoom.
+- Tests: `test_pixel` (47 checks), plus the `look_pixel` visual check.
+
+### Changed
+- Tactical is no longer offered for new scenes; Pixel 2D takes its place on the home screen. Tactical scenes you already have still open and work.
 
 ## [0.12.0] - 2026-11-09
 

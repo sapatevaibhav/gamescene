@@ -1,14 +1,15 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (9 Nov 2026, v0.12.0)
+## Where it stands today (9 Nov 2026, v0.14.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
 **Done:**
-- **Worlds:** four styles (blocky voxel, anime fantasy, tactical, low-poly), 80 × 80 m bounded worlds, about 190 blocks, prefabs, terrain sculpting, CC0 ground textures and props for every style.
+- **Worlds:** four styles (blocky voxel, anime fantasy, Pixel 2D side view, low-poly), 80 × 80 m bounded worlds, about 190 blocks, prefabs, terrain sculpting, CC0 ground textures and props for every style.
 - **Characters:** built-in presets, monsters and animals, skin PNG import, built-in action poses for imported rigs (elbows, knees, spine, hips), and `.glb`, `.vrm`, `.gltf` and `.fbx` import with bone matching for 12 rig conventions and rig-aware sizing.
 - **Environment import:** `.glb`, `.gltf` and `.fbx` objects with cel shading, leaf cut-outs, wind and inferred collision.
-- **Distinct styles:** each style keeps its own import library. Blocky takes skins only, VRM is anime-only, and low-poly caps imports at 15k triangles for characters and 20k for objects. Tactical will be replaced by a Pixel 2D side-view style.
+- **Distinct styles:** each style keeps its own import library. Blocky takes skins only, VRM is anime-only, and low-poly caps imports at 15k triangles for characters and 20k for objects.
+- **Pixel 2D (replaces Tactical), in two views:** a side view (tile world, ladders, parallax backdrops) and a top view (a top-down village with objects that block walking). Both have sprite characters for every action, painting and building tools, and imports of `.png` sheets and Aseprite files.
 - **Behaviours:** idle, wander, chat, dance, wave, sit, follow, chase, flee, gather, patrol, sleep, celebrate, laugh, cry, point and fight, with chat bubbles.
 - **Controls:** sprint, crouch, jump and climb, attack with knockback, and a per-character menu.
 - **Cameras:** follow, first person, free, cinematic orbit, dolly, crane and push-in, user camera paths, and camera shake.
@@ -39,13 +40,14 @@
 | 0.10 | Timeline and keyframes (Phase B) | Done |
 | 0.11 | Director mode and more actions (Phase B and E) | Done |
 | 0.12 | Distinct styles (per-style imports, low-poly triangle cap), scene naming, imported-character poses | Done |
-| **0.13** | **Pixel 2D side-view style, replacing Tactical: tile world, sprite characters, building** | **Next** |
-| 0.14 | Pixel 2D: sprite-sheet and tile imports, timeline, director mode and export parity | |
-| 0.15 | Audio and dialogue (Phase D) | |
-| 0.16 | Export reliability and extras (Phase C) | |
-| 0.17 | VRM spring bones, blinking and the animation library (Phase E core) | |
-| 0.18 | Packaging for Android, iOS and desktop (Phase I) | |
-| 0.19 | Templates, onboarding, credits and licence (Phases J and K) | |
+| 0.13 | Pixel 2D side-view style, replacing Tactical: tile world, sprite characters, building (timeline, director mode and export work too) | Done |
+| 0.14 | Pixel 2D top view, sprite imports (.png sheets, .ase/.aseprite), Indian default names, side-view passing | Done |
+| **0.15** | **Pixel 2D polish: tile-set imports, more tiles, objects and backdrops, entering houses in the top view** | **Next** |
+| 0.16 | Audio and dialogue (Phase D) | |
+| 0.17 | Export reliability and extras (Phase C) | |
+| 0.18 | VRM spring bones, blinking and the animation library (Phase E core) | |
+| 0.19 | Packaging for Android, iOS and desktop (Phase I) | |
+| 0.20 | Templates, onboarding, credits and licence (Phases J and K) | |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)

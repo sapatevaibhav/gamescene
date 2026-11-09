@@ -18,7 +18,9 @@ const LEGACY_STYLE := "anime"
 const RULES := {
 	"blocky": {"skins": true, "models": false, "objects": false, "formats": []},
 	"anime": {"skins": false, "models": true, "objects": true, "formats": ["glb", "vrm", "gltf", "fbx"]},
-	"tactical": {"skins": false, "models": true, "objects": true, "formats": ["glb", "gltf", "fbx"]},
+	# Pixel 2D views take pixel sprites (characters and objects) only.
+	"pixel": {"skins": false, "models": false, "objects": false, "sprites": true, "formats": []},
+	"pixeltop": {"skins": false, "models": false, "objects": false, "sprites": true, "formats": []},
 	"lowpoly": {"skins": false, "models": true, "objects": true, "formats": ["glb", "gltf", "fbx"], "max_tris_models": 15000, "max_tris_props": 20000},
 }
 
@@ -36,6 +38,13 @@ static func can_import_models(style: String) -> bool:
 
 static func can_import_objects(style: String) -> bool:
 	return rules(style)["objects"]
+
+
+static func can_import_sprites(style: String) -> bool:
+	return rules(style).get("sprites", false)
+
+
+const SPRITE_FILTERS := ["*.png, *.PNG, *.webp, *.WEBP, *.ase, *.ASE, *.aseprite, *.ASEPRITE ; Pixel sprites"]
 
 
 ## File-dialog filters for character models in this style.
@@ -94,7 +103,7 @@ static func check_import(style: String, kind: String, path: String) -> String:
 		return ""
 	var n := count_tris(path)
 	if n > cap:
-		return "Too detailed for a low-poly world: %s triangles (the limit is %s). Use a simpler model, or import it into an anime or tactical world." % [_k(n), _k(cap)]
+		return "Too detailed for a low-poly world: %s triangles (the limit is %s). Use a simpler model, or import it into an anime world." % [_k(n), _k(cap)]
 	return ""
 
 
@@ -106,11 +115,11 @@ static func _load() -> void:
 	if _loaded:
 		return
 	_loaded = true
-	_data = {"models": {}, "props": {}}
+	_data = {"models": {}, "props": {}, "sprites": {}}
 	if FileAccess.file_exists(path()):
 		var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(path()))
 		if d is Dictionary:
-			for k in ["models", "props"]:
+			for k in ["models", "props", "sprites"]:
 				if d.get(k) is Dictionary:
 					_data[k] = d[k]
 

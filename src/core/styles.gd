@@ -11,15 +11,21 @@ const STYLES := {
 	"anime": {"name": "Anime fantasy", "blurb": "Cel-shaded heroes, soft skies", "world": "terrain", "char": "anime", "shade": "toon", "sky": "#7cc4ff", "mood": "day", "light": 0.74,
 		"pal": {"grass": "#5fa64a", "grass2": "#76b652", "path": "#d6c8a2", "sand": "#e8dcb0", "rock": "#9aa3ad", "water": "#58b8e0", "wop": 0.8},
 		"swatch": ["#bfe6ff", "#f7a8c8"]},
-	"tactical": {"name": "Tactical", "blurb": "Squads, outposts, open fields", "world": "terrain", "char": "tactical", "shade": "standard", "sky": "#a9c3d8", "mood": "day", "light": 0.82,
-		"pal": {"grass": "#8d9157", "grass2": "#a39a65", "path": "#a68c68", "sand": "#c2b089", "rock": "#8a8a85", "water": "#4f7480", "wop": 0.86},
-		"swatch": ["#c9d4dc", "#7d8456"]},
+	"pixel": {"name": "Pixel 2D", "view_name": "Side view", "blurb": "Side-view pixel worlds and sprites", "world": "pixel", "char": "sprite", "shade": "pixel", "sky": "#8fd3ff", "mood": "day", "light": 1.0,
+		"swatch": ["#8fd3ff", "#5fbf4a"]},
+	"pixeltop": {"name": "Pixel 2D top", "view_name": "Top view", "blurb": "Top-down pixel worlds to explore", "world": "pixeltop", "char": "sprite", "shade": "pixel", "sky": "#8fd3ff", "mood": "day", "light": 1.0,
+		"swatch": ["#7cc46a", "#d9b46a"]},
 	"lowpoly": {"name": "Low-poly", "blurb": "Faceted storybook valleys", "world": "terrain", "char": "lowpoly", "shade": "flat", "sky": "#a8d8f0", "mood": "sunset", "light": 1.0,
 		"pal": {"grass": "#78b64e", "grass2": "#93c45a", "path": "#d1b07a", "sand": "#e8d39a", "rock": "#9c958c", "water": "#4fa3d1", "wop": 0.8},
 		"swatch": ["#f3c18a", "#5f9a48"]},
 }
 
-const STYLE_ORDER := ["blocky", "anime", "tactical", "lowpoly"]
+## Every style you can create.
+const STYLE_ORDER := ["blocky", "anime", "pixel", "pixeltop", "lowpoly"]
+## Cards on the home screen. "pixel" asks for the view (side or top).
+const HOME_ORDER := ["blocky", "anime", "pixel", "lowpoly"]
+## Pixel 2D views: style key, label, what it's like.
+const PIXEL_VIEWS := [["pixel", "Side view", "Platforms, ladders and jumps", "hill"], ["pixeltop", "Top view", "Explore from above, like an RPG", "drone"]]
 
 const MOODS := {
 	"day": {"label": "Daylight", "time": 11.0, "weather": "clear", "fog": 110.0, "sw": ["#8ec9ff", "#eaf6ff"]},

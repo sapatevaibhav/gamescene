@@ -174,6 +174,17 @@ func apply_quality() -> void:
 		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if qd["scale"] < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
 		vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_4X][qd["msaa"]]
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if qd["fxaa"] else Viewport.SCREEN_SPACE_AA_DISABLED
+	if style in ["pixel", "pixeltop"]:
+		# Crisp pixel art: no upscaling blur, anti-aliasing, fog or bloom.
+		env.ssao_enabled = false
+		env.ssil_enabled = false
+		env.glow_enabled = false
+		env.volumetric_fog_enabled = false
+		if vp:
+			vp.scaling_3d_scale = 1.0
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+			vp.msaa_3d = Viewport.MSAA_DISABLED
+			vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 
 
 func set_style(key: String) -> void:
@@ -184,21 +195,23 @@ func set_style(key: String) -> void:
 			env.adjustment_contrast = 1.05
 			env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 			env.tonemap_exposure = 1.12
-		"tactical":
-			env.adjustment_saturation = 0.92
-			env.adjustment_contrast = 1.06
-			env.tonemap_mode = Environment.TONE_MAPPER_ACES
-			env.tonemap_exposure = 1.0
 		"lowpoly":
 			env.adjustment_saturation = 1.08
 			env.adjustment_contrast = 1.0
 			env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 			env.tonemap_exposure = 1.05
+		"pixel", "pixeltop":
+			env.adjustment_saturation = 1.0
+			env.adjustment_contrast = 1.0
+			env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+			env.tonemap_exposure = 1.0
 		_:
 			env.adjustment_saturation = 1.05
 			env.adjustment_contrast = 1.02
 			env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 			env.tonemap_exposure = 1.04
+	env.fog_enabled = not key in ["pixel", "pixeltop"]
+	apply_quality()
 
 
 func apply_mood(key: String) -> void:
@@ -327,6 +340,14 @@ func apply() -> void:
 	snow.visible = weather == "snow"
 	snow.emitting = snow.visible
 	_update_night_lights()
+
+
+func sky_color() -> Color:
+	return _sky_col
+
+
+func light_color() -> Color:
+	return sun.light_color
 
 
 ## Registers lamp/window lights so they fade in at dusk.

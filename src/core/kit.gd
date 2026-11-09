@@ -13,7 +13,7 @@ const OUTLINE := preload("res://src/shaders/outline.gdshader")
 const FLAT := preload("res://src/shaders/flat.gdshader")
 
 ## Shading model for new materials: "lambert" (blocky), "toon" (anime),
-## "standard" (tactical) or "flat" (low-poly).
+## "standard" (imported models and objects) or "flat" (low-poly).
 static var shade := "lambert"
 ## Outline thickness used by toon materials created from now on.
 static var outline_width := 0.01

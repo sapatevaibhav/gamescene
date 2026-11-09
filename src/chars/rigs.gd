@@ -2,15 +2,17 @@ class_name Rigs
 ## Character factory: presets per style and `build(look, style)`, which
 ## returns a rig dictionary the actor animates (see the keys in `build`).
 
-const NAMES := ["Ash", "Bram", "Cora", "Dell", "Ember", "Finn", "Gus", "Hana", "Ivo", "Juno", "Kit", "Lark", "Moss", "Nell", "Oren", "Pip", "Quill", "Rue", "Sol", "Tam", "Uma", "Vale", "Wren", "Yara", "Zed"]
+const NAMES := ["Om", "Vaish", "Jay", "Shri", "Anju", "Siddu", "Meera", "Arjun", "Kabir", "Riya", "Tara", "Dev", "Isha", "Rohan", "Neha", "Kiran", "Asha", "Vikram", "Pooja", "Aditya", "Sneha", "Rahul", "Divya", "Aarav", "Kavya", "Nikhil", "Priya", "Yash", "Lakshmi", "Ganesh"]
 const CHATTER := ["Nice weather today.", "Did you hear that?", "I’m off to the market.", "Have you seen the new bridge?", "Hmm…", "Welcome, traveler!", "What a day.", "I lost my bucket again.", "Ha! Good one.", "Really? No way!", "Let’s meet by the well later.", "I think it’ll rain soon."]
 const GROUPS := [["people", "People"], ["mobs", "Monsters"], ["animals", "Animals"]]
 
+## The player is always Vaibh; everyone else gets an Indian name.
 const DEFAULT_CAST := {
-	"blocky": [["hero", "Vaibh"], ["farmer", "Tilde", "wander"], ["merchant", "Oza", "talk"], ["chef", "Bao", "talk"], ["dancer", "Mika", "dance"], ["guard", "Hale", "follow"]],
-	"anime": [["wanderer", "Vaibh"], ["ranger", "Mira", "wander"], ["mage", "Lyra", "talk"], ["keeper", "Sena", "talk"], ["bard", "Pia", "dance"], ["ronin", "Ren", "follow"], ["slimeGreen", "Green slime", "wander"], ["slimeBlue", "Blue slime", "wander"]],
-	"tactical": [["rifleman", "Vega"], ["sniper", "Moss", "wander"], ["scout", "Kestrel", "talk"], ["medic", "Ash", "talk"], ["civilian", "Juno", "dance"], ["commander", "Bishop", "follow"]],
-	"lowpoly": [["villager", "Bram"], ["explorer", "Wren", "wander"], ["baker", "Nell", "talk"], ["farmer", "Gus", "talk"], ["kid", "Pip", "dance"], ["knight", "Hale", "follow"]],
+	"blocky": [["hero", "Vaibh"], ["farmer", "Om", "wander"], ["merchant", "Vaish", "talk"], ["chef", "Jay", "talk"], ["dancer", "Shri", "dance"], ["guard", "Siddu", "follow"]],
+	"anime": [["wanderer", "Vaibh"], ["ranger", "Anju", "wander"], ["mage", "Shri", "talk"], ["keeper", "Vaish", "talk"], ["bard", "Meera", "dance"], ["ronin", "Siddu", "follow"], ["slimeGreen", "Golu", "wander"], ["slimeBlue", "Chintu", "wander"]],
+	"pixel": [["hero", "Vaibh"], ["farmer", "Om", "wander"], ["merchant", "Vaish", "talk"], ["chef", "Anju", "talk"], ["knight", "Siddu", "patrol"], ["wizard", "Shri", "dance"], ["slime", "Golu", "wander"], ["dog", "Moti", "follow"]],
+	"pixeltop": [["hero", "Vaibh"], ["farmer", "Jay", "wander"], ["merchant", "Vaish", "talk"], ["chef", "Anju", "talk"], ["knight", "Siddu", "patrol"], ["wizard", "Om", "dance"], ["princess", "Shri", "wander"], ["slime", "Golu", "wander"], ["dog", "Moti", "follow"]],
+	"lowpoly": [["villager", "Vaibh"], ["explorer", "Om", "wander"], ["baker", "Anju", "talk"], ["farmer", "Jay", "talk"], ["kid", "Siddu", "dance"], ["knight", "Vaish", "follow"]],
 }
 
 const CHAR_PRESETS := {
@@ -29,15 +31,6 @@ const CHAR_PRESETS := {
 		"wisp": {"label": "Wisp", "group": "mobs", "creature": "wisp", "col": "#9fe8ff", "beh": "wander", "lines": ["*hums*", "*twinkle*"]},
 		"scholar": {"boots": "short", "ornament": false, "label": "Scholar", "skin": "#e2b896", "hair": "#c9ced9", "hairStyle": "short", "eyes": "#2e6fa8", "shirt": "#ffffff", "shirt2": "#2c3e6b", "coatC": "#2c3e6b", "pants": "#2c3e6b", "shoes": "#1f2433", "coat": "long", "sleeve": 1, "lines": ["Fascinating.", "According to my notes…", "Have you read this?"]},
 	},
-	"tactical": {
-		"rifleman": {"label": "Rifleman", "skin": "#d8a982", "eyes": "#4a3a2a", "head": "helmet", "hatC": "#5b6340", "shirt": "#6b7350", "vest": "#4d5236", "pack": true, "pants": "#5a5f45", "shoes": "#2b2b24", "gloves": "#2b2b24", "gun": "rifle", "lines": ["Area secure.", "Moving up.", "Eyes on the ridge."]},
-		"scout": {"label": "Scout", "skin": "#b97a50", "eyes": "#2b1b10", "head": "cap", "hatC": "#8a7a55", "shirt": "#a8956a", "vest": "#7d6e4c", "pack": true, "pants": "#6e6248", "shoes": "#3b2a1a", "gun": "rifle", "lines": ["Two contacts, north side.", "I’ll take point.", "All clear here."]},
-		"medic": {"label": "Medic", "skin": "#f0c8a0", "eyes": "#2e7d4f", "head": "helmet", "hatC": "#6a7559", "shirt": "#5f6b58", "vest": "#4a5444", "pack": true, "packC": "#d9d6cc", "armband": true, "pants": "#555e4c", "shoes": "#2b2b24", "lines": ["Hold still.", "You’re good to go.", "Stay behind cover!"]},
-		"sniper": {"label": "Sniper", "skin": "#c48f68", "eyes": "#3a2a20", "head": "hood", "hatC": "#4f5c37", "shirt": "#4a5a3a", "vest": "#3f4b30", "pants": "#45503a", "shoes": "#24261e", "mask": "#3f4b30", "gun": "sniper", "lines": ["Target spotted.", "Wind is low.", "Hold… hold…"]},
-		"pilot": {"label": "Pilot", "skin": "#f1cdb0", "eyes": "#3a5f8a", "head": "helmet", "hatC": "#d9dde0", "shirt": "#2d3a52", "pants": "#2d3a52", "shoes": "#1d222b", "gloves": "#1d222b", "lines": ["Bird is fueled.", "Wheels up in five.", "Smooth landing."]},
-		"civilian": {"label": "Civilian", "skin": "#8d5a3b", "eyes": "#2b1b10", "hair": "#1e1612", "shirt": "#b54a3c", "pants": "#3b4f6e", "shoes": "#f2f2f2", "sleeve": 1, "lines": ["What’s going on here?", "Is it safe now?", "Thank you!"]},
-		"commander": {"label": "Commander", "skin": "#e3b58f", "eyes": "#5a4632", "head": "beret", "hatC": "#6b1e2a", "hair": "#4a3a2a", "shirt": "#3f4632", "pants": "#3a402e", "shoes": "#1d1f18", "lines": ["Listen up, team.", "We move at dawn.", "Good work, everyone."]},
-	},
 	"lowpoly": {
 		"villager": {"label": "Villager", "skin": "#e9b98f", "hair": "#6b4a2b", "shirt": "#d9822b", "pants": "#5b4a3a", "shoes": "#3a2a20", "lines": ["Lovely day!", "Have you met the baker?", "I need more firewood."]},
 		"knight": {"label": "Knight", "skin": "#f0c8a0", "hat": "helmet", "hatC": "#b8bec7", "shirt": "#9aa3ad", "apron": "#b33a3a", "cape": "#b33a3a", "pants": "#6f7781", "shoes": "#4a5058", "sleeve": 1, "lines": ["For the village!", "All quiet at the gate.", "Stand aside, please."]},
@@ -53,7 +46,6 @@ const RAND_POOLS := {
 	"skins": ["#f6dcc8", "#f1c9a5", "#e0ac7e", "#c98d62", "#a86b46", "#8d5a3b", "#5e3a26"],
 	"hairs": ["#1e1612", "#3b2a1e", "#6b4a2b", "#a0522d", "#d9b26a", "#e8e8e8", "#2bb3a3", "#8a6fd6", "#f28dbb", "#3c78d8"],
 	"cloth": ["#c8393b", "#3b5bc8", "#3f9e4d", "#e6c13b", "#7b4fa0", "#e07aa8", "#2a9d8f", "#d9822b", "#5c6670", "#f4f4f4", "#2c3e6b", "#4f8f4a"],
-	"drab": ["#6b7350", "#5a5f45", "#a8956a", "#4a5a3a", "#7d6e4c", "#3f4632", "#555e4c", "#8a8a85"],
 }
 
 static var _presets := {}
@@ -68,6 +60,8 @@ static func presets_for(style: String) -> Dictionary:
 		src.merge(Skins.SKIN_PRESETS)
 		src.merge(Skins.MOB_SKINS)
 		src.merge(Skins.ANIMALS)
+	elif style == "pixel" or style == "pixeltop":
+		src = PixelSprites.PRESETS
 	else:
 		src = CHAR_PRESETS.get(style, {})
 	var out := {}
@@ -97,17 +91,14 @@ static func random_cfg(style: String) -> Dictionary:
 	var pk := func(a: Array) -> Variant: return U.pick(a)
 	if style == "blocky":
 		return Skins.random_skin_cfg()
+	if style == "pixel" or style == "pixeltop":
+		return PixelSprites.random_cfg()
 	if style == "anime":
 		return {"skin": pk.call(R["skins"].slice(0, 4)), "hair": pk.call(R["hairs"]), "hairStyle": pk.call(["short", "spiky", "long", "twin", "pony"]),
 			"eyes": pk.call(["#e8a92e", "#3c78d8", "#3f8a4a", "#d24a6a", "#6f4ad1"]), "shirt": pk.call(R["cloth"]), "shirt2": pk.call(R["cloth"]), "coatC": pk.call(R["cloth"]),
 			"pants": pk.call(["#2d3346", "#3a2f6b", "#1f1f28", "#3d3528"]), "shoes": pk.call(["#6b4a2b", "#141418", "#ffffff"]), "coat": pk.call(["short", "long", "skirt", null]),
 			"cape": randf() < 0.3, "scarf": randf() < 0.25, "weapon": pk.call([null, null, "sword", "bow", "staff"]),
 			"boots": pk.call(["tall", "short"]), "legs": pk.call(["pants", "pants", "stockings", "bare"]), "ornC": pk.call(["#ffffff", "#ffd166", "#ff7aa2", "#c9a8ff"])}
-	if style == "tactical":
-		var camo: String = pk.call(R["drab"])
-		return {"skin": pk.call(R["skins"]), "eyes": pk.call(["#4a3a2a", "#2e7d4f", "#3a5f8a"]), "head": pk.call(["helmet", "cap", "beret", "hood", "hair"]), "hatC": pk.call(R["drab"]),
-			"hair": pk.call(R["hairs"].slice(0, 6)), "shirt": camo, "vest": U.maybe(U.shade_hex(camo, 0.8), 0.7), "pack": randf() < 0.6, "pants": pk.call(R["drab"]),
-			"shoes": "#2b2b24", "gun": pk.call([null, "rifle", "rifle", "sniper"]), "mask": U.maybe(U.shade_hex(camo, 0.7), 0.2)}
 	return {"skin": pk.call(R["skins"]), "hair": pk.call(R["hairs"].slice(0, 7)), "hairStyle": pk.call(["short", "long"]), "hat": pk.call([null, null, "straw", "chef", "ranger", "hood"]),
 		"hatC": pk.call(R["cloth"]), "shirt": pk.call(R["cloth"]), "pants": pk.call(["#5b4a3a", "#4a6fa5", "#34495e", "#6b5a4a"]), "shoes": "#3a2a20",
 		"apron": U.maybe("#f6f4ef", 0.25), "beard": U.maybe("#ecebe7", 0.15)}
@@ -123,6 +114,8 @@ static func validate_skin(img: Image) -> String:
 ## ("human" | "quad"), scale, plus optional cape, float, spinUpper, hop,
 ## pose, creature, torso, skin (Image, blocky humans).
 static func build(look: Dictionary, style: String) -> Dictionary:
+	if style == "pixel" or style == "pixeltop":
+		return PixelSprites.build(look, "top" if style == "pixeltop" else "side")
 	var sty := Styles.get_style(style)
 	Kit.shade = sty["shade"]
 	Kit.outline_width = 0.008
@@ -154,8 +147,6 @@ static func build(look: Dictionary, style: String) -> Dictionary:
 		cfg = cfg_for(look, style)
 		if style == "anime":
 			rig = Humans.build_anime_creature(cfg) if cfg.get("creature") else Humans.build_anime(cfg)
-		elif style == "tactical":
-			rig = Humans.build_tactical(cfg)
 		else:
 			rig = Humans.build_lowpoly(cfg)
 		if cfg.get("pose"):

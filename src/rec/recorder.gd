@@ -121,6 +121,8 @@ func _configure(size: Vector2i) -> void:
 func sync_camera(src: Camera3D) -> void:
 	cam.global_transform = src.global_transform
 	cam.fov = src.fov
+	cam.projection = src.projection
+	cam.size = src.size
 	cam.near = src.near
 	cam.far = src.far
 	cam.attributes = src.attributes

@@ -33,6 +33,18 @@ var toast_panel := PanelContainer.new()
 var toast_label := Label.new()
 var countdown := Label.new()
 var modal := Control.new()
+## Dims and blurs everything behind a popup so it stands out.
+var modal_shade := ColorRect.new()
+
+const SHADE_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float blur = 2.6;
+void fragment() {
+	vec3 c = textureLod(screen_tex, SCREEN_UV, blur).rgb;
+	COLOR = vec4(c * 0.55, 1.0);
+}
+"""
 var frame_guide := FrameGuide.new()
 var crosshair := Crosshair.new()
 var joy := Joystick.new()
@@ -219,8 +231,19 @@ func _ready() -> void:
 	countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(countdown)
 
+	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	modal_shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	var shade_mat := ShaderMaterial.new()
+	var shade_sh := Shader.new()
+	shade_sh.code = SHADE_SHADER
+	shade_mat.shader = shade_sh
+	modal_shade.material = shade_mat
+	modal_shade.visible = false
+	add_child(modal_shade)
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.child_entered_tree.connect(func(_c): modal_shade.visible = true)
+	modal.child_exiting_tree.connect(func(_c): _update_shade.call_deferred())
 	add_child(modal)
 
 	App.toast_requested.connect(toast)
@@ -538,6 +561,29 @@ func render_toolbar() -> void:
 			hint = {"place": "Tap to place " + str(b.get("name", "block")).to_lower(), "break": "Tap a block to break it", "pick": "Tap a block to copy it"}[t.mode]
 			if not App.is_touch:
 				hint += "  ·  right click breaks, middle click picks"
+		"tiles":
+			var top := studio.is_top()
+			if top and t.tile >= PixelTopArt.GROUND.size():
+				t.tile = PixelTopArt.G["grass"]
+			toolbar_row.add_child(_tb_tex(PixelTopArt.ground_icon(maxi(1, t.tile)) if top else PixelTiles.icon(t.tile), "Ground" if top else "Tile", func(): open_sheet("tiles")))
+			toolbar_row.add_child(_tb("place", "place", "Paint", t.mode == "place"))
+			toolbar_row.add_child(_tb("break", "brk", "Erase", t.mode == "break"))
+			toolbar_row.add_child(_tb("pick", "pickI", "Pick", t.mode == "pick"))
+			var tn := str((PixelTopArt.GROUND[maxi(1, t.tile)] if top else PixelTiles.get_tile(t.tile)).get("name", "tile")).to_lower()
+			hint = {"place": "Tap or drag to paint " + tn, "break": "Tap or drag to erase tiles", "pick": "Tap a tile to copy it"}[t.mode]
+			if not App.is_touch:
+				hint += "  ·  right-drag erases"
+		"pprefab":
+			toolbar_row.add_child(_tb("pprefabs", "house", "Change", false))
+			var pname := ""
+			if SpriteImport.is_key(t.pprefab):
+				pname = SpriteImport.display_name(SpriteImport.id_of(t.pprefab))
+			elif studio.is_top():
+				pname = str(PixelTopArt.OBJECTS.get(t.pprefab, {"name": "object"})["name"])
+			else:
+				toolbar_row.add_child(_tb("flip", "rotate", "Flip", t.flip))
+				pname = str(PixelTiles.PREFABS.get(t.pprefab, {"name": "building"})["name"])
+			hint = "Tap the ground to place a " + pname.to_lower()
 		"prefab":
 			toolbar_row.add_child(_tb("prefabs", "house", "Change", false))
 			toolbar_row.add_child(_tb("rot", "rotate", "Rotate", false))
@@ -590,6 +636,11 @@ func _tool_action(a: String) -> void:
 			t.set_tool("")
 		"prefabs":
 			open_sheet("prefabs")
+		"pprefabs":
+			open_sheet("pprefabs")
+		"flip":
+			t.flip = not t.flip
+			render_toolbar()
 		"objects":
 			open_sheet("objects")
 		"place", "break", "pick":
@@ -735,7 +786,9 @@ func ask(msg: String, yes: String, cb: Callable) -> void:
 
 ## Asks for a short piece of text (a name). Enter or the button confirms;
 ## an empty answer keeps the suggested text.
-func prompt(title: String, suggested: String, placeholder: String, yes: String, cb: Callable) -> void:
+## With `choices` ([[key, label, description], ...]) it also asks to pick
+## one, and `cb` gets (text, key).
+func prompt(title: String, suggested: String, placeholder: String, yes: String, cb: Callable, choices: Array = []) -> void:
 	UIK.clear(modal)
 	var card := _card()
 	var v: VBoxContainer = card.get_child(0)
@@ -743,10 +796,28 @@ func prompt(title: String, suggested: String, placeholder: String, yes: String, 
 	var e := UIK.line_edit(suggested, placeholder, func(_t): pass)
 	e.max_length = 40
 	v.add_child(e)
+	var picked := [choices[0][0] if not choices.is_empty() else ""]
+	if not choices.is_empty():
+		var g := UIK.grid(2, 8)
+		var tiles := []
+		for c in choices:
+			var tl := UIK.tile(c[3] if c.size() > 3 else "film", c[1], c[2], c[0] == picked[0], func(): pass)
+			tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tiles.append(tl)
+			g.add_child(tl)
+		for i in tiles.size():
+			(tiles[i] as Button).pressed.connect(func():
+				picked[0] = choices[i][0]
+				for j in tiles.size():
+					UIK._card_states(tiles[j], j == i, 16))
+		v.add_child(g)
 	var done := func():
 		var n := e.text.strip_edges()
 		UIK.clear(modal)
-		cb.call(n if n != "" else suggested)
+		if choices.is_empty():
+			cb.call(n if n != "" else suggested)
+		else:
+			cb.call(n if n != "" else suggested, picked[0])
 	e.text_submitted.connect(func(_t): done.call())
 	var row := UIK.hbox()
 	row.alignment = BoxContainer.ALIGNMENT_END
@@ -811,11 +882,19 @@ func stop_script() -> void:
 # ---------------------------------------------------------------- misc
 
 ## At home only dialogs and toasts show; in the studio everything does.
+func _update_shade() -> void:
+	var n := 0
+	for c in modal.get_children():
+		if not c.is_queued_for_deletion():
+			n += 1
+	modal_shade.visible = n > 0
+
+
 func set_home_mode(on: bool) -> void:
 	if on:
 		timeline_panel.close()
 	for c in get_children():
-		if c == modal or c == toast_panel:
+		if c == modal or c == toast_panel or c == modal_shade:
 			continue
 		if c is Control:
 			(c as Control).visible = not on

@@ -3,7 +3,7 @@
 // slope picks rock. Ground textures (CC0, ambientCG) are sampled in world
 // space with two scales to hide tiling:
 //   tex_mode 0: no textures (low-poly), 1: palette colour x texture detail
-//   (anime, keeps the painted look), 2: real texture colours (tactical).
+//   (anime, keeps the painted look).
 uniform vec4 rock_color : source_color = vec4(0.6, 0.62, 0.64, 1.0);
 uniform float detail_amount = 0.12;
 uniform float rock_mix = 0.65;
@@ -66,14 +66,10 @@ void fragment() {
 		vec3 nt = mix(mix(tri_sample(grass_nrm, uv, big).rgb, tri_sample(dirt_nrm, uv * 1.3, big).rgb, pw), tri_sample(rock_nrm, vec2(w_pos.x + w_pos.z, w_pos.y) * tex_scale * 0.6, big).rgb, rk);
 		NORMAL_MAP = nt;
 		NORMAL_MAP_DEPTH = normal_strength;
-		if (tex_mode == 1) {
-			// Keep the palette; use the texture's light and shade only.
-			float lum = dot(tex, vec3(0.299, 0.587, 0.114));
-			c *= mix(0.72, 1.32, smoothstep(0.08, 0.55, lum));
-			c = mix(c, mix(rock_color.rgb, rock_color.rgb * 1.2, lum), rk);
-		} else {
-			c = mix(tex * 1.15, c, 0.25);
-		}
+		// Keep the palette; use the texture's light and shade only.
+		float lum = dot(tex, vec3(0.299, 0.587, 0.114));
+		c *= mix(0.72, 1.32, smoothstep(0.08, 0.55, lum));
+		c = mix(c, mix(rock_color.rgb, rock_color.rgb * 1.2, lum), rk);
 	} else {
 		c *= mix(1.0 - detail_amount, 1.0 + detail_amount, n);
 		vec3 rock = rock_color.rgb * mix(0.82, 1.12, t_noise(w_pos.xz * 3.1 + w_pos.y));

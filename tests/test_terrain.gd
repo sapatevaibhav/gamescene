@@ -2,7 +2,7 @@ extends Node
 
 func _ready() -> void:
 	var fails := 0
-	for style in ["anime", "tactical", "lowpoly"]:
+	for style in ["anime", "lowpoly"]:
 		Kit.shade = Styles.get_style(style).shade
 		for key in Props.defs(style):
 			for seed in [1, 42, 99999]:

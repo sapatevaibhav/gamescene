@@ -80,6 +80,10 @@ func _show_busy(on: bool) -> void:
 
 ## Home screen: asks what to call the new scene, then makes it.
 func _ask_new_scene(style: String) -> void:
+	if style == "pixel":
+		# Pixel 2D comes in two views; each is its own kind of world.
+		hud.prompt("New Pixel 2D scene", _suggested_name(style), "Scene name", "Create", func(n: String, view: String): _new_scene(view, n), Styles.PIXEL_VIEWS)
+		return
 	hud.prompt("Name your scene", _suggested_name(style), "Scene name", "Create", func(n: String): _new_scene(style, n))
 
 
@@ -130,7 +134,11 @@ func _enter_studio() -> void:
 	if studio.camera.mode == "cine":
 		studio.camera.cine_reset()
 	if not App.is_touch:
-		if App.device["mouse_look"] == "capture":
+		if studio.is_top():
+			App.toast("WASD walks · Shift runs · left click attacks · right click a character for their menu · B builds")
+		elif studio.is_side():
+			App.toast("A/D walk · W or Space jumps · W/S climb ladders · Shift runs · left click attacks · right click a character for their menu · B builds with tiles")
+		elif App.device["mouse_look"] == "capture":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			App.toast("Mouse looks · WASD moves · Shift sprints · Ctrl crouches · left click attacks · right click a character for their menu · Esc frees the cursor")
 		else:
@@ -250,7 +258,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if studio.tools.kind != "":
 				studio.tools.set_tool("")
 			else:
-				studio.tools.set_tool("blocks" if studio.world.is_voxel else "objects")
+				studio.tools.set_tool("blocks" if studio.world.is_voxel or studio.is_flat() else "objects")
 		KEY_F:
 			if studio.camera.mode == "free":
 				studio.camera.set_mode("third")
@@ -263,6 +271,12 @@ func _release_mouse() -> void:
 
 func _look(dx: float, dy: float, s: float) -> void:
 	var cam := studio.camera
+	if studio.is_flat():
+		# 2D: dragging pans the free camera; other modes follow.
+		if cam.mode == "free":
+			var k := cam.size / maxf(1.0, get_viewport().get_visible_rect().size.y)
+			cam.free_pos += Vector3(-dx * k, dy * k, 0) if studio.is_side() else Vector3(-dx * k, 0, -dy * k)
+		return
 	if cam.mode == "cine":
 		cam.cine_base -= dx * s
 		cam.cine["height"] = clampf(float(cam.cine["height"]) + dy * 0.02, 0, 14)
@@ -274,6 +288,9 @@ func _look(dx: float, dy: float, s: float) -> void:
 
 func _zoom(f: float) -> void:
 	var cam := studio.camera
+	if studio.is_flat() and cam.mode != "cine":
+		cam.dist = clampf(cam.dist * f, 1.5, 16)
+		return
 	match cam.mode:
 		"cine":
 			cam.cine["dist"] = clampf(float(cam.cine["dist"]) * f, 1.5, 24)
@@ -357,7 +374,8 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 		_zoom(1.1)
 		return
 	var center := get_viewport().get_visible_rect().size / 2
-	if App.device["mouse_look"] == "capture":
+	# Pixel 2D is pointed at, never mouse-looked.
+	if App.device["mouse_look"] == "capture" and not studio.is_flat():
 		if e.pressed and not captured and e.button_index == MOUSE_BUTTON_LEFT:
 			hud.close_sheet()
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -373,8 +391,8 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 			return
 	if e.pressed:
 		_mouse_drag = {"start": e.position, "moved": 0.0, "t0": Time.get_ticks_msec(), "button": e.button_index}
-		if studio.tools.kind == "terrain" and e.button_index == MOUSE_BUTTON_LEFT:
-			studio.tools.begin_paint(e.position)
+		if studio.tools.paints() and (e.button_index == MOUSE_BUTTON_LEFT or studio.tools.kind == "tiles"):
+			studio.tools.begin_paint(e.position, e.button_index)
 			_mouse_drag["paint"] = true
 	else:
 		if _mouse_drag.is_empty():
@@ -424,7 +442,7 @@ func _touch(e: InputEvent) -> void:
 					_ptrs[k]["role"] = "gesture"
 				_gesture = {}
 				return
-			if studio.tools.kind == "terrain":
+			if studio.tools.paints():
 				p["role"] = "paint"
 				studio.tools.begin_paint(t.position)
 			elif t.position.x < vs.x * 0.42 and not hud.joy.visible and studio.camera.mode != "cine":

@@ -44,7 +44,7 @@ func _ready() -> void:
 	studio.tools.tap(center)
 	ok(w.serialize()["rle"] != before, "stamp prefab")
 	# Terrain styles: place a prop, select it, rotate/resize/delete, sculpt.
-	for style in ["anime", "tactical", "lowpoly"]:
+	for style in ["anime", "lowpoly"]:
 		await studio.new_scene(style)
 		studio.in_studio = true
 		cam = studio.camera

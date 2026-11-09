@@ -47,6 +47,8 @@ func _picks(b: Control) -> GridContainer:
 
 func _look_icon(look: Dictionary) -> Texture2D:
 	var style := studio.style_key
+	if style in ["pixel", "pixeltop"] and not look.has("model"):
+		return PixelSprites.icon(look)
 	var key := "look|" + style + "|" + JSON.stringify(look).md5_text()
 	return hud.icons.request(key, func(): return _build_look(look, style), "char")
 
@@ -58,6 +60,8 @@ func _build_look(look: Dictionary, style: String) -> Node3D:
 
 func _face_icon(look: Dictionary) -> Texture2D:
 	var style := studio.style_key
+	if style in ["pixel", "pixeltop"] and not look.has("model"):
+		return PixelSprites.icon(look)
 	var key := "face|" + style + "|" + JSON.stringify(look).md5_text()
 	return hud.icons.request(key, func(): return _build_look(look, style), "face")
 
@@ -78,10 +82,18 @@ func v_add(_a, b: VBoxContainer) -> String:
 	if studio.world.is_voxel:
 		items.append(["cube", "Blocks", "Place and break", func(): hud.push_view("blocks")])
 		items.append(["house", "Buildings", "Houses, towers, trees", func(): hud.push_view("prefabs")])
+	elif studio.is_side():
+		items.append(["cube", "Tiles", "Paint ground, walls, ladders", func(): hud.push_view("tiles")])
+		items.append(["house", "Buildings", "Cottages, towers, trees", func(): hud.push_view("pprefabs")])
+	elif studio.is_top():
+		items.append(["cube", "Ground", "Paint grass, paths, water", func(): hud.push_view("tiles")])
+		items.append(["tree", "Objects", "Trees, houses, rocks", func(): hud.push_view("pprefabs")])
 	else:
 		items.append(["tree", "Objects", "Trees, houses, props", func(): hud.push_view("objects")])
 		items.append(["hill", "Ground", "Raise hills, dig valleys", func(): studio.tools.set_tool("terrain"); hud.close_sheet()])
-	if AssetTags.can_import_models(studio.style_key):
+	if AssetTags.can_import_sprites(studio.style_key):
+		items.append(["upload", "Sprite", "Import .png or .ase", func(): _import_sprite("char")])
+	elif AssetTags.can_import_models(studio.style_key):
 		items.append(["upload", "3D character", "Import " + AssetTags.formats_text(studio.style_key), func(): _import_model()])
 	else:
 		items.append(["upload", "Skin", "Upload a 64×64 character PNG", func(): _upload_skin()])
@@ -117,6 +129,13 @@ func v_addChar(_a, b: VBoxContainer) -> String:
 		if vox:
 			f.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Upload skin", false, _upload_skin))
 			b.add_child(UIK.para("Uploaded skins use the common 64×64 (or legacy 64×32) character layout.", 12))
+	if AssetTags.can_import_sprites(studio.style_key):
+		_section(b, "Your sprites")
+		var sf := _picks(b)
+		sf.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, func(): _import_sprite("char")))
+		for sid in _style_sprites("char"):
+			sf.add_child(UIK.pick(SpriteImport.icon(sid), SpriteImport.display_name(sid), false, func(): _add_char({"sprite": sid}, {"label": SpriteImport.display_name(sid).left(18)}), true))
+		b.add_child(UIK.para("Import .png sprite sheets (a strip of frames, or an RPG grid of 3–4 columns × 4 rows: down, left, right, up) or Aseprite .ase/.aseprite files. Aseprite tags name the actions: idle, walk, run, jump, dance, wave, sit, sleep, cheer, laugh, cry, point, attack, talk; add _down, _up, _left or _right for the top view.", 12))
 	_models_section(b, func(id): _add_char({"model": id}, {"label": id.get_basename()}))
 	return "Add a character"
 
@@ -208,6 +227,17 @@ func v_imports(_a, b: VBoxContainer) -> String:
 	var style := studio.style_key
 	var chars := _style_models()
 	var objs := _style_props()
+	var sprites: Array = _style_sprites("char") + _style_sprites("object") if AssetTags.can_import_sprites(style) else []
+	if not sprites.is_empty():
+		_section(b, "Pixel sprites")
+		for sid in sprites:
+			b.add_child(_import_row(SpriteImport.icon(sid), SpriteImport.display_name(sid), sid + ".png", 0, func():
+				if AssetTags.untag("sprites", sid, style):
+					SpriteImport.remove(sid)
+				hud.toast("Removed " + SpriteImport.display_name(sid))
+				_rerender()))
+		if chars.is_empty() and objs.is_empty():
+			return "Imported models"
 	b.add_child(UIK.para("The library for %s worlds. Each world style keeps its own imports." % Styles.get_style(style)["name"], 12))
 	if chars.is_empty() and objs.is_empty():
 		b.add_child(UIK.para("Nothing imported yet.", 14))
@@ -284,6 +314,85 @@ func v_blocks(_a, b: VBoxContainer) -> String:
 			hud.close_sheet(), true, 74))
 	b.add_child(UIK.btn("Make your own block", func(): hud.push_view("maker"), false, "paint"))
 	return "Blocks"
+
+
+## Pixel 2D tile palette. Ground-type tiles stand in the way; the rest
+## (walls, windows, ladders, flowers) sit behind the characters.
+func v_tiles(_a, b: VBoxContainer) -> String:
+	if studio.is_top():
+		var tf := _picks(b)
+		for id in range(1, PixelTopArt.GROUND.size()):
+			tf.add_child(UIK.pick(PixelTopArt.ground_icon(id), PixelTopArt.GROUND[id]["name"], studio.tools.kind == "tiles" and studio.tools.tile == id, func():
+				studio.tools.set_tool("tiles", {"tile": id, "mode": "place"})
+				hud.close_sheet(), true))
+		b.add_child(UIK.para("Tap or drag to paint the ground. Right-drag removes objects (or turns ground back to grass). Water can't be walked on.", 12))
+		return "Ground"
+	for grp in [["In the way", false], ["Behind the characters", true]]:
+		_section(b, grp[0])
+		var f := _picks(b)
+		for id in range(1, PixelTiles.count()):
+			if PixelTiles.is_bg(id) != grp[1]:
+				continue
+			f.add_child(UIK.pick(PixelTiles.icon(id), PixelTiles.get_tile(id)["name"], studio.tools.kind == "tiles" and studio.tools.tile == id, func():
+				studio.tools.set_tool("tiles", {"tile": id, "mode": "place"})
+				hud.close_sheet(), true))
+	b.add_child(UIK.para("Tap or drag to paint. Right-drag erases. Water is see-through; ladders can be climbed with W and S.", 12))
+	return "Tiles"
+
+
+func v_pprefabs(_a, b: VBoxContainer) -> String:
+	var f := _picks(b)
+	if studio.is_top():
+		for k in PixelTopArt.OBJ_ORDER:
+			f.add_child(UIK.pick(PixelTopArt.obj_icon(k), PixelTopArt.OBJECTS[k]["name"], studio.tools.kind == "pprefab" and studio.tools.pprefab == k, func():
+				studio.tools.set_tool("pprefab", {"pprefab": k})
+				hud.close_sheet(), true))
+	else:
+		for k in PixelTiles.PREFABS:
+			var p: Dictionary = PixelTiles.PREFABS[k]
+			f.add_child(UIK.pick(PixelTiles.icon(PixelTiles.ID[p["icon"]]), p["name"], studio.tools.kind == "pprefab" and studio.tools.pprefab == k, func():
+				studio.tools.set_tool("pprefab", {"pprefab": k})
+				hud.close_sheet(), true))
+	_section(b, "Your sprites")
+	var mine := _picks(b)
+	mine.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, func(): _import_sprite("object")))
+	for id in _style_sprites("object"):
+		var key: String = SpriteImport.PREFIX + id
+		mine.add_child(UIK.pick(SpriteImport.icon(id), SpriteImport.display_name(id), studio.tools.pprefab == key, func():
+			studio.tools.set_tool("pprefab", {"pprefab": key})
+			hud.close_sheet(), true))
+	b.add_child(UIK.para("Import pixel objects from .png, .webp, .ase or .aseprite files. %s They stay in %s worlds." % ["They stand on the ground and block walking." if studio.is_top() else "They stand behind the characters.", Styles.get_style(studio.style_key).get("view_name", "")], 12))
+	return "Objects" if studio.is_top() else "Buildings"
+
+
+## Imported pixel sprites of a kind that belong to this world's view.
+func _style_sprites(kind: String) -> Array:
+	return AssetTags.only("sprites", SpriteImport.list(kind), studio.style_key)
+
+
+func _import_sprite(kind: String) -> void:
+	var style := studio.style_key
+	hud.pick_file(PackedStringArray(AssetTags.SPRITE_FILTERS), func(path: String):
+		var id := SpriteImport.import_file(path, kind)
+		if id == "":
+			hud.toast(SpriteImport.last_error)
+			return
+		AssetTags.tag("sprites", id, style)
+		var m := SpriteImport.meta(id)
+		if kind == "char":
+			var acts := (m["anims"] as Dictionary).keys().map(func(k): return str(k).get_slice(":", 0))
+			var uniq := []
+			for x in acts:
+				if not uniq.has(x):
+					uniq.append(x)
+			hud.toast("%d frames of %d×%d · actions: %s" % [int(m["frames"]), int(m["fw"]), int(m["fh"]), ", ".join(PackedStringArray(uniq))])
+			_add_char({"sprite": id}, {"label": SpriteImport.display_name(id).left(18), "group": "people"})
+		else:
+			studio.tools.set_tool("pprefab", {"pprefab": SpriteImport.PREFIX + id})
+			hud.toast("Tap where it should go.")
+			hud.close_sheet()
+		if hud.view_stack.size() > 0:
+			_rerender(), "Import a pixel sprite")
 
 
 func v_maker(_a, b: VBoxContainer) -> String:

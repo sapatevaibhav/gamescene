@@ -1,5 +1,5 @@
 class_name Props
-## Procedural scenery props for the terrain styles (anime, tactical, low-poly).
+## Procedural scenery props for the terrain styles (anime, low-poly).
 ##
 ## Ported from the web build's prop builders. `build(style, key, seed)` returns
 ## a fresh Node3D standing on y = 0 and facing +Z. Same seed, same shape: the
@@ -39,19 +39,6 @@ const DEFS := {
 		"bench": {"name": "Bench"},
 		"fire": {"name": "Campfire"},
 		"well": {"name": "Well"},
-	},
-	"tactical": {
-		"pine": {"name": "Pine", "cols": [[0.0, 0.0, 0.3]]},
-		"rock": {"name": "Rock"},
-		"crate": {"name": "Crate"},
-		"barrel": {"name": "Barrel"},
-		"container": {"name": "Container"},
-		"tent": {"name": "Tent"},
-		"sandbags": {"name": "Sandbags"},
-		"tower": {"name": "Watchtower"},
-		"warehouse": {"name": "Warehouse"},
-		"jeep": {"name": "Jeep"},
-		"fence": {"name": "Fence"},
 	},
 	"lowpoly": {
 		"pine": {"name": "Pine", "cols": [[0.0, 0.0, 0.3]]},
@@ -127,19 +114,6 @@ static func build(style: String, key: String, seed: int) -> Node3D:
 				"bench": g = _bench()
 				"fire": g = _campfire()
 				"well": g = _well()
-		"tactical":
-			match key:
-				"pine": g = _tree_pine("#4f6b3a", r)
-				"rock": g = _rock("#8a8a85", r)
-				"crate": g = _crate()
-				"barrel": g = _barrel()
-				"container": g = _container(r2)
-				"tent": g = _tent()
-				"sandbags": g = _sandbags()
-				"tower": g = _watchtower()
-				"warehouse": g = _warehouse()
-				"jeep": g = _jeep()
-				"fence": g = _fence("#6b6f75")
 		"lowpoly":
 			match key:
 				"pine": g = _tree_pine("#3f7f4a", r)
@@ -346,88 +320,6 @@ static func _barrel() -> Node3D:
 	g.add_child(Kit.cyl(0.32, 0.32, 0.82, 10, M("#8b5a2b"), 0, 0.41, 0))
 	g.add_child(Kit.cyl(0.335, 0.335, 0.05, 10, M("#3a3530"), 0, 0.2, 0))
 	g.add_child(Kit.cyl(0.335, 0.335, 0.05, 10, M("#3a3530"), 0, 0.62, 0))
-	return g
-
-
-static func _crate() -> Node3D:
-	var g := Kit.group()
-	var w := M("#a07a46")
-	var d := M("#7a5a32")
-	g.add_child(Kit.box(1, 1, 1, w, 0, 0.5, 0))
-	g.add_child(Kit.box(1.02, 0.1, 1.02, d, 0, 0.95, 0))
-	g.add_child(Kit.box(1.02, 0.1, 1.02, d, 0, 0.05, 0))
-	return g
-
-
-static func _container(r2: U.Rng) -> Node3D:
-	var g := Kit.group()
-	var col: String = r2.pick(["#b5452f", "#2f6db5", "#3f8a4a", "#c9a227", "#6b6f75"])
-	g.add_child(Kit.box(6, 2.6, 2.4, M(col, {"rough": 0.6, "metal": 0.35}), 0, 1.3, 0))
-	var dk := M(U.shade_hex(col, 0.78), {"rough": 0.6, "metal": 0.35})
-	var x := -2.7
-	while x <= 2.7 + 1e-6:
-		g.add_child(Kit.box(0.08, 2.4, 2.46, dk, x, 1.3, 0))
-		x += 0.6
-	return g
-
-
-static func _tent() -> Node3D:
-	var g := Kit.group()
-	g.add_child(Kit.prism(2.6, 1.7, 3.2, M("#6b7350"), 0, 0, 0))
-	g.add_child(Kit.prism(1.1, 0.95, 0.04, M("#2d2f25"), 0, 0, 1.61))
-	return g
-
-
-static func _sandbags() -> Node3D:
-	var g := Kit.group()
-	var m := M("#b8a37a")
-	for y in 2:
-		for k in 5:
-			if y == 1 and k == 4:
-				continue
-			var s := Kit.sphere(0.32, 8, 6, m)
-			s.scale = Vector3(1.25, 0.55, 0.8)
-			s.position = Vector3(-1.3 + k * 0.65 + (0.32 if y == 1 else 0.0), 0.18 + y * 0.33, 0)
-			g.add_child(s)
-	return g
-
-
-static func _watchtower() -> Node3D:
-	var g := Kit.group()
-	var w := M("#7d6448")
-	for p in [[-1, -1], [1, -1], [-1, 1], [1, 1]]:
-		g.add_child(Kit.box(0.16, 4, 0.16, w, p[0], 2, p[1]))
-	g.add_child(Kit.box(2.7, 0.16, 2.7, w, 0, 4, 0))
-	for p in [[0, 1.3, 2.7, 0.1], [0, -1.3, 2.7, 0.1]]:
-		g.add_child(Kit.box(p[2], 0.9, p[3], w, p[0], 4.5, p[1]))
-	g.add_child(Kit.box(0.1, 0.9, 2.7, w, 1.3, 4.5, 0))
-	g.add_child(Kit.box(0.1, 0.9, 2.7, w, -1.3, 4.5, 0))
-	g.add_child(Kit.prism(3.1, 1.1, 3.1, M("#5b6340"), 0, 5.3, 0))
-	var y := 0.4
-	while y < 4.0:
-		g.add_child(Kit.box(0.6, 0.06, 0.06, w, 0, y, 1.08))
-		y += 0.45
-	return g
-
-
-static func _warehouse() -> Node3D:
-	var g := Kit.group()
-	g.add_child(Kit.box(8, 4, 6, M("#8a8f94", {"rough": 0.7, "metal": 0.25}), 0, 2, 0))
-	g.add_child(Kit.prism(8.6, 1.6, 6.4, M("#6b7075", {"rough": 0.6, "metal": 0.3}), 0, 4, 0))
-	g.add_child(Kit.box(2.6, 3, 0.06, M("#3b3f44"), 0, 1.5, 3.02))
-	return g
-
-
-static func _jeep() -> Node3D:
-	var g := Kit.group()
-	var o := M("#5b6340", {"rough": 0.65, "metal": 0.2})
-	g.add_child(Kit.box(1.8, 0.7, 3.6, o, 0, 0.78, 0))
-	g.add_child(Kit.box(1.7, 0.6, 1.3, M("#9fb4c2", {"rough": 0.15, "metal": 0.1}), 0, 1.42, -0.3))
-	g.add_child(Kit.box(1.72, 0.08, 1.35, o, 0, 1.75, -0.3))
-	for p in [[-0.95, 1.2], [0.95, 1.2], [-0.95, -1.2], [0.95, -1.2]]:
-		var wh := Kit.cyl(0.38, 0.38, 0.3, 12, M("#1f2022"), p[0], 0.38, p[1])
-		wh.rotation.z = PI / 2
-		g.add_child(wh)
 	return g
 
 

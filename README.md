@@ -29,7 +29,12 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_terrain` | Every prop, world generation, picking, collisions, save round trip |
 | `test_rigs` | Every character preset in every style, random looks, skins |
 | `test_timeline` | Keyframe storage and easing, seeking (also backwards, deterministic), keyed characters and camera, rename, save and load |
+| `test_pixel` | Pixel 2D: tiles, lane movement, jumping, ladders, tile painting through the camera, buildings, sprite frames, save/load, replay |
+| `test_pixel_top` | Pixel 2D top view: world, WASD walking, blocking, ground painting and objects through the camera, facing frames, draw order, save/load, replay; side-view passing; default names |
+| `test_sprites` | Pixel sprite imports: PNG strips and RPG grids, Aseprite files (compressed/raw/linked cels, layers, tags) and using them as characters and objects |
+| `test_styles` | Per-style import rules, the low-poly triangle cap, scene names, every action on imported models |
 | `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
+| `look_pixel` | Needs a window: renders the Pixel 2D style to `user://look/pixel-*.png` |
 | `look_scene` | Needs a window: renders a few views of one style to `user://look/` for a visual check (`-- look_scene anime`) |
 
 The smoke run builds each style and saves screenshots (third person, cinematic, sunset, night, weather, a panel) to `user://smoke/`. It also exports a short two-shot film per style.

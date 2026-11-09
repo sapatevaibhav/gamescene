@@ -36,22 +36,23 @@ func _ready() -> void:
 func _rules() -> void:
 	ok(not AssetTags.can_import_models("blocky") and not AssetTags.can_import_objects("blocky") and AssetTags.rules("blocky")["skins"], "blocky takes skins only")
 	ok((AssetTags.rules("anime")["formats"] as Array).has("vrm"), "anime takes VRM")
-	ok(not (AssetTags.rules("tactical")["formats"] as Array).has("vrm") and not (AssetTags.rules("lowpoly")["formats"] as Array).has("vrm"), "VRM only in anime")
+	ok(not (AssetTags.rules("lowpoly")["formats"] as Array).has("vrm"), "VRM only in anime")
+	ok(not AssetTags.can_import_models("pixel") and AssetTags.can_import_sprites("pixel") and AssetTags.can_import_sprites("pixeltop"), "2D views take sprites, not 3D models")
 	ok(AssetTags.max_tris("lowpoly", "models") > 0 and AssetTags.max_tris("anime", "models") == 0, "triangle cap only in low-poly")
 	ok(AssetTags.model_filters("blocky").is_empty() and AssetTags.model_filters("anime")[0].contains("*.vrm"), "file filters follow the style")
-	ok(AssetTags.formats_text("tactical") == ".glb, .gltf or .fbx", "formats text (%s)" % AssetTags.formats_text("tactical"))
+	ok(AssetTags.formats_text("lowpoly") == ".glb, .gltf or .fbx", "formats text (%s)" % AssetTags.formats_text("lowpoly"))
 
 
 func _tags() -> void:
 	ok(AssetTags.styles_of("models", "old~1.glb") == ["anime"], "untagged imports count as anime")
 	AssetTags.tag("models", "a~1.glb", "lowpoly")
-	AssetTags.tag("models", "a~1.glb", "tactical")
+	AssetTags.tag("models", "a~1.glb", "blocky")
 	ok(AssetTags.only("models", ["a~1.glb", "old~1.glb"], "lowpoly") == ["a~1.glb"], "only this style's models are listed")
 	ok(AssetTags.only("models", ["a~1.glb", "old~1.glb"], "anime") == ["old~1.glb"], "other styles don't see it")
 	ok(not AssetTags.untag("models", "a~1.glb", "lowpoly"), "removing from one style keeps it for the other")
-	ok(AssetTags.untag("models", "a~1.glb", "tactical"), "removing from the last style frees the file")
+	ok(AssetTags.untag("models", "a~1.glb", "blocky"), "removing from the last style frees the file")
 	AssetTags.reload()
-	ok(not AssetTags.only("models", ["a~1.glb"], "tactical").has("a~1.glb"), "tags persist across reloads")
+	ok(not AssetTags.only("models", ["a~1.glb"], "blocky").has("a~1.glb"), "tags persist across reloads")
 
 
 ## Writes a .glb with one sphere of the given detail; returns its path.

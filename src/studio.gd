@@ -97,6 +97,10 @@ func _make_world(key: String) -> void:
 	if sty["world"] == "voxel":
 		Blocks.init()
 		world = VoxelWorld.new()
+	elif sty["world"] == "pixel":
+		world = PixelWorld.new()
+	elif sty["world"] == "pixeltop":
+		world = PixelTopWorld.new()
 	else:
 		var tw := TerrainWorld.new()
 		tw.grass_density = App.q()["grass"]
@@ -133,6 +137,10 @@ func _default_cast() -> void:
 	var cx := size / 2 + 0.5
 	var cz := size / 2 - 6 if vox else size / 2 - 3.5
 	var pos := [[0, -3], [-5, -6], [3, -2], [5, -3], [-3, -1], [1.5, -5.5]] if vox else [[0, -3.5], [3.5, -1], [-2.6, 1.2], [-1.3, 2.4], [2.4, 2.6], [1.6, -5], [-5, -4], [5.5, -5]]
+	if is_side():
+		# Spread along the village street, all on the one lane.
+		cz = PixelWorld.LANE
+		pos = [[0, 0], [-6, 0], [3, 0], [-3, 0], [8, 0], [-10, 0], [5.5, 0], [1.5, 0]]
 	var presets := Rigs.presets_for(style_key)
 	var cast: Array = Rigs.DEFAULT_CAST.get(style_key, [])
 	for i in cast.size():
@@ -322,6 +330,14 @@ func spot_ok(x: float, z: float) -> bool:
 func find_spot(x: float, z: float) -> Vector2:
 	if spot_ok(x, z):
 		return Vector2(x, z)
+	if is_side():
+		# Only left and right exist.
+		for k in range(1, 40):
+			for sgn in [1.0, -1.0]:
+				var nx := clampf(x + sgn * k * 0.5, 1.5, float(Styles.SIZE) - 1.5)
+				if spot_ok(nx, z):
+					return Vector2(nx, z)
+		return Vector2(x, z)
 	var size := float(Styles.SIZE)
 	var r := 0.8
 	while r < 8:
@@ -335,14 +351,31 @@ func find_spot(x: float, z: float) -> Vector2:
 	return Vector2(x, z)
 
 
+## Pixel 2D: a side-on world where everyone shares one lane.
+func is_side() -> bool:
+	return world != null and world.get("is_side") == true
+
+
+## Pixel 2D top view.
+func is_top() -> bool:
+	return world != null and world.get("is_top") == true
+
+
+## Either Pixel 2D view: pointed at with the mouse, never mouse-looked.
+func is_flat() -> bool:
+	return is_side() or is_top()
+
+
 func add_actor(o: Dictionary) -> Actor:
 	if actors.size() >= int(App.q()["cast"]):
 		App.toast("That’s the cast limit for this device’s quality setting.")
 		return null
+	if is_side():
+		o["z"] = PixelWorld.LANE
 	if not o.has("y"):
 		var s := find_spot(float(o.get("x", 40)), float(o.get("z", 40)))
 		o["x"] = s.x
-		o["z"] = s.y
+		o["z"] = s.y if not is_side() else PixelWorld.LANE
 		o["y"] = world.ground_at(s.x, s.y)
 	var a := Actor.new(self, o)
 	actors.append(a)
@@ -463,6 +496,9 @@ func on_line_spoken(a: Actor, text: String, dur: float) -> void:
 
 
 func _separate() -> void:
+	if is_side():
+		# 2D side view: one lane, so characters walk past each other.
+		return
 	for i in actors.size():
 		for j in range(i + 1, actors.size()):
 			var a := actors[i]
@@ -689,6 +725,12 @@ func _update_player(dt: float) -> void:
 	var a := player
 	if a == null or a.keyed:
 		return
+	if is_side():
+		_update_player_side(a, dt)
+		return
+	if is_top():
+		_update_player_top(a, dt)
+		return
 	var mv := input_move
 	var cam_free := camera.mode == "free"
 	var yaw_ref := camera.yaw_now() if camera.mode == "cine" else camera.yaw
@@ -755,6 +797,53 @@ func _process(delta: float) -> void:
 		_save_t -= delta
 		if _save_t <= 0:
 			save_now()
+
+
+## Pixel 2D controls: left/right walk (Shift runs), up or Space jumps, up
+## and down climb ladders, Ctrl crouches.
+func _update_player_side(a: Actor, dt: float) -> void:
+	var mv := input_move
+	var cam_free := camera.mode == "free"
+	var speed := 0.0
+	if not cam_free and absf(mv.x) > 0.05:
+		var base := 1.8 if input_crouch else (7.2 if input_sprint else 4.2)
+		speed = base * minf(1.0, absf(mv.x))
+		a.vel.x = signf(mv.x) * speed
+		a.yaw = PI / 2 if mv.x > 0 else -PI / 2
+	else:
+		a.vel.x = 0.0
+	var w: PixelWorld = world
+	a.on_ladder = not cam_free and w.ladder_at(a.pos) and (absf(mv.y) > 0.2 or (a.on_ladder and not a.on_ground))
+	if a.on_ladder:
+		a.vel.y = mv.y * 3.5 if absf(mv.y) > 0.2 else 0.0
+	elif not cam_free and a.on_ground and not input_crouch and (input_jump or mv.y > 0.6):
+		a.vel.y = 7.6
+	a.crouch = input_crouch and a.on_ground
+	var was := a.blocked
+	a.move_body(dt)
+	# Hop up one-tile steps while walking into them (like the blocky style).
+	if App.device["auto_jump"] and a.blocked and was and a.on_ground and speed > 0.5 and not a.on_ladder:
+		a.vel.y = 7.6
+	a.hy = 0
+	a.hp = 0
+
+
+## Pixel 2D top view: WASD walks north, west, south and east (Shift runs).
+func _update_player_top(a: Actor, dt: float) -> void:
+	var mv := input_move
+	if camera.mode != "free" and mv.length() > 0.05:
+		var base := 1.8 if input_crouch else (7.2 if input_sprint else 4.2)
+		var d := Vector2(mv.x, -mv.y)
+		var l := minf(1.0, d.length())
+		d = d.normalized()
+		a.vel.x = d.x * base * l
+		a.vel.z = d.y * base * l
+		a.yaw = atan2(d.x, d.y)
+	else:
+		a.vel.x = 0.0
+		a.vel.z = 0.0
+	a.crouch = input_crouch
+	a.move_body(dt)
 
 
 ## One simulation tick: script clock, keyframes, player, NPCs, crowding.

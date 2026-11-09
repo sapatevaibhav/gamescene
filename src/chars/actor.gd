@@ -47,6 +47,8 @@ var last_line := ""
 ## Directed walk target from a timeline cue ({} when none).
 var goto := {}
 var crouch := false
+## Holding onto a ladder (Pixel 2D): no gravity while climbing.
+var on_ladder := false
 ## Driven by timeline keyframes this tick (behaviours paused).
 var keyed := false
 ## Seconds left in the current attack swing (0 = not attacking).
@@ -225,7 +227,15 @@ static func make_label(text: String, kind: String) -> Node3D:
 
 func move_body(dt: float) -> void:
 	var w = studio.world
-	if w.is_voxel:
+	if side():
+		# Pixel 2D: everyone lives on one lane in front of the tiles.
+		pos.z = PixelWorld.LANE
+		vel.z = 0.0
+		if on_ladder:
+			vel.y += 24.0 * dt
+		_move_voxel(dt, w)
+		pos.z = PixelWorld.LANE
+	elif w.is_voxel:
 		_move_voxel(dt, w)
 	else:
 		_move_terrain(dt, w)
@@ -288,7 +298,19 @@ func _move_terrain(dt: float, w) -> void:
 		on_ground = false
 
 
+## The world is the side-on Pixel 2D one.
+func side() -> bool:
+	return studio.world != null and studio.world.get("is_side") == true
+
+
+## Worlds where characters hop up one-tile steps (voxel and Pixel 2D).
+func steppy() -> bool:
+	return studio.world != null and (studio.world.is_voxel or side())
+
+
 func steer(tx: float, tz: float, speed: float, dt: float) -> float:
+	if side():
+		tz = pos.z
 	var dx := tx - pos.x
 	var dz := tz - pos.z
 	var d := sqrt(dx * dx + dz * dz)
@@ -301,7 +323,7 @@ func steer(tx: float, tz: float, speed: float, dt: float) -> float:
 	var sp := speed * clampf(d, 0.3, 1.0)
 	vel.x = sin(yaw) * sp
 	vel.z = cos(yaw) * sp
-	if blocked and on_ground and studio.world.is_voxel:
+	if blocked and on_ground and steppy():
 		vel.y = 7.6
 	return d
 
@@ -356,7 +378,7 @@ func update_npc(dt: float) -> void:
 			else:
 				target["t"] -= dt
 				var d := steer(target["x"], target["z"], 1.7, dt)
-				if d < 0.5 or target["t"] < 0 or (blocked and not studio.world.is_voxel):
+				if d < 0.5 or target["t"] < 0 or (blocked and not steppy()):
 					target = {}
 					wait = 1.0 + App.sim_randf() * 3.5
 		"patrol":
@@ -502,6 +524,14 @@ func animate(dt: float, is_player: bool) -> void:
 	walk += sp * dt * 2.4 / maxf(0.6, k())
 	var amt := minf(1.0, sp / 3.2)
 	var sw := sin(walk) * 0.9 * amt
+	if m.get("kind", "") == "sprite":
+		attack_t = maxf(attack_t - dt, 0.0)
+		hurt_t = maxf(hurt_t - dt, 0.0)
+		if speak_t > 0.0:
+			speak_t = maxf(speak_t - dt, 0.0)
+		PixelSprites.animate(self, dt, sp)
+		_tick_bubble(dt)
+		return
 	var model: Node3D = m["model"]
 	var upper: Node3D = m["upper"]
 	var arm_l: Node3D = m["armL"]

@@ -15,6 +15,8 @@ func _ready() -> void:
 		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null], ["imports", null]]
 		if m.studio.world.is_voxel:
 			views += [["blocks", null], ["maker", null], ["prefabs", null]]
+		elif m.studio.is_flat():
+			views += [["tiles", null], ["pprefabs", null]]
 		else:
 			views += [["objects", null]]
 		for v in views:
@@ -30,7 +32,7 @@ func _ready() -> void:
 		m.studio.camera.set_mode("cine")
 		hud.open_sheet("camera")
 		await get_tree().process_frame
-		for t in ["blocks", "prefab", "objects", "terrain", "move_actor"]:
+		for t in ["blocks", "prefab", "objects", "terrain", "move_actor", "tiles", "pprefab"]:
 			m.studio.tools.set_tool(t)
 			await get_tree().process_frame
 		m.studio.tools.set_tool("")

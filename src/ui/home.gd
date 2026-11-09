@@ -71,7 +71,7 @@ func refresh() -> void:
 	_col.add_child(h1)
 	_col.add_child(UIK.spacer(6))
 	_cards = UIK.grid(4, 16)
-	for k in Styles.STYLE_ORDER:
+	for k in Styles.HOME_ORDER:
 		_cards.add_child(_style_card(k))
 	_col.add_child(_cards)
 	_col.add_child(UIK.spacer(18))
@@ -131,7 +131,10 @@ func _style_card(k: String) -> Control:
 	var tr := TextureRect.new()
 	var cast: Array = Rigs.DEFAULT_CAST.get(k, [])
 	var preset: String = cast[0][0] if not cast.is_empty() else ""
-	tr.texture = icons.request("home|" + k, func(): return Rigs.build({"preset": preset}, k)["root"], "char")
+	if k == "pixel":
+		tr.texture = PixelSprites.icon({"preset": preset})
+	else:
+		tr.texture = icons.request("home|" + k, func(): return Rigs.build({"preset": preset}, k)["root"], "char")
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

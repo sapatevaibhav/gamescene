@@ -1,6 +1,6 @@
 class_name TerrainWorld
 extends Node3D
-## Heightfield world for the anime, tactical and low-poly styles.
+## Heightfield world for the anime and low-poly styles.
 ##
 ## A 48x48 cell heightmap ((TN+1)^2 vertices), a per-cell path mask, a water
 ## plane, procedural props, instanced grass and a horizon skirt. Ported from
@@ -42,7 +42,6 @@ var _tall_card: Mesh
 var load_offset := 0.0
 var _mat_key := ""
 
-const SH_REAL := preload("res://src/shaders/terrain.gdshader")
 const SH_TOON := preload("res://src/shaders/terrain_toon.gdshader")
 const SH_FLAT := preload("res://src/shaders/terrain_flat.gdshader")
 const SH_WATER := preload("res://src/shaders/water.gdshader")
@@ -340,19 +339,18 @@ func _ground_w(i: int, j: int, hh: float) -> Vector2:
 func _terrain_material() -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var sh := _shade()
-	m.shader = SH_TOON if sh == "toon" else (SH_FLAT if sh == "flat" else SH_REAL)
+	m.shader = SH_TOON if sh == "toon" else SH_FLAT
 	if style_key == "anime":
 		m.shader = SH_TERRAIN_ANIME
 	m.set_shader_parameter("rock_color", U.col(_pal().rock))
-	m.set_shader_parameter("detail_amount", 0.07 if sh == "toon" else (0.05 if sh == "flat" else 0.16))
+	m.set_shader_parameter("detail_amount", 0.07 if sh == "toon" else 0.05)
 	m.set_shader_parameter("rock_mix", 0.0 if sh == "flat" else 0.6)
 	if sh != "flat":
 		for t in ["grass", "dirt", "floor", "rock"]:
 			m.set_shader_parameter(t + "_tex", load("res://assets/textures/%s_color.jpg" % t))
 			m.set_shader_parameter(t + "_nrm", load("res://assets/textures/%s_normal.jpg" % t))
-		# Anime keeps its painted palette and borrows only surface detail;
-		# tactical uses the real photographic colours.
-		m.set_shader_parameter("tex_mode", 1 if sh == "toon" else 2)
+		# Anime keeps its painted palette and borrows only surface detail.
+		m.set_shader_parameter("tex_mode", 1)
 	return m
 
 
@@ -572,14 +570,6 @@ func rebuild_grass() -> void:
 	var flowers := 1200
 	var blade_h := 1.0
 	match style_key:
-		"tactical":
-			base = U.col("#5f6438")
-			tip = U.col("#c9c08a")
-			hue = 0.16
-			sat = 0.35
-			count = 5000
-			flowers = 0
-			blade_h = 0.85
 		"lowpoly":
 			base = U.col("#4f8a3a")
 			tip = U.col("#a6d36a")
@@ -596,7 +586,7 @@ func rebuild_grass() -> void:
 	var gm := ShaderMaterial.new()
 	gm.shader = SH_GRASS
 	gm.set_shader_parameter("toon", 1.0 if sh == "toon" else 0.0)
-	gm.set_shader_parameter("wind_strength", 1.0 if style_key != "tactical" else 0.7)
+	gm.set_shader_parameter("wind_strength", 1.0)
 
 	# Blade tuft mesh: 5 crossed triangles.
 	var st := SurfaceTool.new()
@@ -1005,23 +995,6 @@ func new_world(key: String) -> void:
 		_scatter_props("stump", 3, 10, 21, r)
 		_scatter_props("mushrooms", 10, 8, 23, r)
 		_scatter_props("flowers", 20, 4, 23, r)
-	elif key == "tactical":
-		add_prop("warehouse", c + 8, c + 7, -0.4)
-		add_prop("tower", c - 8, c + 8, 0.3)
-		add_prop("container", c - 8, c - 4, PI / 2 + 0.1)
-		add_prop("container", c + 9, c - 3, 1.4)
-		add_prop("tent", c + 3, c + 9, PI)
-		add_prop("tent", c - 2, c + 9.5, PI + 0.2)
-		for k in 6:
-			var a := -PI / 2 + (k - 2.5) * 0.45
-			add_prop("sandbags", c + cos(a) * 9.5, c + sin(a) * 9.5, atan2(-cos(a), -sin(a)))
-		add_prop("jeep", c + 4.5, c - 4, 0.6)
-		for q in [[c - 4, c + 4], [c - 3, c + 4.6], [c + 6, c + 3], [c - 6, c - 7], [c + 2, c - 8]]:
-			add_prop("crate", q[0], q[1], r.next() * 2)
-		for q in [[c - 5, c + 2], [c + 6.5, c + 1], [c + 7, c + 2], [c - 6, c - 1]]:
-			add_prop("barrel", q[0], q[1])
-		_scatter_props("pine", 26, 15, 22, r)
-		_scatter_props("rock", 12, 10, 22, r)
 	else:
 		_ring_place("house", 4, 10, r, 0.4)
 		add_prop("well", c, c)

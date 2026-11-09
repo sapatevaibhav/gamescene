@@ -123,7 +123,7 @@ static func camera_key(t: float, cam: Camera3D) -> Dictionary:
 	var p := cam.global_position
 	return {"t": snappedf(t, 0.01), "p": [U.r2(p.x), U.r2(p.y), U.r2(p.z)],
 		"q": [snappedf(q.x, 0.0001), snappedf(q.y, 0.0001), snappedf(q.z, 0.0001), snappedf(q.w, 0.0001)],
-		"fov": snappedf(cam.fov, 0.1), "e": "s"}
+		"fov": snappedf(cam.fov, 0.1), "e": "s", "size": snappedf(cam.size, 0.01)}
 
 
 static func _v(k: Dictionary) -> Vector3:
@@ -193,4 +193,5 @@ func camera_pose(t: float) -> Dictionary:
 	var kb: Dictionary = seg[1]
 	var w: float = seg[2]
 	return {"pos": _v(ka).lerp(_v(kb), w), "rot": _q(ka).slerp(_q(kb), w),
-		"fov": lerpf(float(ka.get("fov", 70.0)), float(kb.get("fov", 70.0)), w)}
+		"fov": lerpf(float(ka.get("fov", 70.0)), float(kb.get("fov", 70.0)), w),
+		"size": lerpf(float(ka.get("size", 13.0)), float(kb.get("size", 13.0)), w)}
