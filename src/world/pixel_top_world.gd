@@ -9,8 +9,17 @@ extends Node3D
 ## depth: the further south something stands, the higher it is lifted, so it
 ## covers what's behind it (characters walk behind trees and in front of them).
 
-const W := Styles.SIZE
+## The village map; NPCs stay on it.
+const MAP := Styles.SIZE
+## Total width: the map plus a strip well east of it holding house
+## interiors (out of view of the map; each room is shown on its own).
+const W := MAP + 48
+const ROOM_X := MAP + 30
 const D := Styles.SIZE
+## House interiors: up to 8 rooms of 12 × 7 tiles in the strip.
+const ROOM_W := 12
+const ROOM_D := 7
+const ROOM_SLOTS := 8
 ## Lift per metre south, for draw order (see `depth_y`).
 const DEPTH := 0.002
 const BASE_Y := 0.05
@@ -22,8 +31,14 @@ var load_offset := 0.0
 var props: Array = []
 ## Ground tile id per cell (PixelTopArt.GROUND).
 var ground := PackedByteArray()
-## Placed objects: [key, x, z] with (x, z) the south-west tile of the footprint.
+## Placed objects: [key, x, z] with (x, z) the south-west tile of the
+## footprint. Houses add a fourth entry: their interior room slot (-1: none).
 var objects: Array = []
+## Door cells -> where they take you: Vector2i -> Vector3.
+var _portals := {}
+## Ground tiles from imported tile sets (TileSets): ids from 100.
+var custom: Array = []
+var _custom_meshes: Array[MeshInstance3D] = []
 var tint := Color.WHITE
 
 var _solid := PackedByteArray()
@@ -37,6 +52,10 @@ var _obj_mat: ShaderMaterial
 var _glow_mat: ShaderMaterial
 ## Imported object sprites: key -> MeshInstance3D (one texture each).
 var _sprite_meshes := {}
+## One node per furnished room (shown only while you're inside it).
+var _rooms := {}
+var _black := MeshInstance3D.new()
+var _shown_slot := -2
 
 
 func _init() -> void:
@@ -57,6 +76,17 @@ func _init() -> void:
 	_obj_mesh.material_override = _obj_mat
 	_glow_mesh.material_override = _glow_mat
 	_water_mesh.position.y = 0.01
+	# Plain black everywhere there's no ground (around the map and rooms).
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(4000, 4000)
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.albedo_color = Color("0b0e14")
+	_black.mesh = pm
+	_black.material_override = bm
+	_black.position = Vector3(W / 2.0, -0.05, D / 2.0)
+	_black.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_black)
 
 
 ## Height to draw something whose feet are at `z` (south covers north).
@@ -112,6 +142,33 @@ func _cells_of(o: Array) -> Array:
 	return out
 
 
+## The object whose picture is under a ground point (front-most first), so
+## clicking a tree's canopy or a house's roof finds it, not just its base.
+func object_at_point(p: Vector3) -> int:
+	var best := -1
+	var best_z := -1e9
+	for i in objects.size():
+		var o: Array = objects[i]
+		var d := obj_def(str(o[0]))
+		if d.is_empty():
+			continue
+		var w := float(d["w"]) / PixelWorld.PPM
+		var h := float(d["h"]) / PixelWorld.PPM
+		var south := float(o[2]) + 1.0
+		var cx := float(o[1]) + float(d.get("fw", 1)) / 2.0
+		if p.x >= cx - w / 2.0 and p.x <= cx + w / 2.0 and p.z >= south - h and p.z <= south and south > best_z:
+			best = i
+			best_z = south
+	return best
+
+
+func remove_object(i: int) -> void:
+	if i < 0 or i >= objects.size():
+		return
+	var o: Array = objects[i]
+	remove_object_at(int(o[1]), int(o[2]))
+
+
 func object_at(x: int, z: int) -> int:
 	for i in range(objects.size() - 1, -1, -1):
 		if _cells_of(objects[i]).has(Vector2i(x, z)):
@@ -119,7 +176,8 @@ func object_at(x: int, z: int) -> int:
 	return -1
 
 
-## Places an object if its footprint is free; returns whether it did.
+## Places an object if its footprint is free; returns whether it did. A
+## house gets an interior room when there's a free slot.
 func place_object(key: String, x: int, z: int, rebuild_now := true) -> bool:
 	var o := [key, x, z]
 	for c in _cells_of(o):
@@ -127,7 +185,16 @@ func place_object(key: String, x: int, z: int, rebuild_now := true) -> bool:
 			return false
 	if obj_def(key).is_empty():
 		return false
-	objects.append(o)
+	if key == "house":
+		if x + 4 > MAP:
+			return false
+		var slot := _free_slot()
+		o.append(slot)
+		objects.append(o)
+		if slot >= 0:
+			_build_room(slot)
+	else:
+		objects.append(o)
 	if rebuild_now:
 		rebuild()
 	return true
@@ -137,9 +204,112 @@ func remove_object_at(x: int, z: int) -> bool:
 	var i := object_at(x, z)
 	if i < 0:
 		return false
+	var o: Array = objects[i]
 	objects.remove_at(i)
+	if str(o[0]) == "house" and o.size() > 3 and int(o[3]) >= 0:
+		_clear_room(int(o[3]))
 	rebuild()
 	return true
+
+
+# ---------------------------------------------------------------- house interiors
+
+## South-west corner of a room slot (inside the walls).
+static func room_origin(slot: int) -> Vector2i:
+	return Vector2i(ROOM_X, 3 + slot * (ROOM_D + 2))
+
+
+static func room_rect(slot: int) -> Rect2i:
+	var o := room_origin(slot)
+	return Rect2i(o.x - 1, o.y - 1, ROOM_W + 2, ROOM_D + 2)
+
+
+## The room slot a position is in, or -1 outside.
+static func slot_at(p: Vector3) -> int:
+	for s in ROOM_SLOTS:
+		if room_rect(s).has_point(Vector2i(int(floor(p.x)), int(floor(p.z)))):
+			return s
+	return -1
+
+
+func _free_slot() -> int:
+	var used := {}
+	for o in objects:
+		if str(o[0]) == "house" and o.size() > 3:
+			used[int(o[3])] = true
+	for s in ROOM_SLOTS:
+		if not used.has(s):
+			return s
+	return -1
+
+
+## Walls, wooden floor, a rug, furniture and a door in the south wall.
+func _build_room(slot: int) -> void:
+	_clear_room(slot)
+	var o := room_origin(slot)
+	var G := PixelTopArt.G
+	for z in range(o.y - 1, o.y + ROOM_D + 1):
+		for x in range(o.x - 1, o.x + ROOM_W + 1):
+			var edge := x == o.x - 1 or z == o.y - 1 or x == o.x + ROOM_W or z == o.y + ROOM_D
+			ground[idx(x, z)] = G["wall"] if edge else G["wood"]
+	for z in range(o.y + 2, o.y + 5):
+		for x in range(o.x + 4, o.x + 8):
+			ground[idx(x, z)] = G["carpet"]
+	for x in _door_xs(o):
+		ground[idx(x, o.y + ROOM_D)] = G["doorway"]
+	var r := U.rng(700 + slot * 97)
+	var furn := [["bed", o.x, o.y + 1], ["bookshelf", o.x + 3, o.y], ["fireplace", o.x + 9, o.y], ["table", o.x + 5, o.y + 3], ["chair", o.x + 4, o.y + 3],
+		["chest", o.x + 11, o.y + 4], ["plant", o.x, o.y + 6], ["plant", o.x + 11, o.y + 6]]
+	for f in furn:
+		if r.next() < 0.9 or f[0] in ["bed", "table"]:
+			place_object(f[0], f[1], f[2], false)
+
+
+static func _door_xs(o: Vector2i) -> Array:
+	return [o.x + ROOM_W / 2 - 1, o.x + ROOM_W / 2]
+
+
+func _clear_room(slot: int) -> void:
+	var o := room_origin(slot)
+	var rect := Rect2i(o.x - 1, o.y - 1, ROOM_W + 2, ROOM_D + 2)
+	for i in range(objects.size() - 1, -1, -1):
+		if rect.has_point(Vector2i(int(objects[i][1]), int(objects[i][2]))):
+			objects.remove_at(i)
+	for z in range(rect.position.y, rect.end.y):
+		for x in range(rect.position.x, rect.end.x):
+			if in_bounds(x, z):
+				ground[idx(x, z)] = PixelTopArt.G["void"]
+
+
+## A house's door cells: the middle two of its front row.
+static func _house_doors(o: Array) -> Array:
+	return [Vector2i(int(o[1]) + 1, int(o[2])), Vector2i(int(o[1]) + 2, int(o[2]))]
+
+
+func _update_portals() -> void:
+	_portals.clear()
+	for o in objects:
+		if str(o[0]) != "house" or o.size() < 4 or int(o[3]) < 0:
+			continue
+		var ro := room_origin(int(o[3]))
+		# In through the front door: arrive just inside the room's door.
+		var inside := Vector3(ro.x + ROOM_W / 2.0, 0, ro.y + ROOM_D - 1.0)
+		for c in _house_doors(o):
+			_portals[c] = inside
+		# Out through the room's door: arrive on the path outside the house.
+		var outside := Vector3(float(o[1]) + 2.0, 0, float(o[2]) + 1.6)
+		for x in _door_xs(ro):
+			_portals[Vector2i(x, ro.y + ROOM_D)] = outside
+
+
+## Where a door at `p` leads, or null.
+func portal_at(p: Vector3) -> Variant:
+	return _portals.get(Vector2i(int(floor(p.x)), int(floor(p.z))))
+
+
+## Whether `p` is inside a house interior.
+func indoors(p: Vector3) -> bool:
+	return p.x >= MAP
 
 
 # ---------------------------------------------------------------- queries
@@ -158,7 +328,18 @@ func body_blocked(p: Vector3) -> bool:
 
 
 func walkable(x: float, z: float) -> bool:
-	return x >= 1.0 and z >= 1.0 and x < W - 1 and z < D - 1 and not solid_cell(int(floor(x)), int(floor(z)))
+	var cx := int(floor(x))
+	var cz := int(floor(z))
+	return x >= 1.0 and z >= 1.0 and x < MAP - 1 and z < D - 1 and not solid_cell(cx, cz) and not _water_cell(cx, cz)
+
+
+func _water_cell(x: int, z: int) -> bool:
+	return PixelTopArt.GROUND[ground_id(x, z)].get("water", false) if ground_id(x, z) < PixelTopArt.GROUND.size() else false
+
+
+## Top view: water is swum across at ground level (0), else -1e9.
+func water_surface(p: Vector3) -> float:
+	return 0.0 if _water_cell(int(floor(p.x)), int(floor(p.z))) else -1.0e9
 
 
 ## Where a screen ray meets the ground: {point, x, z, ground, object}.
@@ -189,18 +370,19 @@ func clip_cam(_from: Vector3, _dir: Vector3, dist: float) -> float:
 func new_world(_style := "pixeltop") -> void:
 	var r := U.rng(5151)
 	var G := PixelTopArt.G
-	ground.fill(G["grass"])
+	ground.fill(G["void"])
 	objects.clear()
-	var c := W / 2
+	var c := MAP / 2
 	for z in D:
-		for x in W:
+		for x in MAP:
+			ground[idx(x, z)] = G["grass"]
 			var v := r.next()
 			if v < 0.08:
 				ground[idx(x, z)] = G["meadow"]
 			elif v < 0.14:
 				ground[idx(x, z)] = G["dark"]
 	# Crossroads and a plaza around the well.
-	for k in W:
+	for k in MAP:
 		for w in [-1, 0]:
 			ground[idx(k, c + w)] = G["path"]
 			ground[idx(c + w, k)] = G["path"]
@@ -244,13 +426,13 @@ func new_world(_style := "pixeltop") -> void:
 		place_object("fence", x, 56, false)
 	# Woods around the edges, leaving the paths and the village clear.
 	for n in 260:
-		var x := int(r.next() * W)
+		var x := int(r.next() * MAP)
 		var z := int(r.next() * D)
 		var center := absf(x - c) < 18 and absf(z - c) < 16
 		var on_path := absi(x - c) < 3 or absi(z - c) < 3
 		if center or on_path or ground_id(x, z) in [G["water"], G["farm"], G["sand"]]:
 			continue
-		var edge := minf(minf(x, W - x), minf(z, D - z))
+		var edge := minf(minf(x, MAP - x), minf(z, D - z))
 		var v := r.next()
 		if edge < 12 and v < 0.75:
 			place_object("pine" if r.next() < 0.5 else "tree", x, z, false)
@@ -271,31 +453,81 @@ func _recompute_solid() -> void:
 	_solid.fill(0)
 	for z in D:
 		for x in W:
-			if PixelTopArt.GROUND[ground[idx(x, z)]].get("block", false):
+			var gid := ground[idx(x, z)]
+			if gid < PixelTopArt.GROUND.size() and PixelTopArt.GROUND[gid].get("block", false) and not PixelTopArt.GROUND[gid].get("water", false):
 				_solid[idx(x, z)] = 1
 	for o in objects:
 		if not obj_def(str(o[0])).get("solid", false):
 			continue
+		var doors: Array = _house_doors(o) if str(o[0]) == "house" and o.size() > 3 and int(o[3]) >= 0 else []
 		for cell in _cells_of(o):
-			if in_bounds(cell.x, cell.y):
+			if in_bounds(cell.x, cell.y) and not doors.has(cell):
 				_solid[idx(cell.x, cell.y)] = 1
+	_update_portals()
 
 
 func rebuild() -> void:
 	_recompute_solid()
-	_ground_mesh.mesh = _ground_layer(func(id): return not PixelTopArt.GROUND[id].get("water", false))
-	_water_mesh.mesh = _ground_layer(func(id): return PixelTopArt.GROUND[id].get("water", false))
-	_obj_mesh.mesh = _object_layer(func(k): return PixelTopArt.OBJECTS.has(k) and not PixelTopArt.OBJECTS[k].get("glow", false))
-	_glow_mesh.mesh = _object_layer(func(k): return PixelTopArt.OBJECTS.has(k) and PixelTopArt.OBJECTS[k].get("glow", false))
+	var map := Rect2i(0, 0, MAP, D)
+	_ground_mesh.mesh = _ground_layer(func(id): return not PixelTopArt.GROUND[id].get("water", false), map)
+	_water_mesh.mesh = _ground_layer(func(id): return PixelTopArt.GROUND[id].get("water", false), map)
+	_obj_mesh.mesh = _object_layer(func(k): return PixelTopArt.OBJECTS.has(k) and not PixelTopArt.OBJECTS[k].get("glow", false), map)
+	_glow_mesh.mesh = _object_layer(func(k): return PixelTopArt.OBJECTS.has(k) and PixelTopArt.OBJECTS[k].get("glow", false), map)
+	_rebuild_rooms()
 	_rebuild_sprites()
+	for mi in _custom_meshes:
+		mi.queue_free()
+	_custom_meshes.clear()
+	_custom_meshes.append_array(TileSets.meshes(custom, ground, func(cell: int) -> Vector2: return Vector2(cell % W, cell / W), self, 0.0, true))
+	_shown_slot = -2
 
 
-func _ground_layer(keep: Callable) -> ArrayMesh:
+func custom_id(set_id: String, i: int, _behind := false) -> int:
+	return TileSets.register(custom, set_id, i, false)
+
+
+func custom_icon(id: int) -> Texture2D:
+	var c: Dictionary = custom[id - TileSets.CUSTOM_BASE]
+	return TileSets.icon(str(c["set"]), int(c["i"]))
+
+
+## Imported ground tiles never block walking.
+func tile_solid(_id: int) -> bool:
+	return false
+
+
+## Rooms: each slot's floor, walls and furniture as its own node.
+func _rebuild_rooms() -> void:
+	for k in _rooms:
+		(_rooms[k] as Node).queue_free()
+	_rooms.clear()
+	_shown_slot = -2
+	for o in objects:
+		if str(o[0]) != "house" or o.size() < 4 or int(o[3]) < 0:
+			continue
+		var slot: int = o[3]
+		var rect := room_rect(slot)
+		var node := Node3D.new()
+		var g := MeshInstance3D.new()
+		g.mesh = _ground_layer(func(_id): return true, rect)
+		g.material_override = _mat
+		var f := MeshInstance3D.new()
+		f.mesh = _object_layer(func(k): return PixelTopArt.OBJECTS.has(k), rect)
+		f.material_override = _obj_mat
+		for mi in [g, f]:
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			node.add_child(mi)
+		node.visible = false
+		add_child(node)
+		_rooms[slot] = node
+
+
+func _ground_layer(keep: Callable, rect: Rect2i) -> ArrayMesh:
 	var q := _Quads.new()
-	for z in D:
-		for x in W:
+	for z in range(rect.position.y, rect.end.y):
+		for x in range(rect.position.x, rect.end.x):
 			var id := ground[idx(x, z)]
-			if id == 0 or not keep.call(id):
+			if id == 0 or id == PixelTopArt.G["void"] or id >= PixelTopArt.GROUND.size() or not keep.call(id):
 				continue
 			var r := PixelTopArt.ground_uv(id)
 			q.flat(Vector3(x, 0, z), Vector2(1, 1), r)
@@ -304,11 +536,11 @@ func _ground_layer(keep: Callable) -> ArrayMesh:
 
 ## Object sprites lying on the ground, bottom edge at the footprint's south
 ## side, reaching north; lifted by depth so southern things draw on top.
-func _object_layer(keep: Callable) -> ArrayMesh:
+func _object_layer(keep: Callable, rect: Rect2i) -> ArrayMesh:
 	var q := _Quads.new()
 	for o in objects:
 		var key := str(o[0])
-		if not keep.call(key):
+		if not keep.call(key) or not rect.has_point(Vector2i(int(o[1]), int(o[2]))):
 			continue
 		var d: Dictionary = PixelTopArt.OBJECTS[key]
 		_add_obj_quad(q, o, d, PixelTopArt.obj_uv(key))
@@ -373,7 +605,27 @@ class _Quads:
 
 # ---------------------------------------------------------------- per frame
 
+## Inside a house only that room shows; outside, only the map does.
+func _update_visibility() -> void:
+	var studio: Node = get_parent()
+	var pl: Variant = studio.get("player") if studio else null
+	var slot := slot_at((pl as Actor).pos) if pl is Actor else -1
+	if slot == _shown_slot:
+		return
+	_shown_slot = slot
+	var outdoors := slot < 0
+	for n in [_ground_mesh, _water_mesh, _obj_mesh, _glow_mesh]:
+		(n as Node3D).visible = outdoors
+	for mi in _custom_meshes:
+		mi.visible = outdoors
+	for k in _sprite_meshes:
+		(_sprite_meshes[k] as Node3D).visible = outdoors
+	for k in _rooms:
+		(_rooms[k] as Node3D).visible = k == slot
+
+
 func animate(_dt: float, _t: float) -> void:
+	_update_visibility()
 	var atmo: Atmosphere = get_parent().get("atmo") if get_parent() else null
 	var night := atmo.night if atmo else 0.0
 	var light := atmo.light_color() if atmo else Color.WHITE
@@ -386,6 +638,8 @@ func animate(_dt: float, _t: float) -> void:
 	_glow_mat.set_shader_parameter("tint", tint.lerp(Color(1.15, 1.05, 0.85), night))
 	for k in _sprite_meshes:
 		((_sprite_meshes[k] as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("tint", tint)
+	for mi in _custom_meshes:
+		(mi.material_override as ShaderMaterial).set_shader_parameter("tint", tint)
 
 
 # ---------------------------------------------------------------- compatibility
@@ -409,7 +663,7 @@ func remove_prop(_p: Dictionary) -> void:
 # ---------------------------------------------------------------- save / load
 
 func serialize() -> Dictionary:
-	return {"top": 1, "w": W, "d": D, "ground": U.rle_encode(ground), "objects": objects.duplicate(true)}
+	return {"top": 1, "w": W, "d": D, "ground": U.rle_encode(ground), "objects": objects.duplicate(true), "custom": custom.duplicate(true)}
 
 
 func load_data(d: Dictionary, _style := "") -> void:
@@ -417,8 +671,12 @@ func load_data(d: Dictionary, _style := "") -> void:
 		new_world()
 		return
 	ground = U.rle_decode(str(d["ground"]), W * D)
+	custom = (d.get("custom", []) as Array).duplicate(true)
 	objects = []
 	for o in d.get("objects", []):
 		if o is Array and o.size() >= 3:
-			objects.append([str(o[0]), int(o[1]), int(o[2])])
+			var e := [str(o[0]), int(o[1]), int(o[2])]
+			if o.size() > 3:
+				e.append(int(o[3]))
+			objects.append(e)
 	rebuild()

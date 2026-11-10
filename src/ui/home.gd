@@ -8,8 +8,8 @@ signal open_project(id: String)
 var icons: IconStudio
 var hud_ask: Callable
 var _col := VBoxContainer.new()
-var _cards := GridContainer.new()
-var _recent := GridContainer.new()
+var _cards: GridContainer = null
+var _recent: GridContainer = null
 var _scroll := ScrollContainer.new()
 ## Multi-select mode for bulk actions on saved scenes.
 var _selecting := false
@@ -44,6 +44,8 @@ func _layout() -> void:
 	var m: MarginContainer = _scroll.get_child(0)
 	m.add_theme_constant_override("margin_top", UIK.px(22))
 	m.add_theme_constant_override("margin_bottom", UIK.px(36))
+	if _cards == null or _recent == null:
+		return
 	_cards.columns = 4 if w >= UIK.px(900) else 2
 	var gap := UIK.px(14)
 	_recent.columns = maxi(2, int((inner + gap) / float(UIK.px(250) + gap)))

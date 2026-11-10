@@ -227,7 +227,7 @@ func v_imports(_a, b: VBoxContainer) -> String:
 	var style := studio.style_key
 	var chars := _style_models()
 	var objs := _style_props()
-	var sprites: Array = _style_sprites("char") + _style_sprites("object") if AssetTags.can_import_sprites(style) else []
+	var sprites: Array = _style_sprites("char") + _style_sprites("object") + _style_sprites("tileset") if AssetTags.can_import_sprites(style) else []
 	if not sprites.is_empty():
 		_section(b, "Pixel sprites")
 		for sid in sprites:
@@ -322,10 +322,13 @@ func v_tiles(_a, b: VBoxContainer) -> String:
 	if studio.is_top():
 		var tf := _picks(b)
 		for id in range(1, PixelTopArt.GROUND.size()):
+			if PixelTopArt.GROUND[id].get("system", false):
+				continue
 			tf.add_child(UIK.pick(PixelTopArt.ground_icon(id), PixelTopArt.GROUND[id]["name"], studio.tools.kind == "tiles" and studio.tools.tile == id, func():
 				studio.tools.set_tool("tiles", {"tile": id, "mode": "place"})
 				hud.close_sheet(), true))
-		b.add_child(UIK.para("Tap or drag to paint the ground. Right-drag removes objects (or turns ground back to grass). Water can't be walked on.", 12))
+		b.add_child(UIK.para("Tap or drag to paint the ground. Right-drag removes objects (or turns ground back to grass). Water is swum across.", 12))
+		_tile_sets(b)
 		return "Ground"
 	for grp in [["In the way", false], ["Behind the characters", true]]:
 		_section(b, grp[0])
@@ -336,8 +339,47 @@ func v_tiles(_a, b: VBoxContainer) -> String:
 			f.add_child(UIK.pick(PixelTiles.icon(id), PixelTiles.get_tile(id)["name"], studio.tools.kind == "tiles" and studio.tools.tile == id, func():
 				studio.tools.set_tool("tiles", {"tile": id, "mode": "place"})
 				hud.close_sheet(), true))
-	b.add_child(UIK.para("Tap or drag to paint. Right-drag erases. Water is see-through; ladders can be climbed with W and S.", 12))
+	b.add_child(UIK.para("Tap or drag to paint. Right-drag erases. Water is see-through and can be swum in; ladders can be climbed with W and S.", 12))
+	_tile_sets(b)
 	return "Tiles"
+
+
+## Imported tile sets (Pixel 2D): import button, then every tile to paint.
+var tiles_behind := false
+
+
+func _tile_sets(b: VBoxContainer) -> void:
+	_section(b, "Your tile sets")
+	if studio.is_side():
+		b.add_child(UIK.toggle("Put imported tiles behind the characters", tiles_behind, func(on: bool): tiles_behind = on))
+	var f := _picks(b)
+	f.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, _import_tileset))
+	var shown := 0
+	for set_id in _style_sprites("tileset"):
+		for i in TileSets.tiles_of(set_id):
+			if shown >= 96:
+				break
+			shown += 1
+			f.add_child(UIK.pick(TileSets.icon(set_id, int(i)), "", false, func():
+				var id: int = studio.world.custom_id(set_id, int(i), tiles_behind)
+				if id == 0:
+					hud.toast("This scene already uses %d imported tiles (the most it can hold)." % TileSets.MAX_CUSTOM)
+					return
+				studio.tools.set_tool("tiles", {"tile": id, "mode": "place"})
+				hud.close_sheet(), true, 56))
+	b.add_child(UIK.para("Import a .png or .webp grid of 16, 32 or 8 px tiles; empty cells are skipped. Tile sets stay in %s worlds." % Styles.get_style(studio.style_key).get("view_name", "this kind of"), 12))
+
+
+func _import_tileset() -> void:
+	var style := studio.style_key
+	hud.pick_file(PackedStringArray(["*.png, *.PNG, *.webp, *.WEBP ; Tile sets"]), func(path: String):
+		var id := TileSets.import_file(path)
+		if id == "":
+			hud.toast(TileSets.last_error)
+			return
+		AssetTags.tag("sprites", id, style)
+		hud.toast("%d tiles of %d px imported." % [TileSets.tiles_of(id).size(), int(SpriteImport.meta(id)["tile"])])
+		_rerender(), "Import a tile set")
 
 
 func v_pprefabs(_a, b: VBoxContainer) -> String:
@@ -819,6 +861,16 @@ func v_camera(_a, b: VBoxContainer) -> String:
 # ---------------------------------------------------------------- mood
 
 func v_mood(_a, b: VBoxContainer) -> String:
+	if studio.is_side():
+		_section(b, "Backdrop")
+		var bc := UIK.flow()
+		for k in PixelWorld.BACKDROPS:
+			bc.add_child(UIK.chip(PixelWorld.BACKDROPS[k]["name"], studio.world.backdrop == k, func():
+				studio.world.set_backdrop(k)
+				studio.mark_dirty()
+				_rerender()))
+		b.add_child(bc)
+		_section(b, "Mood")
 	var g := UIK.grid(2, 10)
 	for k in Styles.MOOD_ORDER:
 		var m: Dictionary = Styles.MOODS[k]

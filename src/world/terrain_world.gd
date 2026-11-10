@@ -90,7 +90,8 @@ func _process(dt: float) -> void:
 	_dirty_t += dt
 	if _dirty and _dirty_t > 0.05:
 		_dirty_t = 0.0
-		rebuild()
+		# Sculpting: only the chunks the brush touched are rebuilt.
+		_rebuild_dirty()
 		changed.emit()
 
 
@@ -188,6 +189,12 @@ func prop_top(x: float, z: float) -> float:
 		var sn := sin(p.rot)
 		var lx := (dx * c - dz * sn) / s
 		var lz := (dx * sn + dz * c) / s
+		if ROUND.has(str(p.get("key", ""))):
+			# Rocks: stand on the curved surface.
+			var dh := _dome(p, lx, lz)
+			if dh > 0.0:
+				best = maxf(best, (p.node as Node3D).position.y + dh * s * 0.96)
+			continue
 		# Slightly inset so you don't hover past rounded edges.
 		if absf(lx) < p.hw * 0.85 and absf(lz) < p.hd * 0.85:
 			best = maxf(best, top - float(p.h) * s * 0.06)
@@ -250,6 +257,11 @@ func brush(x: float, z: float, mode: String, dt: float) -> void:
 				var avg := (hv(i - 1, j) + hv(i + 1, j) + hv(i, j - 1) + hv(i, j + 1)) / 4.0
 				h[k] = lerpf(h[k], avg, clampf(w * dt * 8.0, 0.0, 1.0))
 	_dirty = true
+	# Vertices moved here; their normals and colours also change the cells
+	# around them, so mark one extra cell on each side.
+	for cj in range(maxi(0, int(floor(z - R)) - 2) / CH, mini(TN - 1, int(ceil(z + R)) + 1) / CH + 1):
+		for ci in range(maxi(0, int(floor(x - R)) - 2) / CH, mini(TN - 1, int(ceil(x + R)) + 1) / CH + 1):
+			_dirty_chunks[cj * _nc() + ci] = true
 	for p in props:
 		if absf(p.x - x) < R + 3 and absf(p.z - z) < R + 3:
 			(p.node as Node3D).position.y = terrain_h(p.x, p.z)
@@ -281,26 +293,104 @@ func _vn(i: int, j: int) -> Vector3:
 	return Vector3(-dx, 2.0, -dz).normalized()
 
 
+## The ground is split into CH × CH cell chunks so sculpting only rebuilds
+## the few chunks under the brush (a full rebuild is ~13k triangles).
+const CH := 10
+var _chunks: Array[MeshInstance3D] = []
+var _dirty_chunks := {}
+var _ground_mat: ShaderMaterial
+
+
+static func _nc() -> int:
+	return ceili(float(TN) / CH)
+
+
 func rebuild() -> void:
 	_dirty = false
-	var flat := _shade() == "flat"
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for j in TN:
-		for i in TN:
-			# Three's CCW triangles [(i,j),(i,j+1),(i+1,j)], [(i,j+1),(i+1,j+1),(i+1,j)];
-			# emitted in reverse for Godot's clockwise front faces.
-			_tri(st, [[i, j], [i + 1, j], [i, j + 1]], flat)
-			_tri(st, [[i, j + 1], [i + 1, j], [i + 1, j + 1]], flat)
-	_terrain_mi.mesh = st.commit()
-	if _mat_key != style_key or _terrain_mi.material_override == null:
-		_terrain_mi.material_override = _terrain_material()
+	_dirty_chunks.clear()
+	if _mat_key != style_key or _ground_mat == null:
+		_ground_mat = _terrain_material()
 		_mat_key = style_key
-	_terrain_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var n := _nc() * _nc()
+	while _chunks.size() < n:
+		var mi := MeshInstance3D.new()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		_terrain_mi.add_child(mi)
+		_chunks.append(mi)
+	for c in n:
+		_build_chunk(c)
 	_update_water()
 	if _skirt_key != style_key:
 		_build_skirt()
 		_skirt_key = style_key
+
+
+func _rebuild_dirty() -> void:
+	_dirty = false
+	if _chunks.is_empty():
+		rebuild()
+		return
+	for c in _dirty_chunks:
+		_build_chunk(int(c))
+	_dirty_chunks.clear()
+
+
+func _build_chunk(c: int) -> void:
+	var flat := _shade() == "flat"
+	var ci := c % _nc()
+	var cj := c / _nc()
+	if not flat:
+		_build_chunk_smooth(c, ci, cj)
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for j in range(cj * CH, mini(TN, (cj + 1) * CH)):
+		for i in range(ci * CH, mini(TN, (ci + 1) * CH)):
+			# Three's CCW triangles [(i,j),(i,j+1),(i+1,j)], [(i,j+1),(i+1,j+1),(i+1,j)];
+			# emitted in reverse for Godot's clockwise front faces.
+			_tri(st, [[i, j], [i + 1, j], [i, j + 1]], flat)
+			_tri(st, [[i, j + 1], [i + 1, j], [i + 1, j + 1]], flat)
+	_chunks[c].mesh = st.commit()
+	_chunks[c].material_override = _ground_mat
+
+
+## Smooth-shaded chunk: each vertex's position, normal, colour and blend
+## weights are worked out once and shared by its triangles (indexed mesh).
+func _build_chunk_smooth(c: int, ci: int, cj: int) -> void:
+	var i0 := ci * CH
+	var j0 := cj * CH
+	var i1 := mini(TN, i0 + CH)
+	var j1 := mini(TN, j0 + CH)
+	var nx := i1 - i0 + 1
+	var verts := PackedVector3Array()
+	var nrms := PackedVector3Array()
+	var cols := PackedColorArray()
+	var uv2 := PackedVector2Array()
+	for j in range(j0, j1 + 1):
+		for i in range(i0, i1 + 1):
+			var y := hv(i, j)
+			var n := _vn(i, j)
+			verts.append(Vector3(i, y, j))
+			nrms.append(n)
+			cols.append(_terrain_color(i - 0.01, j - 0.01, y, n.y).srgb_to_linear())
+			uv2.append(_ground_w(i, j, y))
+	var ids := PackedInt32Array()
+	for j in range(j1 - j0):
+		for i in range(i1 - i0):
+			var a := j * nx + i
+			# Same winding as `_tri`: (i,j),(i+1,j),(i,j+1) and (i,j+1),(i+1,j),(i+1,j+1).
+			ids.append_array([a, a + 1, a + nx, a + nx, a + 1, a + nx + 1])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = nrms
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_TEX_UV2] = uv2
+	arr[Mesh.ARRAY_INDEX] = ids
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	_chunks[c].mesh = am
+	_chunks[c].material_override = _ground_mat
 
 
 func _tri(st: SurfaceTool, pts: Array, flat: bool) -> void:
@@ -851,12 +941,38 @@ func clear_props() -> void:
 	props.clear()
 
 
+## Rounded props: collide and are walked on as a dome, not as their box.
+const ROUND := ["rocks", "stone", "rock"]
+
+
+## Height of a rounded prop's dome above its base at local (lx, lz) in the
+## prop's unscaled units, or -1 outside it.
+static func _dome(p: Dictionary, lx: float, lz: float) -> float:
+	var ex: float = lx / (float(p.hw) * 0.9)
+	var ez: float = lz / (float(p.hd) * 0.9)
+	var r2 := ex * ex + ez * ez
+	if r2 >= 1.0:
+		return -1.0
+	return float(p.h) * sqrt(1.0 - r2)
+
+
 func prop_hit(x: float, z: float, y: float) -> bool:
 	for p in props:
 		var dx: float = x - p.x
 		var dz: float = z - p.z
 		var s: float = p.s
 		if dx * dx + dz * dz > 64.0 * s * s:
+			continue
+		if ROUND.has(str(p.get("key", ""))):
+			# Blocks only where the dome rises more than a step above the feet
+			# (checked at the nearest point of the body's circle).
+			var c0 := cos(p.rot)
+			var s0 := sin(p.rot)
+			var l := Vector2((dx * c0 - dz * s0) / s, (dx * s0 + dz * c0) / s)
+			var near := l - l.normalized() * minf(l.length(), AR / s)
+			var dh := _dome(p, near.x, near.y)
+			if dh > 0.0 and y < (p.node as Node3D).position.y + dh * s - STEP:
+				return true
 			continue
 		# Anything lower than a step (or that you've jumped above) doesn't block.
 		if y > (p.node as Node3D).position.y + p.h * s - STEP:
@@ -877,8 +993,17 @@ func prop_hit(x: float, z: float, y: float) -> bool:
 
 ## True when a character standing with feet at `p` would collide.
 func body_blocked(p: Vector3) -> bool:
-	# Shallow water is wadeable; only deep water (> ~1.1 m) blocks.
-	return p.x < 0.5 or p.z < 0.5 or p.x > TN - 0.5 or p.z > TN - 0.5 or prop_hit(p.x, p.z, p.y) or terrain_h(p.x, p.z) < water - 1.1
+	# Water never blocks: shallow water is waded, deep water is swum.
+	return p.x < 0.5 or p.z < 0.5 or p.x > TN - 0.5 or p.z > TN - 0.5 or prop_hit(p.x, p.z, p.y)
+
+
+func water_bottom(p: Vector3) -> float:
+	return terrain_h(p.x, p.z)
+
+
+## Height of the water surface where it's deep enough to swim, else -1e9.
+func water_surface(p: Vector3) -> float:
+	return water if terrain_h(p.x, p.z) < water - 0.6 else -1.0e9
 
 
 func free_spot(x: float, z: float, r := 1.2) -> bool:

@@ -35,12 +35,23 @@ const TILES := [
 	{"name": "Fence", "solid": false, "layer": "bg"},
 	{"name": "Trunk", "solid": false, "layer": "bg"},
 	{"name": "Stone wall", "solid": false, "layer": "bg"},
+	{"name": "Mossy stone", "solid": true},
+	{"name": "Marble", "solid": true},
+	{"name": "Crate", "solid": true},
+	{"name": "Hay", "solid": true},
+	{"name": "Cloud", "solid": true},
+	{"name": "Bookshelf", "solid": false, "layer": "bg"},
+	{"name": "Vines", "solid": false, "layer": "bg"},
+	{"name": "Mushroom", "solid": false, "layer": "bg"},
+	{"name": "Torch", "solid": false, "layer": "bg"},
+	{"name": "Banner", "solid": false, "layer": "bg"},
 ]
 
 const ID := {
 	"grass": 1, "dirt": 2, "stone": 3, "sand": 4, "brick": 5, "planks": 6, "log": 7, "leaves": 8, "glass": 9,
 	"water": 10, "ladder": 11, "cobble": 12, "snow": 13, "roof": 14, "door": 15, "window": 16, "flowers": 17,
 	"tallgrass": 18, "lantern": 19, "gold": 20, "ice": 21, "wall": 22, "fence": 23, "trunk": 24, "stonewall": 25,
+	"mossy": 26, "marble": 27, "crate": 28, "hay": 29, "cloud": 30, "bookshelf": 31, "vines": 32, "mushroom": 33, "torch": 34, "banner": 35,
 }
 
 ## Buildings: rows top to bottom, one character per tile. "." = leave as is,
@@ -48,7 +59,8 @@ const ID := {
 ## behind the characters so you can walk in; floors and roofs are solid.
 const KEYS := {"G": "grass", "D": "dirt", "S": "stone", "B": "brick", "P": "planks", "L": "log", "l": "leaves",
 	"g": "glass", "h": "ladder", "C": "cobble", "R": "roof", "d": "door", "w": "window", "W": "wall",
-	"f": "flowers", "t": "tallgrass", "n": "lantern", "F": "fence", "T": "trunk", "c": "stonewall"}
+	"f": "flowers", "t": "tallgrass", "n": "lantern", "F": "fence", "T": "trunk", "c": "stonewall",
+	"M": "mossy", "A": "marble", "X": "crate", "Y": "hay", "O": "cloud", "k": "bookshelf", "v": "vines", "m": "mushroom", "o": "torch", "r": "banner"}
 
 const PREFABS := {
 	"cottage": {"name": "Cottage", "icon": "roof", "rows": [
@@ -93,6 +105,30 @@ const PREFABS := {
 		"T..T",
 		"SSSS",
 	]},
+	"castle": {"name": "Castle tower", "icon": "mossy", "rows": [
+		"M.M.M.M",
+		"MMMMMMM",
+		"cc.r.cc",
+		"c.wcw.c",
+		"co...oc",
+		"cPPPPPc",
+		"cc.k.cc",
+		"c..r..c",
+		"c..d..c",
+	]},
+	"brickhouse": {"name": "Brick house", "icon": "brick", "rows": [
+		"..RRRR..",
+		".RRRRRR.",
+		"RRRRRRRR",
+		".BwBBwB.",
+		".BBBBBB.",
+		".BBdBkB.",
+	]},
+	"lamppost": {"name": "Lamp post", "icon": "lantern", "rows": [
+		"n",
+		"F",
+		"F",
+	]},
 }
 
 static var _atlas: ImageTexture
@@ -128,7 +164,9 @@ static func uv_rect(id: int) -> Rect2:
 	var rows := ceili(float(TILES.size()) / COLS)
 	var c := id % COLS
 	var r := id / COLS
-	return Rect2(float(c) / COLS, float(r) / rows, 1.0 / COLS, 1.0 / rows)
+	var rect := Rect2(float(c) / COLS, float(r) / rows, 1.0 / COLS, 1.0 / rows)
+	# Half a texel in from each edge so neighbouring tiles never bleed in.
+	return rect.grow_individual(-0.5 / (COLS * PX), -0.5 / (rows * PX), -0.5 / (COLS * PX), -0.5 / (rows * PX))
 
 
 static func atlas() -> ImageTexture:
@@ -300,6 +338,75 @@ static func _paint(id: int) -> Image:
 						img.set_pixel(x, y, Color("a8957a"))
 					elif r.next() < 0.05:
 						img.set_pixel(x, y, Color("bba88a"))
+		"mossy stone":
+			_noise(img, r, Color("7d838c"), Color("6e737c"))
+			for k in 14:
+				img.set_pixel(int(r.next() * PX), int(r.next() * 6), Color("5fa64a") if k % 2 else Color("4a8a3a"))
+		"marble":
+			_noise(img, r, Color("ecebe6"), Color("e2e0da"))
+			for k in 6:
+				img.set_pixel(2 + k * 2, 3 + (k * 5) % 10, Color("b9b6ae"))
+		"crate":
+			img.fill(Color("b8874e"))
+			for k in PX:
+				img.set_pixel(k, 0, Color("8a6236"))
+				img.set_pixel(k, PX - 1, Color("8a6236"))
+				img.set_pixel(0, k, Color("8a6236"))
+				img.set_pixel(PX - 1, k, Color("8a6236"))
+				img.set_pixel(k, k, Color("8a6236"))
+		"hay":
+			_noise(img, r, Color("e9c46a"), Color("d4a83f"))
+			for x in PX:
+				img.set_pixel(x, 5, Color("b8862f"))
+				img.set_pixel(x, 11, Color("b8862f"))
+		"cloud":
+			for y in PX:
+				for x in PX:
+					var dd := Vector2(x - 7.5, (y - 9.0) * 1.4).length()
+					if dd < 8.5 or (y > 8):
+						img.set_pixel(x, y, Color("ffffff") if y < 10 else Color("dfe8f2"))
+		"bookshelf":
+			img.fill(Color("6e4a2a"))
+			for row in 2:
+				for k in 6:
+					var bc: Color = [Color("b33a3a"), Color("3d6fb5"), Color("3f9a3a"), Color("e9c46a")][(k + row) % 4]
+					for y in range(2 + row * 7, 7 + row * 7):
+						img.set_pixel(2 + k * 2, y, bc)
+				for x in PX:
+					img.set_pixel(x, 7 + row * 7, Color("4a3018"))
+		"vines":
+			for k in 5:
+				var vx := 1 + k * 3
+				for y in PX:
+					if (y + k) % 7 != 0:
+						img.set_pixel(vx + (1 if (y / 3) % 2 else 0), y, Color("3f9a3a") if y % 3 else Color("56b048"))
+		"mushroom":
+			for y in range(9, PX):
+				img.set_pixel(7, y, Color("f4ead8"))
+				img.set_pixel(8, y, Color("f4ead8"))
+			for y in range(4, 9):
+				for x in range(3, 13):
+					if absf(x - 7.5) < (y - 2) * 1.4:
+						img.set_pixel(x, y, Color("e63946") if (x + y) % 4 else Color("ffffff"))
+		"torch":
+			for y in range(7, PX):
+				img.set_pixel(7, y, Color("6e4a2a"))
+				img.set_pixel(8, y, Color("6e4a2a"))
+			for y in range(2, 7):
+				for x in range(5, 11):
+					if absf(x - 7.5) < (y - 1) * 0.8:
+						img.set_pixel(x, y, Color("ffd166") if y > 3 else Color("ff7a2e"))
+		"banner":
+			for x in range(2, 14):
+				img.set_pixel(x, 0, Color("6e4a2a"))
+			for y in range(1, 14):
+				for x in range(4, 12):
+					img.set_pixel(x, y, Color("3d6fb5"))
+			for y in range(5, 9):
+				img.set_pixel(7, y, Color("f2c14e"))
+				img.set_pixel(8, y, Color("f2c14e"))
+			img.set_pixel(4, 14, Color("3d6fb5"))
+			img.set_pixel(11, 14, Color("3d6fb5"))
 		"fence":
 			for y in range(4, PX):
 				img.set_pixel(3, y, Color("8a6236"))

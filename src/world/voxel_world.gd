@@ -173,6 +173,33 @@ func body_blocked(p: Vector3) -> bool:
 	return box_hits(p)
 
 
+## Top of the water a body at `p` is in, else -1e9.
+func water_surface(p: Vector3) -> float:
+	var x := int(floor(p.x))
+	var z := int(floor(p.z))
+	var y := int(floor(p.y + 0.1))
+	if not _is_water(x, y, z):
+		return -1.0e9
+	while y < WY - 1 and _is_water(x, y + 1, z):
+		y += 1
+	return float(y + 1)
+
+
+## Top of the first solid block below `p` (the bed under the water).
+func water_bottom(p: Vector3) -> float:
+	var x := int(floor(p.x))
+	var z := int(floor(p.z))
+	var y := int(floor(p.y + 0.1))
+	while y > 0 and not solid_at(x, y - 1, z):
+		y -= 1
+	return float(y)
+
+
+func _is_water(x: int, y: int, z: int) -> bool:
+	var v := get_b(x, y, z)
+	return v != 0 and Blocks.get_block(v).get("kind", "") == "water"
+
+
 func walkable(x: float, z: float) -> bool:
 	return x >= 1.0 and z >= 1.0 and x < WX - 1 and z < WZ - 1 and ground_y(x, z) < WY - 2
 

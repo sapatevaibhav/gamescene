@@ -28,6 +28,8 @@ func _ready() -> void:
 	await _walk(studio, w)
 	await _tools(studio, w)
 	_sprites(studio)
+	await _houses(studio, w)
+	await _swim_top(studio, w)
 	await _sim(studio, w)
 	_save(studio)
 	print("FAILS: ", fails)
@@ -86,12 +88,19 @@ func _world(studio: Studio, w: PixelTopWorld) -> void:
 		keys[o[0]] = true
 	for k in ["house", "tree", "well", "lamp", "fence", "crops"]:
 		ok(keys.has(k), "has %s" % k)
+	ok(PixelTopArt.OBJ_ORDER.size() >= 33 and PixelTopArt.OBJ_ORDER.size() == PixelTopArt.OBJECTS.size(), "33 objects to place (%d)" % PixelTopArt.OBJ_ORDER.size())
+	ok(PixelTopArt.obj_atlas().get_height() >= 5 * PixelTopArt.CELL, "object atlas holds them all")
+	var painted := 0
+	for k in PixelTopArt.OBJ_ORDER:
+		if PixelTopArt._paint_obj(k).get_used_rect().size.x > 0:
+			painted += 1
+	ok(painted == PixelTopArt.OBJ_ORDER.size(), "every object is painted (%d)" % painted)
 	var water := 0
 	for i in w.ground.size():
 		if w.ground[i] == PixelTopArt.G["water"]:
 			water += 1
 	ok(water > 30, "has a pond (%d tiles)" % water)
-	ok(w.solid_cell(61, 22) and not w.walkable(61.5, 22.5), "water blocks walking")
+	ok(not w.solid_cell(61, 22) and not w.walkable(61.5, 22.5), "water can be swum but NPCs keep out of it")
 	var clear := true
 	for a in studio.actors:
 		clear = clear and not w.body_blocked(a.pos) and a.pos.y == 0.0
@@ -154,25 +163,132 @@ func _tools(studio: Studio, w: PixelTopWorld) -> void:
 	ok(w.ground_id(28, 28) != PixelTopArt.G["sand"], "undo takes it back")
 	studio.tools.set_tool("prefab", {"pprefab": "house"})
 	ok(studio.tools.kind == "pprefab", "objects tool in top view")
-	var n := w.objects.size()
+	var houses := func() -> int: return w.objects.filter(func(o): return o[0] == "house").size()
+	var nh: int = houses.call()
 	studio.tools.tap(at.call(30.5, 33.5))
-	ok(w.objects.size() == n + 1 and w.objects[-1][0] == "house", "tap places a house")
-	ok(w.solid_cell(30, 33), "houses block walking")
+	var hi := w.object_at(28, 33)
+	ok(houses.call() == nh + 1 and hi >= 0 and w.objects[hi][0] == "house", "tap places a house")
+	ok(w.solid_cell(28, 33) and w.solid_cell(28, 32) and not w.solid_cell(29, 33), "houses block walking, except their door")
 	studio.tools.tap(at.call(30.5, 33.5))
-	ok(w.objects.size() == n + 1, "can't stack objects on the same spot")
+	ok(houses.call() == nh + 1, "can't stack objects on the same spot")
 	studio.tools.set_tool("tiles", {"mode": "break"})
-	studio.tools.tap(at.call(30.5, 33.5))
-	ok(w.objects.size() == n, "erase removes the object")
+	studio.tools.tap(at.call(28.5, 33.5))
+	ok(houses.call() == nh, "erase removes the house (and its room)")
+	# Erase objects by clicking what you see (a tree's canopy, not its base).
+	var tree := -1
+	for i in w.objects.size():
+		if w.objects[i][0] == "tree" and int(w.objects[i][1]) > 4 and int(w.objects[i][2]) > 6:
+			tree = i
+			break
+	ok(tree >= 0, "the woods have trees")
+	if tree >= 0:
+		var t: Array = w.objects[tree]
+		cam.free_pos = Vector3(float(t[1]), 0, float(t[2]) - 1.0)
+		cam.update_camera(0.016)
+		var canopy := Vector3(float(t[1]) + 0.5, 0, float(t[2]) - 1.6)
+		ok(w.object_at_point(canopy) == tree, "clicking the canopy finds the tree")
+		studio.tools.set_tool("pprefab", {"pprefab": "rock"})
+		ok(studio.tools.obj_mode == "place", "objects tool starts in place mode")
+		studio.tools.obj_mode = "erase"
+		var before := w.objects.size()
+		studio.tools.tap(cam.unproject_position(canopy))
+		ok(w.objects.size() == before - 1 and w.object_at(int(t[1]), int(t[2])) < 0, "erase removes the tree you clicked")
+		studio.undo()
+		ok(w.objects.size() == before, "undo brings it back")
+		# Dragging erases everything you pass over.
+		var crop_row := w.objects.filter(func(o): return o[0] == "crops")
+		if crop_row.size() >= 3:
+			var r0: Array = crop_row[0]
+			cam.free_pos = Vector3(float(r0[1]), 0, float(r0[2]))
+			cam.update_camera(0.016)
+			studio.tools.begin_paint(cam.unproject_position(Vector3(float(r0[1]) + 0.5, 0, float(r0[2]) + 0.5)))
+			for k in range(1, 4):
+				studio.tools.paint(cam.unproject_position(Vector3(float(r0[1]) + 0.5 + k, 0, float(r0[2]) + 0.5)))
+			studio.tools.end_paint()
+			ok(w.objects.filter(func(o): return o[0] == "crops").size() <= crop_row.size() - 3, "dragging erases a row of crops")
 	studio.tools.set_tool("")
 	cam.set_mode("third")
+
+
+## Walking in through a house door leads to its room; the room's door leads
+## back out. The pet comes along.
+func _houses(studio: Studio, w: PixelTopWorld) -> void:
+	var house: Array = []
+	for o in w.objects:
+		if o[0] == "house" and o.size() > 3 and int(o[3]) >= 0:
+			house = o
+			break
+	ok(not house.is_empty(), "village houses have interiors")
+	if house.is_empty():
+		return
+	var ro := PixelTopWorld.room_origin(int(house[3]))
+	var furn := w.objects.filter(func(o): return int(o[1]) >= ro.x - 1 and int(o[1]) <= ro.x + PixelTopWorld.ROOM_W and int(o[2]) >= ro.y - 1 and int(o[2]) <= ro.y + PixelTopWorld.ROOM_D)
+	ok(furn.size() >= 4, "the room is furnished (%d pieces)" % furn.size())
+	var p := studio.player
+	var pet: Actor = null
+	for a in studio.actors:
+		if a.behavior == "follow":
+			pet = a
+	# Stand just south of the door and walk north.
+	p.pos = Vector3(float(house[1]) + 1.5, 0, float(house[2]) + 1.5)
+	if pet:
+		pet.pos = p.pos + Vector3(1.0, 0, 0.5)
+	studio.input_move = Vector2(0, 1)
+	_tick(studio, 40)
+	studio.input_move = Vector2.ZERO
+	ok(w.indoors(p.pos), "walking through the door goes inside (%s)" % p.pos)
+	w.animate(0.016, 0.0)
+	var slot := PixelTopWorld.slot_at(p.pos)
+	var shown := 0
+	for k in w._rooms:
+		if (w._rooms[k] as Node3D).visible:
+			shown += 1
+	ok(slot == int(house[3]) and shown == 1 and (w._rooms[slot] as Node3D).visible, "only this room is shown (%d visible)" % shown)
+	ok(not w._ground_mesh.visible and not w._obj_mesh.visible, "the village is hidden while inside")
+	ok(PixelTopWorld.room_origin(0).x - PixelTopWorld.MAP > 20, "rooms are far from the map's edge")
+	ok(pet == null or w.indoors(pet.pos), "the pet comes in too")
+	var cam := studio.camera
+	cam.update_camera(0.016)
+	ok(absf(cam.global_position.x - p.pos.x) < 2.0, "the camera follows inside")
+	ok(not w.body_blocked(p.pos), "arrives on open floor")
+	# Walk back out through the room's door (south).
+	studio.input_move = Vector2(0, -1)
+	_tick(studio, 40)
+	studio.input_move = Vector2.ZERO
+	ok(not w.indoors(p.pos) and p.pos.z > float(house[2]), "the room's door leads back outside (%s)" % p.pos)
+	w.animate(0.016, 0.0)
+	var any_room := false
+	for k in w._rooms:
+		any_room = any_room or (w._rooms[k] as Node3D).visible
+	ok(w._ground_mesh.visible and not any_room, "outside, no room interiors show")
+
+
+## Top view: water is swum, slowly.
+func _swim_top(studio: Studio, w: PixelTopWorld) -> void:
+	var p := studio.player
+	p.pos = Vector3(46.5, 0, 22.5)
+	var land := w.water_surface(p.pos) < -1e8
+	studio.input_move = Vector2(1, 0)
+	_tick(studio, 30)
+	var dx_land := p.pos.x - 46.5
+	p.pos = Vector3(58.5, 0, 22.5)
+	_tick(studio, 30)
+	studio.input_move = Vector2.ZERO
+	ok(land and p.swimming, "walking into the pond starts swimming")
+	ok(p.pos.x - 58.5 < dx_land * 0.8, "swimming is slower (%.2f vs %.2f m)" % [p.pos.x - 58.5, dx_land])
+	p.animate(0.05, false)
+	ok(str(_frame(p)[1]).begins_with("swim"), "swim frame")
+	p.pos = Vector3(40.5, 0, 46.5)
+	_tick(studio, 5)
+	ok(not p.swimming, "back on land, walking again")
 
 
 func _frame(a: Actor) -> Array:
 	var mat: ShaderMaterial = a.rig["mat"]
 	var f: Vector2 = mat.get_shader_parameter("frame")
 	var i := int(f.y) * PixelSprites.COLS + int(f.x)
-	var block: String = ["side", "front", "back"][i / PixelSprites.FRAMES.size()]
-	return [block, PixelSprites.FRAMES[i % PixelSprites.FRAMES.size()], float(mat.get_shader_parameter("flip"))]
+	var block: String = ["side", "front", "back"][i / PixelSprites.BLOCK]
+	return [block, PixelSprites.FRAMES[i % PixelSprites.BLOCK], float(mat.get_shader_parameter("flip"))]
 
 
 func _sprites(studio: Studio) -> void:

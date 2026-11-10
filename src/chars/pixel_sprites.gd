@@ -6,7 +6,8 @@ class_name PixelSprites
 
 const FRAME := 32
 const COLS := 8
-const ROWS := 4
+## Rows per direction block (5 × 8 = 40 frame slots; FRAMES fills the first).
+const ROWS := 5
 ## Metres per sprite pixel: 16 px per metre, like the tiles.
 const PPM := 16.0
 
@@ -14,7 +15,9 @@ const PPM := 16.0
 const FRAMES := ["idle0", "idle1", "walk0", "walk1", "walk2", "walk3", "jump", "crouch",
 	"sit", "sleep", "wave0", "wave1", "talk0", "talk1", "dance0", "dance1",
 	"dance2", "dance3", "cel0", "cel1", "laugh0", "laugh1", "cry0", "cry1",
-	"point", "guard", "atk0", "atk1", "hurt", "climb0", "climb1", "idle2"]
+	"point", "guard", "atk0", "atk1", "hurt", "climb0", "climb1", "idle2",
+	"swim0", "swim1", "tread0", "tread1"]
+const BLOCK := COLS * ROWS
 
 ## Human poses. Arm and leg angles in degrees: 0 hangs straight down, 90
 ## points forward, 180 straight up; negative swings back. `ae`/`abe` bend the
@@ -23,10 +26,12 @@ const POSES := {
 	"idle0": {"af": 8, "ab": -8},
 	"idle1": {"af": 5, "ab": -5, "dy": 1},
 	"idle2": {"af": 8, "ab": -8, "eyes": "closed"},
-	"walk0": {"af": -25, "ab": 25, "lf": 28, "lb": -28},
-	"walk1": {"af": -8, "ab": 8, "lf": 8, "lb": -10, "lbk": 35, "dy": -1},
-	"walk2": {"af": 25, "ab": -25, "lf": -28, "lb": 28},
-	"walk3": {"af": 8, "ab": -8, "lf": -10, "lfk": 35, "lb": 8, "dy": -1},
+	# Contact, passing, contact, passing: the swinging leg's knee bends with
+	# the foot tucked just behind it, never kicked far back.
+	"walk0": {"af": -22, "ab": 22, "lf": 24, "lb": -22},
+	"walk1": {"af": -6, "ab": 6, "lf": -4, "lb": 14, "lbk": 30, "dy": -1},
+	"walk2": {"af": 22, "ab": -22, "lf": -22, "lb": 24},
+	"walk3": {"af": 6, "ab": -6, "lf": 14, "lfk": 30, "lb": -4, "dy": -1},
 	"jump": {"af": 150, "ab": 120, "lf": 35, "lfk": 50, "lb": -20, "lbk": 40, "dy": -2},
 	"crouch": {"af": 30, "ae": 30, "ab": 15, "lf": 50, "lfk": 95, "lb": 10, "lbk": 95, "dy": 4},
 	"sit": {"af": 25, "ae": 25, "ab": 20, "lf": 90, "lb": 85, "dy": 9, "sit": true},
@@ -52,6 +57,12 @@ const POSES := {
 	"hurt": {"af": -45, "ab": -55, "lean": -2, "eyes": "closed", "mouth": "open"},
 	"climb0": {"af": 155, "ab": 125, "lf": 35, "lfk": 45, "lb": 0},
 	"climb1": {"af": 125, "ab": 155, "lf": 0, "lb": 35, "lbk": 45},
+	# Swimming along: upright, arms pulling, body hidden below the waterline.
+	"swim0": {"af": 130, "ae": 20, "ab": 30, "lf": -30, "lb": -50, "swim": true, "mouth": "open", "lean": 1},
+	"swim1": {"af": 40, "ae": 20, "ab": 130, "lf": -50, "lb": -30, "swim": true, "lean": 1},
+	# Treading water: upright, head and shoulders above the waterline.
+	"tread0": {"af": 130, "ae": 20, "ab": 30, "lf": -30, "lb": -50, "swim": true, "mouth": "open"},
+	"tread1": {"af": 40, "ae": 20, "ab": 130, "lf": -50, "lb": -30, "swim": true},
 }
 
 const PRESETS := {
@@ -209,7 +220,10 @@ static func state_frame(a: Actor, sp: float) -> Array:
 		name = "idle2"
 	var w: Variant = a.studio.world
 	var climbing: bool = w != null and w.get("is_side") == true and w.ladder_at(a.pos) and not a.on_ground
-	if a.hurt_t > 0.0:
+	if a.swimming:
+		var k := "swim" if sp > 0.2 else "tread"
+		name = k + ("0" if fmod(t, 0.7) < 0.35 else "1")
+	elif a.hurt_t > 0.0:
 		name = "hurt"
 	elif a.attack_t > 0.0:
 		name = "atk0" if a.attack_t > Actor.ATTACK_TIME * 0.5 else "atk1"
@@ -278,7 +292,7 @@ static func animate(a: Actor, _dt: float, sp: float) -> void:
 		var block := 0
 		if m.get("view", "side") == "top" and not m.get("creature", false):
 			block = {"side": 0, "front": 1, "back": 2}[fc[0]]
-		idx = block * FRAMES.size() + FRAMES.find(name)
+		idx = block * BLOCK + FRAMES.find(name)
 	var grid: Vector2i = m.get("grid", Vector2i(COLS, ROWS))
 	var mat: ShaderMaterial = m["mat"]
 	mat.set_shader_parameter("frame", Vector2(idx % grid.x, idx / grid.x))
@@ -296,7 +310,15 @@ static func animate(a: Actor, _dt: float, sp: float) -> void:
 	if m.get("view", "side") == "top":
 		# Lying on the ground; lifted by how far south they stand so they
 		# draw over things behind them. Hops and floating move them north.
-		r.position = Vector3(snappedf(a.pos.x, px), PixelTopWorld.depth_y(a.pos.z) + float(a.id % 16) * 0.0001, snappedf(a.pos.z - lift, px))
+		# Swimmers' cut-off sprites shift south so the waterline sits where they are.
+		var wade := 0.8 if a.swimming else 0.0
+		r.position = Vector3(snappedf(a.pos.x, px), PixelTopWorld.depth_y(a.pos.z) + float(a.id % 16) * 0.0001, snappedf(a.pos.z - lift + wade, px))
+		# Name tag and speech bubble above the head (north on screen), lifted
+		# so they draw over the world.
+		var head_n := float(m.get("height", 1.75)) * float(m.get("scale", 1.0))
+		for lbl in [a.tag, a.bubble]:
+			if is_instance_valid(lbl):
+				(lbl as Node3D).position = Vector3(0, 1.0, -head_n - (0.3 if lbl == a.tag else 0.75))
 	else:
 		# Snap to the pixel grid; a tiny depth step per character stops
 		# overlaps from flickering.
@@ -345,6 +367,11 @@ static func _human_frame(cfg: Dictionary, name: String) -> Image:
 		var bounds := up.get_used_rect()
 		img.blit_rect(up, bounds, Vector2i((FRAME - bounds.size.x) / 2, FRAME - bounds.size.y))
 		return img
+	_paint_human(img, cfg, p, name)
+	return img
+
+
+static func _paint_human(img: Image, cfg: Dictionary, p: Dictionary, name: String) -> void:
 	var skin := _c(cfg, "skin", "#f0c8a0")
 	var hair := _c(cfg, "hair", "#3b2a1e")
 	var shirt := _c(cfg, "shirt", "#2a9d8f")
@@ -438,7 +465,9 @@ static func _human_frame(cfg: Dictionary, name: String) -> Image:
 	var e2 := _limb(img, Vector2(hx + 1, sh_y + 1), af, 4, 2, shirt)
 	var hand := _limb(img, e2, af + float(p.get("ae", 0)), 4, 2, skin if not bones else skin, skin, 2)
 	_tool(img, cfg, hand, af + float(p.get("ae", 0)))
-	return img
+	if p.get("swim", false):
+		var wx := 15 + int(p.get("lean", 0))
+		_waterline(img, 21, wx - 4, wx + 5)
 
 
 static func _hat(img: Image, cfg: Dictionary, fx: int, hy: int) -> void:
@@ -529,6 +558,10 @@ const FPOSES := {
 	"hurt": {"ar": 30, "al": 30, "dy": 1, "eyes": "closed", "mouth": "open"},
 	"climb0": {"ar": 160, "al": 140, "ll": 2},
 	"climb1": {"ar": 140, "al": 160, "lr": 2},
+	"swim0": {"ar": 110, "are": 150, "al": 40, "swim": true},
+	"swim1": {"ar": 40, "al": 110, "ale": 150, "swim": true},
+	"tread0": {"ar": 110, "are": 150, "al": 40, "swim": true},
+	"tread1": {"ar": 40, "al": 110, "ale": 150, "swim": true},
 }
 
 
@@ -656,6 +689,8 @@ static func _front_frame(cfg: Dictionary, name: String, back: bool) -> Image:
 	_farm(img, Vector2(11, sh_y + 1), -1, al, float(p.get("ale", al)), shirt, skin)
 	if not back:
 		_tool(img, cfg, hand_r, 180.0 if ar > 120.0 else 90.0)
+	if p.get("swim", false):
+		_waterline(img, 19, 11, 21)
 	return img
 
 
@@ -821,6 +856,17 @@ static func _quad(img: Image, cfg: Dictionary, kind: String, col: Color, dark: C
 		"frog":
 			_rect(img, hx + 1, hy - 2, 3, 2, col)
 			_px(img, hx + 2, hy - 2, Color("1b1626"))
+
+
+## Swimming: everything below the waterline is hidden, with a small ripple
+## across the body only (x0..x1).
+static func _waterline(img: Image, y: int, x0: int, x1: int) -> void:
+	for yy in range(y, FRAME):
+		for x in FRAME:
+			img.set_pixel(x, yy, Color(0, 0, 0, 0))
+	for x in range(x0, x1):
+		if x % 2 == 0:
+			_px(img, x, y, Color("cfeeff"))
 
 
 ## Dark 1 px outline around the silhouette (classic pixel-art look).

@@ -11,7 +11,7 @@ const CLIP_PATTERNS := {
 	"wave": ["wave", "hello", "greet"], "sit": ["sit"], "jump": ["jump"], "talk": ["talk", "speak"],
 	"sleep": ["sleep", "lie", "lying", "laydown"], "celebrate": ["celebrat", "cheer", "victory", "win"],
 	"laugh": ["laugh"], "cry": ["cry", "sad", "sob"], "point": ["point"],
-	"attack": ["attack", "punch", "slash", "swing", "hit"], "fight": ["fight", "combat", "boxing", "guard"],
+	"attack": ["attack", "punch", "slash", "swing", "hit"], "fight": ["fight", "combat", "boxing", "guard"], "swim": ["swim", "paddle"],
 }
 ## Behaviours that play their own clip (or a built-in pose) while standing.
 const POSE_STATES := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point", "fight"]
@@ -236,6 +236,17 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 				rig["axes"][slot] = (g.inverse() * (up if slot == "head" else side)).normalized()
 				rig["grest"][slot] = g.get_rotation_quaternion()
 				rig["base"][slot] = Quaternion.IDENTITY
+				# Elbows and knees: some rigs are stored with the limb already
+				# bent (e.g. 3ds Max Biped exports); straighten the forearm /
+				# shin along its upper limb first, so bends start from straight.
+				if slot.begins_with("lower"):
+					var up_bone: int = rig["bones"].get(str(slot).replace("lower", "upper"), -1)
+					var tip := _main_child(sk, bi)
+					if up_bone >= 0 and tip >= 0:
+						var d_up := (sk.get_bone_global_rest(bi).origin - sk.get_bone_global_rest(up_bone).origin).normalized()
+						var d_low := (sk.get_bone_global_rest(tip).origin - sk.get_bone_global_rest(bi).origin).normalized()
+						if d_up.length() > 0.5 and d_low.length() > 0.5:
+							rig["base"][slot] = Quaternion(d_low, d_up)
 				# Arms: whatever the rest pose (T-pose, A-pose, arms down),
 				# rotate the upper arm to hang relaxed at the side first.
 				if slot.begins_with("upperArm"):
@@ -248,10 +259,31 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 			if rig["bones"].has("head"):
 				var head_p := Kit._local_xf(root, sk) * sk.get_bone_global_rest(rig["bones"]["head"]).origin
 				rig["headH"] = clampf(head_p.y + 0.06, 0.4, rig["height"])
+	rig["blink"] = _blink_shapes(scene) if scene else []
 	# Framing hints for thumbnails (skinned mesh bounds can't be trusted).
 	root.set_meta("frame_h", float(rig["height"]))
 	root.set_meta("head_h", float(rig["headH"]))
 	return rig
+
+
+## Face shapes that close the eyes: [[MeshInstance3D, shape index], ...].
+## Covers VRM/VRoid ("Blink", "Fcl_EYE_Close"), ARKit ("eyeBlinkLeft"),
+## MMD ("まばたき") and game rigs with left/right winks ("Eye_WinkA_L").
+static func _blink_shapes(scene: Node) -> Array:
+	var both := []
+	var sides := []
+	for n in AssetLib._find_all(scene, "MeshInstance3D"):
+		var mi := n as MeshInstance3D
+		if not (mi.mesh is ArrayMesh):
+			continue
+		var am := mi.mesh as ArrayMesh
+		for i in am.get_blend_shape_count():
+			var nm := String(am.get_blend_shape_name(i)).to_lower().replace(" ", "_")
+			if nm in ["blink", "eye_close", "eyes_closed", "eyeclose", "fcl_eye_close", "まばたき", "eye_blink", "blink_both"]:
+				both.append([mi, i])
+			elif nm.contains("blink") or nm.contains("winka") or (nm.contains("eye") and nm.contains("close")):
+				sides.append([mi, i])
+	return both if not both.is_empty() else sides
 
 
 ## Game-style rigs: hide VFX-only meshes, and stop vertex colours (often
@@ -427,6 +459,8 @@ static func _find(n: Node, cls: String) -> Node:
 
 
 static func _state(a: Actor, sp: float) -> String:
+	if a.swimming:
+		return "swim"
 	if a.attack_t > 0.0:
 		return "attack"
 	if not a.on_ground and a.vel.y > 1:
@@ -435,7 +469,7 @@ static func _state(a: Actor, sp: float) -> String:
 		return "run"
 	if sp > 0.2:
 		return "walk"
-	if a.speak_t > 0:
+	if a.speak_t > 0 and a.behavior != "sleep":
 		return "talk"
 	if a.behavior in POSE_STATES:
 		return a.behavior
@@ -455,7 +489,8 @@ static func animate(a: Actor, dt: float, sp: float, _is_player: bool) -> void:
 		# No lying clip: tip the whole model onto its back, centred on the spot.
 		var r := a.root()
 		var h := a.height()
-		r.rotation = Vector3(-PI / 2, a.yaw, 0)
+		# Turn to face, then tip back (a combined Euler would roll them over).
+		r.basis = (Basis(Vector3.UP, a.yaw) * Basis(Vector3.RIGHT, -PI / 2)).scaled_local(Vector3.ONE * a.k())
 		r.position = a.pos + Vector3(sin(a.yaw), 0, cos(a.yaw)) * h * 0.45 + Vector3(0, h * 0.08, 0)
 	if ap and not clips.is_empty():
 		var fallback := "idle"
@@ -577,6 +612,20 @@ static func _pose_angles(a: Actor, state: String, sp: float) -> Dictionary:
 			p["upperLegR"] = Vector2(0.15, 0.1)
 			p["lowerLegL"] = Vector2(0.35, 0)
 			p["lowerLegR"] = Vector2(0.35, 0)
+		"swim":
+			# Upright: arms pull, legs kick; the spine leans in when moving
+			# (eased on the actor so it never snaps).
+			var moving := sp > 0.3
+			a._swim_lean = lerpf(a._swim_lean, 0.35 if moving else 0.05, 0.08)
+			var st := t * (5.0 if moving else 3.0)
+			p["upperArmL"] = Vector2(-1.4 + sin(st) * 0.9, 0.9 + sin(st) * 0.4)
+			p["upperArmR"] = Vector2(-1.4 - sin(st) * 0.9, 0.9 - sin(st) * 0.4)
+			p["lowerArmL"] = Vector2(-0.3, 0)
+			p["lowerArmR"] = Vector2(-0.3, 0)
+			p["upperLegL"] = Vector2(sin(st * 1.6) * 0.45, 0)
+			p["upperLegR"] = Vector2(-sin(st * 1.6) * 0.45, 0)
+			p["spine"] = Vector2(a._swim_lean, 0)
+			p["headPitch"] = -0.25 - a._swim_lean * 0.5
 		"attack":
 			var k := 1.0 - a.attack_t / Actor.ATTACK_TIME
 			p["upperArmR"] = Vector2(-2.6 + smoothstep(0.15, 0.6, k) * 3.0, 0.2)
@@ -616,7 +665,7 @@ static func _pose(a: Actor, state: String, sp: float) -> void:
 			# Bend in the frame the (relaxed) upper limb carries it in.
 			var up_slot: String = str(slot).replace("lower", "upper")
 			var pb: Quaternion = m["base"].get(up_slot, Quaternion.IDENTITY)
-			q = Quaternion((pb.inverse() * side).normalized(), ang.x)
+			q = Quaternion((pb.inverse() * side).normalized(), ang.x) * base
 		else:
 			# Out to the side: left arm/leg rolls one way, right the other.
 			var out_sign := 1.0 if slot.ends_with("L") else -1.0

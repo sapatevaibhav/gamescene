@@ -101,6 +101,10 @@ func update_camera(dt: float) -> void:
 	var head := Vector3(Styles.SIZE / 2.0, 8, Styles.SIZE / 2.0)
 	if player:
 		head = Vector3(player.pos.x, player.head_y() - 0.1, player.pos.z)
+		if player.swimming and mode == "third" and studio.world.has_method("water_surface"):
+			# Orbit a point clear of the water, or the camera (which keeps out
+			# of the water) would be pulled right up to the bobbing head.
+			head.y = maxf(head.y, float(studio.world.water_surface(player.pos)) + 0.9)
 	if mode == "first" and player == null:
 		mode = "third"
 	match mode:
@@ -265,6 +269,11 @@ func _update_side(dt: float) -> void:
 	var px := 1.0 / PixelWorld.PPM
 	global_position = Vector3(snappedf(focus.x, px), snappedf(focus.y, px), lane + 30.0)
 	global_basis = Basis.IDENTITY
+
+
+## Jump the follow camera straight to `p` (after going through a door).
+func snap_to(p: Vector3) -> void:
+	_smooth = Vector3(p.x, 0.0, p.z)
 
 
 ## Pixel 2D top view: orthographic, straight down, north at the top of the

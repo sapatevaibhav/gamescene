@@ -32,6 +32,8 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_pixel` | Pixel 2D: tiles, lane movement, jumping, ladders, tile painting through the camera, buildings, sprite frames, save/load, replay |
 | `test_pixel_top` | Pixel 2D top view: world, WASD walking, blocking, ground painting and objects through the camera, facing frames, draw order, save/load, replay; side-view passing; default names |
 | `test_sprites` | Pixel sprite imports: PNG strips and RPG grids, Aseprite files (compressed/raw/linked cels, layers, tags) and using them as characters and objects |
+| `test_swim` | Swimming in every world (float line, head above water, swim pose, climbing out) and pets starting beside the player |
+| `test_sleep` | Sleepers close their eyes in every style (eye pieces, blocky eyelids, imported models' face shapes), z's float over them, awake characters blink |
 | `test_styles` | Per-style import rules, the low-poly triangle cap, scene names, every action on imported models |
 | `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
 | `look_pixel` | Needs a window: renders the Pixel 2D style to `user://look/pixel-*.png` |

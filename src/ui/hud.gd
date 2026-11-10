@@ -563,18 +563,20 @@ func render_toolbar() -> void:
 				hint += "  ·  right click breaks, middle click picks"
 		"tiles":
 			var top := studio.is_top()
-			if top and t.tile >= PixelTopArt.GROUND.size():
-				t.tile = PixelTopArt.G["grass"]
-			toolbar_row.add_child(_tb_tex(PixelTopArt.ground_icon(maxi(1, t.tile)) if top else PixelTiles.icon(t.tile), "Ground" if top else "Tile", func(): open_sheet("tiles")))
+			var custom_tile := t.tile >= TileSets.CUSTOM_BASE
+			var ticon: Texture2D = studio.world.custom_icon(t.tile) if custom_tile else (PixelTopArt.ground_icon(maxi(1, t.tile)) if top else PixelTiles.icon(t.tile))
+			toolbar_row.add_child(_tb_tex(ticon, "Ground" if top else "Tile", func(): open_sheet("tiles")))
 			toolbar_row.add_child(_tb("place", "place", "Paint", t.mode == "place"))
 			toolbar_row.add_child(_tb("break", "brk", "Erase", t.mode == "break"))
 			toolbar_row.add_child(_tb("pick", "pickI", "Pick", t.mode == "pick"))
-			var tn := str((PixelTopArt.GROUND[maxi(1, t.tile)] if top else PixelTiles.get_tile(t.tile)).get("name", "tile")).to_lower()
+			var tn := "imported tile" if custom_tile else str((PixelTopArt.GROUND[maxi(1, t.tile)] if top else PixelTiles.get_tile(t.tile)).get("name", "tile")).to_lower()
 			hint = {"place": "Tap or drag to paint " + tn, "break": "Tap or drag to erase tiles", "pick": "Tap a tile to copy it"}[t.mode]
 			if not App.is_touch:
 				hint += "  ·  right-drag erases"
 		"pprefab":
 			toolbar_row.add_child(_tb("pprefabs", "house", "Change", false))
+			toolbar_row.add_child(_tb("oplace", "place", "Place", t.obj_mode == "place"))
+			toolbar_row.add_child(_tb("oerase", "brk", "Erase", t.obj_mode == "erase"))
 			var pname := ""
 			if SpriteImport.is_key(t.pprefab):
 				pname = SpriteImport.display_name(SpriteImport.id_of(t.pprefab))
@@ -584,6 +586,10 @@ func render_toolbar() -> void:
 				toolbar_row.add_child(_tb("flip", "rotate", "Flip", t.flip))
 				pname = str(PixelTiles.PREFABS.get(t.pprefab, {"name": "building"})["name"])
 			hint = "Tap the ground to place a " + pname.to_lower()
+			if t.obj_mode == "erase":
+				hint = "Tap or drag over trees, houses and objects to remove them" if studio.is_top() else "Tap a tree or building to remove all of it (the ground stays)"
+			elif not App.is_touch:
+				hint += "  ·  right click removes"
 		"prefab":
 			toolbar_row.add_child(_tb("prefabs", "house", "Change", false))
 			toolbar_row.add_child(_tb("rot", "rotate", "Rotate", false))
@@ -621,7 +627,13 @@ func _tb(act: String, icon: String, text: String, on: bool, primary := false) ->
 
 func _tb_tex(tex: Texture2D, text: String, cb: Callable) -> Button:
 	var b := _tb("", "cube", text, false)
-	(b.get_meta("tex") as TextureRect).texture = tex
+	var tr: TextureRect = b.get_meta("tex")
+	tr.texture = tex
+	# Pictures (tiles, blocks) are bigger than icons: fit them in the icon box.
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.custom_minimum_size = Vector2(UIK.px(26), UIK.px(26))
+	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	b.expand_icon = false
 	for c in b.pressed.get_connections():
 		b.pressed.disconnect(c["callable"])
@@ -638,6 +650,9 @@ func _tool_action(a: String) -> void:
 			open_sheet("prefabs")
 		"pprefabs":
 			open_sheet("pprefabs")
+		"oplace", "oerase":
+			t.obj_mode = "place" if a == "oplace" else "erase"
+			render_toolbar()
 		"flip":
 			t.flip = not t.flip
 			render_toolbar()

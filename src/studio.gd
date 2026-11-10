@@ -148,6 +148,13 @@ func _default_cast() -> void:
 		var preset: String = row[0]
 		var p: Dictionary = presets.get(preset, {})
 		var off: Array = pos[i % pos.size()]
+		if i >= pos.size():
+			# More cast than spots: shift the second round so nobody shares a spot.
+			off = [float(off[0]) + 1.6, float(off[1]) + 1.4]
+		var beh: String = row[2] if row.size() > 2 else "idle"
+		if i > 0 and beh == "follow" and p.get("group", "people") == "animals":
+			# Pets start a step beside the player.
+			off = [float(pos[0][0]) + 1.3, float(pos[0][1]) + (0.0 if is_side() else 0.9)]
 		add_actor({"name": row[1], "look": {"preset": preset}, "behavior": row[2] if row.size() > 2 else "idle",
 			"lines": (p.get("lines", []) as Array).duplicate(), "x": cx + off[0], "z": cz + off[1],
 			"yaw": 0.0 if i == 0 else App.sim_randf() * 6.0, "isPlayer": i == 0})
@@ -844,6 +851,21 @@ func _update_player_top(a: Actor, dt: float) -> void:
 		a.vel.z = 0.0
 	a.crouch = input_crouch
 	a.move_body(dt)
+	# Doors: step into a house, or back out of it. Pets come along.
+	var w: PixelTopWorld = world
+	var dest: Variant = w.portal_at(a.pos)
+	if dest is Vector3:
+		var from := a.pos
+		a.pos = dest
+		a.vel = Vector3.ZERO
+		var k := 0
+		for b in actors:
+			if b != a and b.behavior == "follow" and Vector2(b.pos.x - from.x, b.pos.z - from.z).length() < 8.0:
+				k += 1
+				b.pos = dest + Vector3(0.9 * (1 if k % 2 else -1), 0, 0.2)
+				b.vel = Vector3.ZERO
+				b.home = b.pos
+		camera.snap_to(a.pos)
 
 
 ## One simulation tick: script clock, keyframes, player, NPCs, crowding.
@@ -864,5 +886,13 @@ func _hide_actors_near_camera() -> void:
 			continue
 		var dx := cp.x - a.pos.x
 		var dz := cp.z - a.pos.z
-		var top := a.pos.y + a.height() + 0.2
+		# A sleeper lies flat: only hide them when the camera is down in them.
+		var top := a.pos.y + (0.6 if a.behavior == "sleep" else a.height() + 0.2)
 		a.root().visible = not (dx * dx + dz * dz < 0.64 and cp.y > a.pos.y - 0.2 and cp.y < top)
+
+
+func _notification(what: int) -> void:
+	# Partners point at each other; break the loop so both are freed on exit.
+	if what == NOTIFICATION_PREDELETE:
+		for a in actors:
+			a.partner = null

@@ -20,6 +20,7 @@ func _ready() -> void:
 	_png()
 	_ase()
 	await _use()
+	await _tilesets()
 	print("FAILS: ", fails)
 	get_tree().quit(1 if fails > 0 else 0)
 
@@ -275,3 +276,50 @@ func _use() -> void:
 	var pw: PixelWorld = studio.world
 	pw.add_decor(key, 20, pw.ground_y(20))
 	ok(pw.decor.size() == 1 and pw.remove_decor_at(20, pw.ground_y(20)), "side view: imported objects as decorations")
+
+
+## Tile sets: import a grid, paint its tiles in both 2D views, save and load.
+func _tilesets() -> void:
+	var img := Image.create(64, 32, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cols := [Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.PURPLE, Color.ORANGE, Color.CYAN]
+	for i in 7:  # the 8th cell stays empty
+		img.fill_rect(Rect2i((i % 4) * 16, (i / 4) * 16, 16, 16), cols[i])
+	img.save_png(TMP + "dungeon.png")
+	var id := TileSets.import_file(ProjectSettings.globalize_path(TMP + "dungeon.png"))
+	ok(id != "" and TileSets.tiles_of(id).size() == 7, "tile set imported, empty cell skipped (%d tiles)" % TileSets.tiles_of(id).size())
+	var odd := Image.create(20, 20, false, Image.FORMAT_RGBA8)
+	odd.save_png(TMP + "odd.png")
+	ok(TileSets.import_file(ProjectSettings.globalize_path(TMP + "odd.png")) == "" and TileSets.last_error.contains("16"), "odd sizes are refused with a reason")
+	ok(SpriteImport.list("tileset").has(id), "listed as a tile set")
+	var studio: Studio = null
+	for c in get_children():
+		if c is Studio:
+			studio = c
+	await studio.new_scene("pixel")
+	var w: PixelWorld = studio.world
+	var solid_id := w.custom_id(id, 2)
+	var behind_id := w.custom_id(id, 3, true)
+	ok(solid_id >= TileSets.CUSTOM_BASE and behind_id == solid_id + 1 and w.custom_id(id, 2) == solid_id, "custom tile ids are registered once")
+	w.set_tile(10, 30, solid_id)
+	w.set_tile(11, 30, behind_id)
+	ok(w.tile(10, 30) == solid_id and w.solid_at(10, 30), "imported tile in the way")
+	ok(w.tile(11, 30, "bg") == behind_id and not w.solid_at(11, 30), "imported tile behind the characters")
+	ok(w._custom_meshes.size() >= 2, "drawn with the tile set's picture")
+	var d := studio.serialize()
+	studio.load_data(JSON.parse_string(JSON.stringify(d)))
+	var w2: PixelWorld = studio.world
+	ok(w2.tile(10, 30) == solid_id and w2.custom.size() == 2, "saved and loaded")
+	await studio.new_scene("pixeltop")
+	var tw: PixelTopWorld = studio.world
+	var gid := tw.custom_id(id, 1)
+	tw.set_ground(20, 20, gid)
+	ok(tw.ground_id(20, 20) == gid and not tw.solid_cell(20, 20) and tw._custom_meshes.size() == 1, "top view: imported ground tile, walkable")
+	var cam := studio.camera
+	cam.set_mode("free")
+	cam.free_pos = Vector3(25, 0, 25)
+	cam.update_camera(0.016)
+	studio.tools.set_tool("tiles", {"tile": gid, "mode": "place"})
+	ok(studio.tools.tile == gid, "the tile tool keeps an imported tile")
+	studio.tools.tap(cam.unproject_position(Vector3(24.5, 0, 24.5)))
+	ok(tw.ground_id(24, 24) == gid, "and paints it through the camera")

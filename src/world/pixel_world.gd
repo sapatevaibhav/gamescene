@@ -29,6 +29,9 @@ var bg := PackedByteArray()
 var tint := Color.WHITE
 ## Imported object sprites standing behind the characters: [key, x, y].
 var decor: Array = []
+## Tiles from imported tile sets this scene uses (TileSets): ids from 100.
+var custom: Array = []
+var _custom_meshes: Array[MeshInstance3D] = []
 var _decor_meshes: Array[MeshInstance3D] = []
 
 var _fg_mesh := MeshInstance3D.new()
@@ -44,6 +47,32 @@ var _sky_mat: ShaderMaterial
 var _layers: Array[MeshInstance3D] = []
 var _layer_mats: Array[ShaderMaterial] = []
 const PARALLAX := [0.85, 0.65, 0.4]
+## Painted backdrop behind the world (BACKDROPS key), saved with the scene.
+var backdrop := "hills"
+
+## Three parallax layers each, far to near.
+const BACKDROPS := {
+	"hills": {"name": "Hills", "layers": [
+		{"col": "9bb4d6", "base": 15.0, "amp": 9.0, "freq": 0.045, "cap": "e8f0fa"},
+		{"col": "6f9a6a", "base": 12.0, "amp": 4.0, "freq": 0.09},
+		{"col": "3f7a4a", "base": 11.0, "amp": 2.5, "freq": 0.21, "trees": true}]},
+	"mountains": {"name": "Mountains", "layers": [
+		{"col": "8a9bb8", "base": 20.0, "amp": 13.0, "freq": 0.03, "cap": "ffffff"},
+		{"col": "6f86a6", "base": 15.0, "amp": 8.0, "freq": 0.06, "cap": "e8f0fa"},
+		{"col": "4f7a5a", "base": 11.0, "amp": 2.5, "freq": 0.25, "trees": true}]},
+	"forest": {"name": "Forest", "layers": [
+		{"col": "6f9a7a", "base": 16.0, "amp": 2.0, "freq": 0.12, "trees": true},
+		{"col": "467a52", "base": 14.0, "amp": 2.5, "freq": 0.22, "trees": true},
+		{"col": "2f5a3a", "base": 12.0, "amp": 2.0, "freq": 0.4, "trees": true}]},
+	"desert": {"name": "Desert", "layers": [
+		{"col": "e8c9a0", "base": 14.0, "amp": 6.0, "freq": 0.035},
+		{"col": "dcb27a", "base": 12.5, "amp": 3.5, "freq": 0.07},
+		{"col": "c99a5e", "base": 11.0, "amp": 2.0, "freq": 0.13}]},
+	"city": {"name": "Night city", "layers": [
+		{"col": "6a7090", "base": 18.0, "buildings": true},
+		{"col": "4a5070", "base": 15.0, "buildings": true},
+		{"col": "30364e", "base": 12.0, "buildings": true}]},
+}
 
 const SKY_SHADER := """
 shader_type spatial;
@@ -115,6 +144,11 @@ func set_tile(x: int, y: int, id: int, rebuild_now := true) -> void:
 			fg[i] = 0
 		else:
 			bg[i] = 0
+	elif id >= TileSets.CUSTOM_BASE:
+		if _custom_bg(id):
+			bg[i] = id
+		else:
+			fg[i] = id
 	elif PixelTiles.is_bg(id):
 		bg[i] = id
 	else:
@@ -128,7 +162,29 @@ func solid_at(x: int, y: int) -> bool:
 		return true
 	if y >= H:
 		return false
-	return PixelTiles.is_solid(fg[idx(x, y)])
+	return tile_solid(fg[idx(x, y)])
+
+
+## Whether a tile stands in the way (imported tiles: unless placed behind).
+func tile_solid(id: int) -> bool:
+	if id >= TileSets.CUSTOM_BASE:
+		return not _custom_bg(id)
+	return PixelTiles.is_solid(id)
+
+
+func _custom_bg(id: int) -> bool:
+	var k := id - TileSets.CUSTOM_BASE
+	return k >= 0 and k < custom.size() and bool(custom[k].get("bg", false))
+
+
+## Tile id for tile `i` of imported set `set_id` (0 if the list is full).
+func custom_id(set_id: String, i: int, behind := false) -> int:
+	return TileSets.register(custom, set_id, i, behind)
+
+
+func custom_icon(id: int) -> Texture2D:
+	var c: Dictionary = custom[id - TileSets.CUSTOM_BASE]
+	return TileSets.icon(str(c["set"]), int(c["i"]))
 
 
 func ladder_at(p: Vector3) -> bool:
@@ -141,6 +197,26 @@ func ladder_at(p: Vector3) -> bool:
 
 func water_at(p: Vector3) -> bool:
 	return PixelTiles.is_water(tile(int(floor(p.x)), int(floor(p.y + 0.4))))
+
+
+## Top of the first solid tile below `p` (the bed under the water).
+func water_bottom(p: Vector3) -> float:
+	var x := int(floor(p.x))
+	var y := int(floor(p.y + 0.1))
+	while y > 0 and not solid_at(x, y - 1):
+		y -= 1
+	return float(y)
+
+
+## Top of the water a body at `p` is in, else -1e9.
+func water_surface(p: Vector3) -> float:
+	var x := int(floor(p.x))
+	var y := int(floor(p.y + 0.1))
+	if not PixelTiles.is_water(tile(x, y)):
+		return -1.0e9
+	while y < H - 1 and PixelTiles.is_water(tile(x, y + 1)):
+		y += 1
+	return float(y + 1)
 
 
 # ---------------------------------------------------------------- queries
@@ -296,6 +372,43 @@ func new_world(_style := "pixel") -> void:
 
 # ---------------------------------------------------------------- meshes
 
+## Tiles that make up the land itself (kept when clearing a structure).
+const LAND := ["grass", "dirt", "stone", "sand", "water", "snow", "ice", "cobble", "mossy"]
+
+
+## Removes the whole tree or building at a tile: every connected non-land
+## tile on both layers (and any decoration there). Returns tiles removed.
+func clear_structure(x: int, y: int) -> int:
+	if remove_decor_at(x, y):
+		return 1
+	var land := LAND.map(func(k): return PixelTiles.ID[k])
+	var is_part := func(cx: int, cy: int) -> bool:
+		if not in_bounds(cx, cy):
+			return false
+		var f := fg[idx(cx, cy)]
+		var b := bg[idx(cx, cy)]
+		return (f != 0 and not land.has(f)) or b != 0
+	if not is_part.call(x, y):
+		return 0
+	var todo := [Vector2i(x, y)]
+	var seen := {Vector2i(x, y): true}
+	var n := 0
+	while not todo.is_empty() and n < 400:
+		var c: Vector2i = todo.pop_back()
+		var i := idx(c.x, c.y)
+		if not land.has(fg[i]):
+			fg[i] = 0
+		bg[i] = 0
+		n += 1
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nb: Vector2i = c + d
+			if not seen.has(nb) and is_part.call(nb.x, nb.y):
+				seen[nb] = true
+				todo.append(nb)
+	rebuild()
+	return n
+
+
 func add_decor(key: String, x: int, y: int) -> void:
 	decor.append([key, x, y])
 	rebuild()
@@ -337,6 +450,12 @@ func _rebuild_decor() -> void:
 
 func rebuild() -> void:
 	_rebuild_decor()
+	for mi in _custom_meshes:
+		mi.queue_free()
+	_custom_meshes.clear()
+	var place := func(cell: int) -> Vector2: return Vector2(cell % W, cell / W)
+	_custom_meshes.append_array(TileSets.meshes(custom, fg, place, self, LANE - 0.6, false))
+	_custom_meshes.append_array(TileSets.meshes(custom, bg, place, self, LANE - 1.2, false))
 	_fg_mesh.mesh = _layer_mesh(fg, func(id): return not PixelTiles.is_water(id) and not PixelTiles.get_tile(id).get("glow", false))
 	_bg_mesh.mesh = _layer_mesh(bg, func(id): return not _glows(id), Color(0.7, 0.72, 0.8))
 	_glow_mesh.mesh = _layer_mesh(bg, func(id): return _glows(id))
@@ -345,7 +464,7 @@ func rebuild() -> void:
 
 ## Lanterns and windows light up at night.
 static func _glows(id: int) -> bool:
-	return id == PixelTiles.ID["lantern"] or id == PixelTiles.ID["window"]
+	return id in [PixelTiles.ID["lantern"], PixelTiles.ID["window"], PixelTiles.ID["torch"]]
 
 
 func _layer_mesh(layer: PackedByteArray, keep: Callable, shade := Color.WHITE) -> ArrayMesh:
@@ -356,7 +475,7 @@ func _layer_mesh(layer: PackedByteArray, keep: Callable, shade := Color.WHITE) -
 	for y in H:
 		for x in W:
 			var id := layer[idx(x, y)]
-			if id == 0 or not keep.call(id):
+			if id == 0 or id >= TileSets.CUSTOM_BASE or not keep.call(id):
 				continue
 			var r := PixelTiles.uv_rect(id)
 			var v0 := verts.size()
@@ -394,25 +513,29 @@ func _build_backdrop() -> void:
 	_sky.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_sky)
 	var sh: Shader = load("res://src/shaders/pixel.gdshader")
-	var specs := [
-		{"col": Color("9bb4d6"), "base": 15.0, "amp": 9.0, "freq": 0.045, "z": -30.0, "cap": Color("e8f0fa")},
-		{"col": Color("6f9a6a"), "base": 12.0, "amp": 4.0, "freq": 0.09, "z": -20.0},
-		{"col": Color("3f7a4a"), "base": 11.0, "amp": 2.5, "freq": 0.21, "z": -10.0, "trees": true},
-	]
-	for i in specs.size():
-		var spec: Dictionary = specs[i]
-		var tex := _paint_layer(spec, 900 + i)
-		var m := _pixel_mat(sh, tex)
+	for i in 3:
+		var m := _pixel_mat(sh, null)
 		var mi := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2(W * 2.0, H)
 		mi.mesh = q
 		mi.material_override = m
-		mi.position = Vector3(W / 2.0, H / 2.0, LANE + float(spec["z"]))
+		mi.position = Vector3(W / 2.0, H / 2.0, LANE - 30.0 + i * 10.0)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
 		_layers.append(mi)
 		_layer_mats.append(m)
+	set_backdrop(backdrop)
+
+
+## Repaints the parallax layers for a BACKDROPS key.
+func set_backdrop(key: String) -> void:
+	if not BACKDROPS.has(key):
+		key = "hills"
+	backdrop = key
+	var specs: Array = BACKDROPS[key]["layers"]
+	for i in 3:
+		_layer_mats[i].set_shader_parameter("tex", _paint_layer(specs[i], 900 + i + key.hash() % 1000))
 
 
 static func _paint_layer(spec: Dictionary, seed: int) -> ImageTexture:
@@ -424,7 +547,19 @@ static func _paint_layer(spec: Dictionary, seed: int) -> ImageTexture:
 	var r := U.rng(seed)
 	var ph := r.next() * TAU
 	var ph2 := r.next() * TAU
-	var col: Color = spec["col"]
+	var col := Color(str(spec["col"]))
+	if spec.get("buildings", false):
+		# Blocks of buildings with lit windows.
+		var x0 := 0
+		while x0 < w:
+			var bw := 24 + int(r.next() * 40)
+			var bh := int((float(spec["base"]) + r.next() * 9.0) * ppm)
+			for x in range(x0, mini(w, x0 + bw - 3)):
+				for y in range(0, mini(bh, h)):
+					var lit := (x - x0) % 6 in [2, 3] and y % 8 in [3, 4, 5] and y < bh - 4 and r.next() < 0.5
+					img.set_pixel(x, h - 1 - y, Color("ffd97a") if lit else col)
+			x0 += bw
+		return ImageTexture.create_from_image(img)
 	for x in w:
 		var mx := float(x) / ppm
 		var top := float(spec["base"]) + sin(mx * float(spec["freq"]) * TAU / 2.0 + ph) * float(spec["amp"]) + sin(mx * 0.5 + ph2) * 0.6
@@ -435,7 +570,7 @@ static func _paint_layer(spec: Dictionary, seed: int) -> ImageTexture:
 			var py := h - 1 - y
 			var c := col
 			if spec.has("cap") and y > ty - 6:
-				c = spec["cap"]
+				c = Color(str(spec["cap"]))
 			elif y % 9 == 0 and x % 7 == 0:
 				c = U.shade(col, 0.9)
 			img.set_pixel(x, py, c)
@@ -463,6 +598,8 @@ func animate(_dt: float, _t: float) -> void:
 	tint.a = 1.0
 	for m in [_mat, _bg_mat, _water_mat]:
 		m.set_shader_parameter("tint", tint)
+	for mi in _custom_meshes:
+		(mi.material_override as ShaderMaterial).set_shader_parameter("tint", tint)
 	for mi in _decor_meshes:
 		(mi.material_override as ShaderMaterial).set_shader_parameter("tint", tint)
 	_glow_mat.set_shader_parameter("tint", tint.lerp(Color(1.15, 1.05, 0.85), night))
@@ -493,7 +630,7 @@ func remove_prop(_p: Dictionary) -> void:
 # ---------------------------------------------------------------- save / load
 
 func serialize() -> Dictionary:
-	return {"pixel": 1, "w": W, "h": H, "fg": U.rle_encode(fg), "bg": U.rle_encode(bg), "decor": decor.duplicate(true)}
+	return {"pixel": 1, "w": W, "h": H, "fg": U.rle_encode(fg), "bg": U.rle_encode(bg), "decor": decor.duplicate(true), "backdrop": backdrop, "custom": custom.duplicate(true)}
 
 
 func load_data(d: Dictionary, _style := "") -> void:
@@ -502,6 +639,8 @@ func load_data(d: Dictionary, _style := "") -> void:
 		return
 	fg = U.rle_decode(str(d["fg"]), W * H)
 	bg = U.rle_decode(str(d.get("bg", "")), W * H)
+	set_backdrop(str(d.get("backdrop", "hills")))
+	custom = (d.get("custom", []) as Array).duplicate(true)
 	decor = []
 	for o in d.get("decor", []):
 		if o is Array and o.size() >= 3:

@@ -347,6 +347,33 @@ static func _skin_mats(img: Image) -> Array:
 
 
 ## Pixel-skin humanoid (JS buildModel). `legacy` = 64x32 skins, `slim` = 3px arms.
+## Eyelids for a skin head: two skin-coloured patches over the painted eyes
+## (face row 4, columns 1-2 and 5-6), hidden until the eyes close.
+static func _add_lids(head: Node3D, img: Image) -> void:
+	var H := faces(PARTS["head"])
+	var fx: int = H["front"][0]
+	var fy: int = H["front"][1]
+	# The cheek just below the eyes gives this skin's colour.
+	var skin := img.get_pixel(fx + 1, fy + 6) if fx + 1 < img.get_width() and fy + 6 < img.get_height() else Color("e0ac7e")
+	skin.a = 1.0
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = skin.darkened(0.08)
+	for cx in [-2.0, 2.0]:
+		var lid := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(2.0 * PX, 1.05 * PX)
+		lid.mesh = q
+		lid.material_override = m
+		# Front face of the head box (8 px, centred at 4 px up), just in front.
+		lid.position = Vector3(cx * PX, (8.0 - 4.5) * PX, 4.0 * PX + 0.004)
+		lid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lid.visible = false
+		lid.set_meta("lid", true)
+		lid.set_meta("keep", true)
+		head.add_child(lid)
+
+
 static func build_model(img: Image, legacy: bool, slim: bool) -> Dictionary:
 	var tex_h := 32.0 if legacy else 64.0
 	var mats := _skin_mats(img)
@@ -376,6 +403,7 @@ static func build_model(img: Image, legacy: bool, slim: bool) -> Dictionary:
 	upper.add_child(head)
 	head.add_child(Kit.mi(_skin_box(S["head"], tex_h, false, 0.0), mat, 0, 4 * PX, 0))
 	head.add_child(Kit.mi(_skin_box(ov(S["head"]), tex_h, false, 1.0), omat, 0, 4 * PX, 0))
+	_add_lids(head, img)
 	var a_r: Dictionary = (S["armR"] as Dictionary).duplicate()
 	a_r["w"] = aw
 	var a_l: Dictionary = (S["armL"] as Dictionary).duplicate()
@@ -448,12 +476,18 @@ static func cb(w: float, h: float, d: float, col: String, x := 0.0, y := 0.0, z 
 
 static func eyes_on(g: Node3D, z: float, y: float, sep: float, s := 0.07, col := "#16141a", white := true) -> void:
 	for sx in [-1.0, 1.0]:
+		var parts := []
 		if white:
-			g.add_child(cb(s * 1.6, s * 1.2, 0.02, "#f4f2ee", sx * sep, y, z, {"v": 0.0}))
+			parts.append(cb(s * 1.6, s * 1.2, 0.02, "#f4f2ee", sx * sep, y, z, {"v": 0.0}))
 		var glow := col != "#16141a"
-		g.add_child(cb(s * 0.8, s * 1.2, 0.025, col, sx * sep + (sx * s * 0.35 if white else 0.0), y, z + 0.005, {"v": 0.0, "glow": glow}))
+		parts.append(cb(s * 0.8, s * 1.2, 0.025, col, sx * sep + (sx * s * 0.35 if white else 0.0), y, z + 0.005, {"v": 0.0, "glow": glow}))
 		# small catch-light so eyes read as glossy
-		g.add_child(cb(s * 0.3, s * 0.3, 0.012, "#ffffff", sx * sep + (sx * s * 0.35 if white else 0.0) - s * 0.15, y + s * 0.3, z + 0.016, {"v": 0.0, "glow": true}))
+		parts.append(cb(s * 0.3, s * 0.3, 0.012, "#ffffff", sx * sep + (sx * s * 0.35 if white else 0.0) - s * 0.15, y + s * 0.3, z + 0.016, {"v": 0.0, "glow": true}))
+		for part in parts:
+			# Tagged so the actor can close them (sleep, blinking).
+			(part as Node).set_meta("eye", true)
+			(part as Node).set_meta("keep", true)
+			g.add_child(part)
 
 
 static func quad_rig(o: Dictionary) -> Dictionary:

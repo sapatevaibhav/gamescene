@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (9 Nov 2026, v0.14.0)
+## Where it stands today (9 Nov 2026, v0.15.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -42,8 +42,8 @@
 | 0.12 | Distinct styles (per-style imports, low-poly triangle cap), scene naming, imported-character poses | Done |
 | 0.13 | Pixel 2D side-view style, replacing Tactical: tile world, sprite characters, building (timeline, director mode and export work too) | Done |
 | 0.14 | Pixel 2D top view, sprite imports (.png sheets, .ase/.aseprite), Indian default names, side-view passing | Done |
-| **0.15** | **Pixel 2D polish: tile-set imports, more tiles, objects and backdrops, entering houses in the top view** | **Next** |
-| 0.16 | Audio and dialogue (Phase D) | |
+| 0.15 | Pixel 2D polish (tile-set imports, more tiles, objects and backdrops, house interiors), swimming in every style, pets beside the player | Done |
+| **0.16** | **Audio and dialogue (Phase D)** | **Next** |
 | 0.17 | Export reliability and extras (Phase C) | |
 | 0.18 | VRM spring bones, blinking and the animation library (Phase E core) | |
 | 0.19 | Packaging for Android, iOS and desktop (Phase I) | |

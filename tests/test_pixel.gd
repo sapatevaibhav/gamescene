@@ -36,6 +36,7 @@ func _ready() -> void:
 	await _paint(studio, w)
 	_sprites(studio)
 	await _sim(studio, w)
+	_content(studio)
 	_save(studio)
 	print("FAILS: ", fails)
 	get_tree().quit(1 if fails > 0 else 0)
@@ -156,6 +157,34 @@ func _paint(studio: Studio, w: PixelWorld) -> void:
 	cam.update_camera(0.016)
 	studio.tools.tap(cam.unproject_position(Vector3(gx + 0.5, gy + 0.5, PixelWorld.LANE)))
 	ok(w.tile(gx, gy) == PixelTiles.ID["stone"], "a well is built on the ground")
+	# Erase a whole building (and keep the ground) by clicking any part of it.
+	var hx := 47
+	var hy := w.ground_y(hx + 2)
+	var roof_tile := Vector2i(-1, -1)
+	for y in range(hy, hy + 8):
+		for x in range(hx, hx + 6):
+			if w.tile(x, y) == PixelTiles.ID["roof"]:
+				roof_tile = Vector2i(x, y)
+	ok(roof_tile.x >= 0, "a cottage stands in the village")
+	if roof_tile.x >= 0:
+		var ground_before := w.tile(hx + 2, hy - 1)
+		cam.free_pos = Vector3(roof_tile.x, roof_tile.y, 0)
+		cam.update_camera(0.016)
+		studio.tools.set_tool("prefab", {"pprefab": "cottage", "obj_mode": "erase"})
+		studio.tools.tap(cam.unproject_position(Vector3(roof_tile.x + 0.5, roof_tile.y + 0.5, PixelWorld.LANE)))
+		var left := 0
+		for y in range(hy, hy + 8):
+			for x in range(hx, hx + 6):
+				if w.tile(x, y) == PixelTiles.ID["roof"] or w.tile(x, y, "bg") == PixelTiles.ID["wall"]:
+					left += 1
+		ok(left == 0, "erase clears the whole cottage (%d tiles left)" % left)
+		ok(w.tile(hx + 2, hy - 1) == ground_before and ground_before != 0, "the ground under it stays")
+		studio.undo()
+		ok(w.tile(roof_tile.x, roof_tile.y) == PixelTiles.ID["roof"], "undo puts it back")
+		# Right click removes even in place mode.
+		studio.tools.set_tool("prefab", {"pprefab": "cottage"})
+		studio.tools.tap(cam.unproject_position(Vector3(roof_tile.x + 0.5, roof_tile.y + 0.5, PixelWorld.LANE)), MOUSE_BUTTON_RIGHT)
+		ok(w.tile(roof_tile.x, roof_tile.y) == 0, "right click removes a building")
 	studio.tools.set_tool("")
 	cam.set_mode("third")
 
@@ -216,6 +245,21 @@ func _sim(studio: Studio, w: PixelWorld) -> void:
 	studio.play_scene(false)
 
 
+func _content(studio: Studio) -> void:
+	ok(PixelTiles.count() - 1 >= 35, "35 tiles (%d)" % (PixelTiles.count() - 1))
+	ok(PixelTiles.PREFABS.size() >= 9, "9 buildings (%d)" % PixelTiles.PREFABS.size())
+	var w: PixelWorld = studio.world
+	for k in PixelWorld.BACKDROPS:
+		w.set_backdrop(k)
+		var tex: Texture2D = w._layer_mats[0].get_shader_parameter("tex")
+		ok(w.backdrop == k and tex != null and tex.get_image().get_used_rect().size.x > 0, "%s backdrop paints" % k)
+	w.set_backdrop("city")
+	ok(PixelWorld._glows(PixelTiles.ID["torch"]), "torches glow at night")
+	var gx := 66
+	w.stamp_prefab("castle", gx, w.ground_y(gx))
+	ok(w.tile(gx, w.ground_y(gx) + 8) == PixelTiles.ID["mossy"], "castle tower builds")
+
+
 func _save(studio: Studio) -> void:
 	var w: PixelWorld = studio.world
 	w.set_tile(5, 30, PixelTiles.ID["gold"])
@@ -223,4 +267,5 @@ func _save(studio: Studio) -> void:
 	ok(d["style"] == "pixel" and (d["world"] as Dictionary).has("fg"), "saves the tile layers")
 	var err := studio.load_data(JSON.parse_string(JSON.stringify(d)))
 	ok(err == "" and (studio.world as PixelWorld).tile(5, 30) == PixelTiles.ID["gold"], "loads them back")
+	ok((studio.world as PixelWorld).backdrop == "city", "the backdrop is saved")
 	ok(studio.actors.size() == (d["cast"] as Array).size(), "cast comes back")

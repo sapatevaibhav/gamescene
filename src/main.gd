@@ -12,6 +12,8 @@ var home: Home
 var hud: Hud
 var icons := IconStudio.new()
 var busy := PanelContainer.new()
+## Dims (see-through) whatever is behind "Building your scene…".
+var busy_bg := ColorRect.new()
 
 # Input state.
 var _ptrs := {}          # index -> {role, start, pos, t0, moved, button}
@@ -56,10 +58,15 @@ func _ready() -> void:
 	home.open_project.connect(_open_project)
 	hud.go_home.connect(_go_home)
 
+	busy_bg.color = Color(0.04, 0.05, 0.08, 0.55)
+	busy_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	busy_bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	busy_bg.visible = false
+	root.add_child(busy_bg)
 	busy.add_theme_stylebox_override("panel", UIK.glass(16))
 	var bl := UIK.label("Building your scene…", 16, Color.WHITE, true)
 	busy.add_child(bl)
-	busy.visible = false
+	_hide_busy()
 	root.add_child(busy)
 
 	hud.set_home_mode(true)
@@ -69,8 +76,14 @@ func _ready() -> void:
 		_smoke.call_deferred()
 
 
+func _hide_busy() -> void:
+	busy.visible = false
+	busy_bg.visible = false
+
+
 func _show_busy(on: bool) -> void:
 	busy.visible = on
+	busy_bg.visible = on
 	if on:
 		busy.size = busy.get_combined_minimum_size()
 		busy.position = (busy.get_viewport_rect().size - busy.size) / 2
@@ -115,7 +128,7 @@ func _open_project(id: String) -> void:
 	await _show_busy(true)
 	var err := studio.load_data(d)
 	if err != "":
-		busy.visible = false
+		_hide_busy()
 		App.toast(err)
 		return
 	studio.project_id = id
@@ -124,7 +137,7 @@ func _open_project(id: String) -> void:
 
 
 func _enter_studio() -> void:
-	busy.visible = false
+	_hide_busy()
 	home.visible = false
 	studio.in_studio = true
 	hud.set_home_mode(false)

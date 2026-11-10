@@ -474,3 +474,9 @@ class TimelineView:
 			"cue_end":
 				_drag_cue["dur"] = snappedf(maxf(0.5, t - float(_drag_cue.get("start", 0))), 0.1)
 		queue_redraw()
+
+
+func _notification(what: int) -> void:
+	# The time label lives outside the tree until the bar is first built.
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(time_label) and time_label.get_parent() == null:
+		time_label.free()

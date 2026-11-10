@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.14.0)
+## What's supported (as of 0.15.0)
 
 ### Platforms and engine
 
@@ -27,8 +27,8 @@ Update this file in the same change as the code: add entries under
 |---|---|---|---|
 | Blocky | Voxel, 80 × 24 × 80 blocks | Lambert, pixel textures | ~190 built-in blocks, custom blocks, 7 prefabs |
 | Anime fantasy | Heightmap, 80 × 80 m | Cel shading with tinted shadows and rim light | Forest glade, leaf-card trees, painted grass, ruins |
-| Pixel 2D · side view | Side-on tiles, 80 × 40 tiles (1 tile = 1 m), parallax backdrop | Unlit pixel art, 16 px per tile, orthographic camera snapped to the pixel grid | 25 tiles, 6 buildings, sprite characters with every action, ladders, see-through water |
-| Pixel 2D · top view | Top-down ground, 80 × 80 tiles | Same pixel shading, camera straight down | 10 ground tiles, 14 objects, characters facing front, back and sides |
+| Pixel 2D · side view | Side-on tiles, 80 × 40 tiles (1 tile = 1 m), 5 parallax backdrops | Unlit pixel art, 16 px per tile, orthographic camera snapped to the pixel grid | 35 tiles, 9 buildings, sprite characters with every action, ladders, swimmable water |
+| Pixel 2D · top view | Top-down ground, 80 × 80 tiles, plus house interiors | Same pixel shading, camera straight down | 15 ground tiles, 33 objects, houses you can enter, a swimmable pond, characters facing front, back and sides |
 | Low-poly | Heightmap, 80 × 80 m | Flat-faceted | Village layout |
 
 Worlds are bounded. Scenes saved at the old 48 m size open centred in the 80 m world.
@@ -39,6 +39,7 @@ Worlds are bounded. Scenes saved at the old 48 m size open centred in the 80 m w
 |---|---|---|---|
 | Characters | Anime: `.glb`, `.vrm`, `.gltf`, `.fbx`. Low-poly: `.glb`, `.gltf`, `.fbx` (up to 15k triangles). Not in blocky | Add → Character → 3D models | Converted to self-contained `.glb`; textures gathered from nearby folders; cel-shaded in the anime style. Each import belongs to the style it was imported in |
 | Environment objects | `.glb`, `.gltf`, `.fbx` (pick many at once; low-poly up to 20k triangles). Not in blocky | Add → Objects → Your 3D objects | Leaves get alpha cut-out and wind; small objects don't collide; trees collide at the trunk. Per style, like characters |
+| Pixel tile sets | `.png`, `.webp` grids of 16, 32 or 8 px tiles. Pixel 2D only, per view | Tiles/Ground → Your tile sets | Side view: in the way or behind; top view: ground |
 | Pixel sprites (characters and objects) | `.png`, `.webp` sheets (strip, RPG grid, single), `.ase`, `.aseprite` (frames, layers, tags as actions). Pixel 2D only, per view | Add → Sprite; Add a character → Your sprites; Buildings/Objects → Your sprites | Aseprite tags with `_down`/`_up`/`_left`/`_right` set top-view directions |
 | Blocky skins | `.png` 64×64 or legacy 64×32. Blocky only | Add → Character → Upload skin, or Add → Skin | Slim arms supported |
 | Custom blocks | `.png` / `.jpg` / `.webp` (scaled to 16×16), or pattern + colours | Blocks → Make your own block | Saved inside the scene |
@@ -90,10 +91,67 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 
 ## [Unreleased]
 
+### Added
+- **Sleeping looks like sleeping.** Eyes close in every style:
+  - Built-in anime and low-poly characters and creatures squash their eyes shut.
+  - Blocky characters get skin-coloured eyelids over their painted eyes.
+  - Imported models use their own face shapes when they have them: blink or eye-close shapes on VRM, VRoid, Apple-style and MMD models, or left/right winks as on the Mavuika model. Models without face shapes (like the Furina model) keep their eyes open.
+  - Little "z Z z" letters drift up and fade from every sleeper's head, including Pixel 2D sprites. While someone sleeps, their name tag and speech bubble sit over their head instead of floating where they'd be standing.
+- **Blinking:** awake characters blink every few seconds.
+- Tests: `test_sleep`.
+
 ### Changed
-- Popups (scene name, rename, confirmations) dim and blur everything behind them, so the popup stands out.
+- "Building your scene…" now has a see-through dark backdrop instead of leaving the screen as it was.
+- **Swimming stays upright everywhere.** No more lying flat: in 3D, entering deep water used to tip the character over abruptly, and turning while swimming looked like a sudden snap. Swimmers now pull with their arms and kick with their head and shoulders out, with a forward lean that eases in when moving. The side view is back to the upright stroke.
+- **Top view house interiors** show only the room you're in, with plain black around it. Outdoors, no interiors are visible. Rooms sit well away from the map, so you can't see into them from its edge.
+- Top view: swimmers are drawn where they actually are (the waterline at their position, not on the sand behind), and the ripple under a swimmer is only as wide as the body.
 
 ### Fixed
+- **Imported characters slept on their side or face down** whenever they weren't facing straight ahead. The lying-down rotation was applied in the wrong order. They now lie on their back facing the sky, like the built-in characters, at any angle. They also stood up for a moment whenever they spoke a line in their sleep.
+- The camera hid a sleeping character whenever it was anywhere within their standing height above them, so looking down on a sleeper could make them vanish.
+- **Warnings on closing the app** ("RIDs were leaked", "ObjectDB instances were leaked at exit"). Fixed three causes: two unused grids on the home screen, a timeline label that was never shown, and pairs of chatting characters that kept each other alive.
+- **Some imported characters stood with elbows sticking out and didn't show the new actions properly** (for example models exported from 3ds Max with a Biped rig). These rigs are stored with the elbows and knees already bent, and the built-in poses bent them further from there. Forearms and shins are now straightened along the upper limb first, so every pose (idle, chat, dance, wave, sit, sleep, celebrate, laugh, cry, point, fight, swim) starts from a relaxed, straight limb on any rig. The test checks idle forearm and shin angles on every imported model.
+- **Rocks (anime and low-poly):** you got stuck a short way from boulders and couldn't jump onto even small ones. Rocks used their rectangular bounding box, whose corners stick out past the rounded rock, and their full height everywhere. They now collide and are walked on as domes: you can walk right up to the edge, step onto low edges, and a short hop lands you standing on top.
+- **3D swimming camera:** the follow camera kept snapping in close (almost first person). It refuses to dip into the water, and a swimmer's head bobs right at the surface. While swimming it now orbits a point a little above the water.
+- **Pixel 2D: you couldn't remove trees, houses or objects.**
+  - The Objects/Buildings tool has **Place** and **Erase** modes, and right click also removes.
+  - **Top view:** erasing (also in the Ground tool) removes the object whose picture you click, such as a tree's canopy or a house's roof, not just its base tile. Dragging erases everything you pass over.
+  - **Side view:** erasing removes the whole tree or building you click (every connected tile) and leaves the ground alone.
+  - Undo works for all of it.
+- The current tile's picture in the 2D tool strip overflowed its button.
+- **Ground sculpting lagged badly (under 10 fps).** Every brush stroke rebuilt the whole 80 × 80 terrain (about 330 ms in the anime style). The ground is now split into 64 chunks and only the ones under the brush are rebuilt (about 4 ms per stroke), and each vertex is computed once instead of six times (a full rebuild is now about 60 ms).
+- Swimming switched on and off near the surface (the water check sat above the feet), and a tree above a pool made the blocky style think the water was shallow. Swimming now goes by the real depth under the swimmer.
+- Walk cycle (Pixel 2D): the back leg kicked far back and looked broken. The passing frames now bend the knee naturally.
+- Name tags sat over swimmers' faces in the top view.
+- Thin lines between tiles where a neighbouring tile's colour bled in (all Pixel 2D tiles now sample half a texel inside their cell).
+
+## [0.15.0] - 2026-11-09
+
+### Added
+- **Swimming in every style.** Deep water is no longer a wall: characters float with their head and shoulders above it, move at about half speed, and switch to a swim animation. Swimming into a bank hauls you out onto it (it clears a step above the water). NPCs still keep out of water when wandering.
+  - Built-in 3D characters tread water (arms sweep, legs kick, leaning into the stroke when moving), and imported models get the same pose, or their own `swim` clip.
+  - Pixel 2D sprites have two swim frames with the body cut off at a rippled waterline. Imported sprites use a `swim` tag, or fall back to walk.
+  - **Side view:** water tiles more than about chest deep are swum.
+  - **Top view:** the pond is swum across slowly.
+  - **3D worlds:** dig below the water line with the ground tool to make a pond deep enough to swim in. The default ponds are shallow and are waded through.
+- **Houses you can walk into (top view).** Each house gets its own room: walls, a wooden floor, a rug, and a bed, table, chair, bookshelf, fireplace, chest and pot plants. Walk into a house's door to go in, and through the room's door to come back out. Pets that follow you come along. A house you place gets a room too, up to 8 houses with rooms per scene, and removing the house removes its room.
+- **More Pixel 2D content:**
+  - **Side view:** 10 new tiles (mossy stone, marble, crate, hay, cloud, bookshelf, vines, mushroom, torch and banner; torches glow at night) and 3 new buildings (castle tower, brick house, lamp post).
+  - **Side-view backdrops**, chosen in the Mood sheet and saved with the scene: Hills, Mountains, Forest, Desert and Night city (buildings with lit windows).
+  - **Top view:** 5 new ground tiles (cobble, swamp, ice, carpet, wall) and 19 new objects (statue, fountain, tent, barrel, cart, stump, dead tree, palm, cactus, bench, haystack, torch, chest, bed, table, chair, bookshelf, pot plant, fireplace).
+- **Tile-set imports (Pixel 2D).** Import a `.png`/`.webp` grid of 16, 32 or 8 px tiles from Tiles/Ground → Your tile sets; empty cells are skipped. Every tile can then be painted:
+  - **Side view:** "in the way" or "behind the characters".
+  - **Top view:** as ground.
+
+  Each scene saves the imported tiles it uses (up to 150), and each view keeps its own tile sets.
+- Tests: `test_swim` (swimming in every world, pets). Plus houses, top-view swimming, tile sets, backdrops and the new content in `test_pixel_top`, `test_sprites` and `test_pixel`. `look_pixel` renders the new side-view content, an interior, swimming in both 2D views, and a 3D swimmer.
+
+### Changed
+- Popups (scene name, rename, confirmations) dim and blur everything behind them, so the popup stands out.
+- Top view: name tags and speech bubbles sit above the head instead of at the feet.
+
+### Fixed
+- **Pets** now start a step beside the player instead of on the same spot. In the top view, the dog was spawning right on top of you because the cast was longer than the list of starting spots. Larger casts are spread out the same way.
 - Card text overflowed in the new-scene popup and the Add sheet. Cards now grow to fit their text, and the shortest wording is used.
 - Top view: walking up (seen from behind) drew the hero's cape over the stomach area. From behind, the cape now covers the back; from the front, only the shoulder clasps show.
 

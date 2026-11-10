@@ -141,6 +141,14 @@ func _pose_model(studio: Studio, id: String) -> void:
 	var idle: Dictionary = run.call("idle")
 	var fwd := Vector3(0, 0, 1)  # yaw 0 faces +Z
 	ok(idle["hr"].y < idle["sr"].y - 0.15 * h, "%s: idle arms hang down" % tag)
+	# Rigs stored with bent elbows/knees (e.g. Biped exports) still stand relaxed:
+	# forearms and shins hang close to straight down when idle.
+	var elbow_r := w.call(bones["lowerArmR"]) as Vector3
+	var fore := (idle["hr"] - elbow_r).normalized() as Vector3
+	ok(rad_to_deg(fore.angle_to(Vector3.DOWN)) < 30.0, "%s: idle forearms hang relaxed (%.0f° from straight down)" % [tag, rad_to_deg(fore.angle_to(Vector3.DOWN))])
+	var foot_l := ModelRig._main_child(sk, bones["lowerLegL"])
+	var shin := ((w.call(foot_l) as Vector3) - (w.call(bones["lowerLegL"]) as Vector3)).normalized()
+	ok(rad_to_deg(shin.angle_to(Vector3.DOWN)) < 15.0, "%s: idle shins are straight (%.0f°)" % [tag, rad_to_deg(shin.angle_to(Vector3.DOWN))])
 	var talk: Dictionary = run.call("talk", 0.5, true)
 	ok((talk["hr"] - idle["hr"]).length() > 0.05 * h, "%s: talking gestures" % tag)
 	var dance: Dictionary = run.call("dance", 1.0)

@@ -16,7 +16,7 @@ const STATES := {
 	"idle": ["idle", "stand", "breath"], "walk": ["walk", "move"], "run": ["run", "sprint"], "jump": ["jump", "fall"],
 	"dance": ["dance"], "wave": ["wave", "hello"], "sit": ["sit"], "sleep": ["sleep", "lie"], "celebrate": ["celebrat", "cheer", "victory", "win"],
 	"laugh": ["laugh"], "cry": ["cry", "sad"], "point": ["point"], "attack": ["attack", "slash", "punch", "hit", "swing"],
-	"fight": ["fight", "guard", "combat"], "talk": ["talk", "speak"], "hurt": ["hurt", "damage", "ouch"], "climb": ["climb"],
+	"fight": ["fight", "guard", "combat"], "talk": ["talk", "speak"], "hurt": ["hurt", "damage", "ouch"], "climb": ["climb"], "swim": ["swim", "paddle"],
 }
 const DIRS := {"down": "front", "front": "front", "south": "front", "up": "back", "back": "back", "north": "back",
 	"left": "side", "right": "side", "side": "side", "east": "side", "west": "side"}
@@ -387,7 +387,7 @@ static func _anims_from_tags(tags: Array, n: int) -> Dictionary:
 # ---------------------------------------------------------------- use
 
 ## Frame names from PixelSprites ("walk2", "cel0"...) -> states.
-const NAME_STATE := {"cel": "celebrate", "atk": "attack", "guard": "fight"}
+const NAME_STATE := {"cel": "celebrate", "atk": "attack", "guard": "fight", "tread": "swim"}
 
 
 static func frame_index(m: Dictionary, name: String, facing: String, t: float) -> int:
@@ -402,6 +402,8 @@ static func frame_index(m: Dictionary, name: String, facing: String, t: float) -
 			tries += ["fight"]
 		"fight":
 			tries += ["attack"]
+		"swim":
+			tries += ["walk:" + facing, "walk"]
 	tries += ["idle:" + facing, "idle"]
 	for k in tries:
 		var seq: Array = anims.get(k, [])

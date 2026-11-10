@@ -49,6 +49,19 @@ var goto := {}
 var crouch := false
 ## Holding onto a ladder (Pixel 2D): no gravity while climbing.
 var on_ladder := false
+## In water deep enough to swim: floats head-up, moves slower.
+var swimming := false
+## Climbing out of the water onto a bank: a short hop that swimming doesn't
+## hold down.
+var _climb_t := 0.0
+## Forward lean while swimming along (eased, so it never snaps).
+var _swim_lean := 0.0
+## Eye pieces to squash / eyelids to show / face shapes to drive when the
+## eyes close (sleeping, blinking), and the floating "z Z z" over sleepers.
+var _eyes: Array = []
+var _lids: Array = []
+var _eyes_closed := false
+var _zzz: Node3D = null
 ## Driven by timeline keyframes this tick (behaviours paused).
 var keyed := false
 ## Seconds left in the current attack swing (0 = not attacking).
@@ -104,12 +117,115 @@ func set_look(new_look: Dictionary) -> void:
 	if not rig.is_empty():
 		_free_rig()
 	rig = r
+	_find_eyes()
 	var n := root()
 	n.set_meta("actor_id", id)
 	n.position = pos
 	n.rotation.y = yaw
 	studio.actor_layer.add_child(n)
 	refresh_tag()
+
+
+func _find_eyes() -> void:
+	_eyes.clear()
+	_lids.clear()
+	_eyes_closed = false
+	var stack: Array = [root()] if root() else []
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n.has_meta("eye") and n is Node3D:
+			_eyes.append([n, (n as Node3D).scale])
+		elif n.has_meta("lid"):
+			_lids.append(n)
+		stack.append_array(n.get_children())
+
+
+## Shut while sleeping, and a quick blink every few seconds otherwise.
+func _update_eyes() -> void:
+	var closed := behavior == "sleep" or fmod(t + id * 1.7, 4.3) < 0.13
+	if closed == _eyes_closed:
+		return
+	_eyes_closed = closed
+	for e in _eyes:
+		var n: Node3D = e[0]
+		var base: Vector3 = e[1]
+		if is_instance_valid(n):
+			n.scale = Vector3(base.x, base.y * (0.12 if closed else 1.0), base.z)
+	for l in _lids:
+		if is_instance_valid(l):
+			(l as Node3D).visible = closed
+	for b in rig.get("blink", []):
+		if is_instance_valid(b[0]):
+			(b[0] as MeshInstance3D).set_blend_shape_value(int(b[1]), 1.0 if closed else 0.0)
+
+
+## Where the head is in the world right now (follows the rig, so it is
+## right for a sleeper lying down too).
+func head_point() -> Vector3:
+	var sk: Skeleton3D = rig.get("skel")
+	var bones: Dictionary = rig.get("bones", {})
+	if sk and bones.has("head") and sk.is_inside_tree():
+		return sk.global_transform * sk.get_bone_global_pose(int(bones["head"])).origin
+	var h: Node3D = rig.get("head")
+	if h and h.is_inside_tree() and rig.get("kind", "") != "sprite":
+		return h.global_position
+	return Vector3(pos.x, head_y(), pos.z)
+
+
+## Little z's drifting up from a sleeper, and the name tag / speech bubble
+## brought down to the head while they lie there.
+func _update_zzz() -> void:
+	var asleep := behavior == "sleep" and not rig.is_empty()
+	var flat: bool = studio.world != null and (studio.world.get("is_top") == true or studio.world.get("is_side") == true or rig.get("kind", "") == "sprite")
+	var hp := head_point() if asleep and not flat else Vector3.ZERO
+	if not rig.is_empty():
+		var tag_y := float(rig["height"]) + 0.12
+		var bub_y := float(rig["height"]) + (0.42 if App.device["names"] else 0.18)
+		if is_instance_valid(tag):
+			if asleep and not flat:
+				tag.global_position = hp + Vector3(0, 0.4 * k(), 0)
+			else:
+				tag.position = Vector3(0, tag_y, 0)
+		if is_instance_valid(bubble):
+			if asleep and not flat:
+				bubble.global_position = hp + Vector3(0, (0.7 if App.device["names"] else 0.45) * k(), 0)
+			else:
+				bubble.position = Vector3(0, bub_y, 0)
+	if not asleep:
+		if _zzz:
+			_zzz.queue_free()
+			_zzz = null
+		return
+	if _zzz == null:
+		_zzz = Node3D.new()
+		for i in 3:
+			var l := Label3D.new()
+			l.text = "z" if i != 1 else "Z"
+			l.font_size = 40 + i * 10
+			l.pixel_size = 0.0035
+			l.outline_size = 12
+			l.outline_modulate = Color(0.1, 0.12, 0.2, 0.9)
+			l.modulate = Color(0.95, 0.97, 1.0)
+			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			l.no_depth_test = true
+			l.render_priority = 5
+			l.shaded = false
+			_zzz.add_child(l)
+		studio.actor_layer.add_child(_zzz)
+	# From the head (north of the sprite on the top-view ground).
+	var top_view: bool = studio.world != null and studio.world.get("is_top") == true
+	var base: Vector3
+	if top_view:
+		base = pos + Vector3(0, 1.0, -0.8)
+	elif flat:
+		base = pos + Vector3(0.25, 0.75 * k(), 0)
+	else:
+		base = hp + Vector3(0.1, 0.2, 0) * k()
+	for i in 3:
+		var ph := fmod(t * 0.45 + i / 3.0, 1.0)
+		var l: Label3D = _zzz.get_child(i)
+		l.position = base + Vector3(ph * 0.45, ph * 0.9, 0) if not top_view else base + Vector3(ph * 0.45, 0, -ph * 0.9)
+		l.modulate.a = sin(ph * PI)
 
 
 func _free_rig() -> void:
@@ -121,6 +237,9 @@ func _free_rig() -> void:
 
 
 func dispose() -> void:
+	if _zzz:
+		_zzz.queue_free()
+		_zzz = null
 	if partner:
 		partner.partner = null
 		partner = null
@@ -227,6 +346,41 @@ static func make_label(text: String, kind: String) -> Node3D:
 
 func move_body(dt: float) -> void:
 	var w = studio.world
+	var surf: float = w.water_surface(pos) if w.has_method("water_surface") else -1.0e9
+	if w.get("is_top") == true:
+		# Top view: water is crossed by swimming, slowly, at ground level.
+		swimming = surf > -1.0e8
+	else:
+		# Swim where the water, down to the bottom, is deeper than about chest
+		# height, and we're in it (not standing on a bank above it).
+		var bottom: float = w.water_bottom(pos) if w.has_method("water_bottom") else w.ground_at(pos.x, pos.z)
+		swimming = surf - bottom > height() * 0.62 and pos.y < surf
+	if _climb_t > 0.0:
+		_climb_t -= dt
+		_move_world(dt, w)
+		return
+	if swimming:
+		var hx := vel.x
+		var hz := vel.z
+		vel.x *= 0.55
+		vel.z *= 0.55
+		if w.get("is_top") != true:
+			# Upright, head and shoulders above the water.
+			var target := surf - height() * 0.72
+			# Cancel gravity (the movers add it) and bob towards the float line.
+			vel.y = clampf((target - pos.y) * 5.0, -4.0, 4.0) + sin(t * 3.0) * 0.15 + 24.0 * dt
+		_move_world(dt, w)
+		vel.x = hx
+		vel.z = hz
+		# Swimming into a bank: haul out onto it (clears a step above the water).
+		if blocked and w.get("is_top") != true and Vector2(hx, hz).length() > 0.5:
+			vel.y = 10.0
+			_climb_t = 0.4
+		return
+	_move_world(dt, w)
+
+
+func _move_world(dt: float, w) -> void:
 	if side():
 		# Pixel 2D: everyone lives on one lane in front of the tiles.
 		pos.z = PixelWorld.LANE
@@ -520,6 +674,8 @@ func animate(dt: float, is_player: bool) -> void:
 		return
 	var m := rig
 	t += dt
+	_update_eyes()
+	_update_zzz()
 	var sp := Vector2(vel.x, vel.z).length()
 	walk += sp * dt * 2.4 / maxf(0.6, k())
 	var amt := minf(1.0, sp / 3.2)
@@ -694,6 +850,21 @@ func animate(dt: float, is_player: bool) -> void:
 		if m.get("pose", "") != "zombie":
 			arm_r.rotation.x = -0.6 + sin(t * 5) * 0.35
 		hpitch += sin(t * 7) * 0.06
+	if swimming and not quad:
+		# Upright: arms pull through the water, legs kick. Swimming along adds
+		# a forward lean that eases in and out.
+		var moving := sp > 0.3
+		_swim_lean = lerpf(_swim_lean, 0.4 if moving else 0.08, 1.0 - exp(-dt * 4.0))
+		var st := t * (5.0 if moving else 3.0)
+		arm_l.rotation = Vector3(-1.2 + sin(st) * 0.9, 0, 0.9 + sin(st) * 0.5)
+		arm_r.rotation = Vector3(-1.2 - sin(st) * 0.9, 0, -0.9 - sin(st) * 0.5)
+		leg_l.rotation = Vector3(sin(st * 1.6) * 0.5, 0, 0)
+		leg_r.rotation = Vector3(-sin(st * 1.6) * 0.5, 0, 0)
+		upper.rotation.x = _swim_lean
+		model.position.y = 0.0
+		hpitch = -0.2 - _swim_lean * 0.5
+	elif _swim_lean > 0.0:
+		_swim_lean = 0.0
 	if crouch and not quad:
 		var drop: float = float(m.get("sitDrop", 0.4)) * 0.45
 		model.position.y -= drop

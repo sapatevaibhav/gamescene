@@ -21,6 +21,8 @@ var actor_id := 0
 var tile := 1
 var pprefab := "cottage"
 var flip := false
+## Objects/buildings tool: "place" or "erase".
+var obj_mode := "place"
 var _last_tile := Vector2i(-1, -1)
 var _paint_button := MOUSE_BUTTON_LEFT
 var painting := false
@@ -71,16 +73,19 @@ func set_tool(k: String, opts := {}) -> void:
 		k = ""
 	for key in opts:
 		set(key, opts[key])
+	if opts.has("pprefab") and not opts.has("obj_mode"):
+		# Picking something to place switches back to placing.
+		obj_mode = "place"
 	# Keep the picked tile / building valid for this kind of world.
 	if studio.is_top():
 		if PixelTopWorld.obj_def(pprefab).is_empty():
 			pprefab = "tree"
-		if tile < 1 or tile >= PixelTopArt.GROUND.size():
+		if tile < 1 or (tile >= PixelTopArt.GROUND.size() and tile < TileSets.CUSTOM_BASE):
 			tile = PixelTopArt.G["grass"]
 	elif studio.is_side():
 		if not PixelTiles.PREFABS.has(pprefab) and not SpriteImport.is_key(pprefab):
 			pprefab = "cottage"
-		if tile < 1 or tile >= PixelTiles.count():
+		if tile < 1 or (tile >= PixelTiles.count() and tile < TileSets.CUSTOM_BASE):
 			tile = PixelTiles.ID["grass"]
 	kind = k
 	if k != "objects":
@@ -143,6 +148,12 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 		"pprefab":
 			var ph: Dictionary = w.ray(o, d, 200.0)
 			if ph.is_empty():
+				return -1
+			if obj_mode == "erase" or button == MOUSE_BUTTON_RIGHT:
+				studio.checkpoint()
+				if not _erase_at(ph):
+					App.toast("Nothing to remove there.")
+				studio.mark_dirty()
 				return -1
 			studio.checkpoint()
 			if studio.is_top():
@@ -258,6 +269,19 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 	return _actor_at(o, d)
 
 
+## Pixel 2D: removes what's under the pointer. Top view: the object whose
+## picture is there. Side view: the whole tree/building (connected tiles).
+func _erase_at(hit: Dictionary) -> bool:
+	var w = studio.world
+	if studio.is_top():
+		var i: int = w.object_at_point(hit["point"])
+		if i < 0:
+			return false
+		w.remove_object(i)
+		return true
+	return w.clear_structure(int(hit["x"]), int(hit["y"])) > 0
+
+
 ## Pixel 2D: paints (or breaks, or picks) the tile under the pointer. Used
 ## for taps and while dragging; each tile is touched once per stroke.
 func _paint_tile(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
@@ -281,11 +305,12 @@ func _paint_tile(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
 				tool_changed.emit()
 				return
 			"break":
-				if not w.remove_object_at(cell.x, cell.y):
+				var oi: int = w.object_at_point(hit["point"])
+				if oi >= 0:
+					w.remove_object(oi)
+				else:
 					w.set_ground(cell.x, cell.y, PixelTopArt.G["grass"])
 			_:
-				if tile >= PixelTopArt.GROUND.size():
-					tile = PixelTopArt.G["grass"]
 				w.set_ground(cell.x, cell.y, tile)
 		studio.mark_dirty()
 		return
@@ -305,11 +330,18 @@ func _paint_tile(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
 				return
 			w.set_tile(cell.x, cell.y, 0)
 		_:
-			if PixelTiles.is_solid(tile) and _actor_on_tile(cell):
+			if w.tile_solid(tile) and _actor_on_tile(cell):
 				App.toast("Someone’s standing there.")
 				return
 			w.set_tile(cell.x, cell.y, tile)
 	studio.mark_dirty()
+
+
+func _erase_drag(screen: Vector2) -> void:
+	var r := _ray(screen)
+	var hit: Dictionary = studio.world.ray(r[0], r[1], 200.0)
+	if not hit.is_empty() and _erase_at(hit):
+		studio.mark_dirty()
 
 
 func _actor_on_tile(c: Vector2i) -> bool:
@@ -357,9 +389,10 @@ func _unstick_actors() -> void:
 				a.pos.z = s.y
 
 
-## Tools that act while dragged (ground sculpting, tile painting).
+## Tools that act while dragged (ground sculpting, tile painting, erasing
+## 2D objects).
 func paints() -> bool:
-	return kind in ["terrain", "tiles"]
+	return kind in ["terrain", "tiles"] or (kind == "pprefab" and obj_mode == "erase")
 
 
 func begin_paint(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
@@ -372,12 +405,16 @@ func begin_paint(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
 		_last_tile = Vector2i(-1, -1)
 		_paint_button = button
 		_paint_tile(screen, button)
+	elif kind == "pprefab":
+		_erase_drag(screen)
 
 
 func paint(screen: Vector2) -> void:
 	paint_pos = screen
 	if painting and kind == "tiles":
 		_paint_tile(screen, _paint_button)
+	elif painting and kind == "pprefab":
+		_erase_drag(screen)
 
 
 func end_paint() -> void:

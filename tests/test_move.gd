@@ -46,6 +46,20 @@ func _ready() -> void:
 	_sim(st, 45)
 	var blocked_x := pl.pos.x
 	ok(blocked_x < 20.0, "walking is blocked by the rock without jumping (x %.2f)" % blocked_x)
+	var rp: Dictionary = rock
+	var edge: float = 20.0 - float(rp.hw) * float(rp.s) * 0.9
+	ok(edge - blocked_x < 0.45, "you get right up to the rock's edge (gap %.2f m, not stopped by its box)" % (edge - blocked_x))
+	# A short hop forward lands on top of it and you can stand there.
+	var land_x := blocked_x
+	st.input_jump = true
+	_sim(st, 2)
+	st.input_jump = false
+	_sim(st, 6)
+	st.input_move = Vector2.ZERO
+	_sim(st, 40)
+	var on_top: bool = pl.pos.y > w.terrain_h(pl.pos.x, pl.pos.z) + 0.3 and absf(pl.pos.y - w.prop_top(pl.pos.x, pl.pos.z)) < 0.15
+	ok(on_top, "a hop lands you standing on the rock (y %.2f, rock surface %.2f, from x %.2f to %.2f)" % [pl.pos.y, w.prop_top(pl.pos.x, pl.pos.z), land_x, pl.pos.x])
+	st.input_move = Vector2(0, 1)
 	st.input_jump = true
 	_sim(st, 40)
 	st.input_jump = false
@@ -58,7 +72,11 @@ func _ready() -> void:
 	st.input_move = Vector2(0, 1)
 	_sim(st, 45)
 	ok(Vector2(pl.pos.x - 20, pl.pos.z - 20).length() > 1.0, "can walk out of a rock you're stuck in (moved to %s)" % pl.pos)
-	# Sprint vs crouch distance over one second.
+	# Sprint vs crouch distance over one second (clear the way first: the
+	# world is random and a tree or rock in the path would stop the run).
+	for q in w.props.duplicate():
+		if Vector2(q.x - 30, q.z - 30).length() < 14:
+			w.remove_prop(q)
 	pl.pos = Vector3(30, w.ground_at(30, 30), 30)
 	st.input_sprint = true
 	var p0 := pl.pos

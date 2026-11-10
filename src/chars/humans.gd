@@ -345,9 +345,14 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 	for s in [-1.0, 1.0]:
 		hc.add_child(_sph(0.028, 10, 8, mS, s * r * 0.93, -r * 0.1, -r * 0.05))
 	var eye := anime_tex("eye", g.call("eyes", "#3c78d8"))
-	face_decal(hc, eye, -r * 0.38, -r * 0.14, r, r * 0.5, r * 0.74, 0.06)
+	var eye_l := face_decal(hc, eye, -r * 0.38, -r * 0.14, r, r * 0.5, r * 0.74, 0.06)
 	var eye_r := face_decal(hc, eye, r * 0.38, -r * 0.14, r, r * 0.5, r * 0.74, -0.06)
 	eye_r.scale.x = -1
+	# Tagged so the actor can close them (sleep, blinking).
+	eye_l.set_meta("eye", true)
+	eye_l.set_meta("keep", true)
+	eye_r.set_meta("eye", true)
+	eye_r.set_meta("keep", true)
 	var brow := anime_tex("brow", U.shade_hex(g.call("hair", "#3b2a1e"), 0.7))
 	face_decal(hc, brow, -r * 0.38, r * 0.3, r, r * 0.4, r * 0.1, 0.12)
 	var brow_r := face_decal(hc, brow, r * 0.38, r * 0.3, r, r * 0.4, r * 0.1, -0.12)
@@ -523,7 +528,10 @@ static func build_anime_creature(cfg: Dictionary) -> Dictionary:
 			var ear := Kit.cone(0.055, 0.16, 6, fur, s * 0.09, 0.17, -0.02)
 			ear.rotation.z = -s * 0.25
 			head.add_child(ear)
-			head.add_child(_sph(0.025, 8, 6, M(str(cfg["eye"]) if cfg.get("eye") else "#f2c14e", {"glow": true}), s * 0.075, 0.04, 0.15))
+			var we := _sph(0.025, 8, 6, M(str(cfg["eye"]) if cfg.get("eye") else "#f2c14e", {"glow": true}), s * 0.075, 0.04, 0.15)
+			we.set_meta("eye", true)
+			we.set_meta("keep", true)
+			head.add_child(we)
 		var tail := Kit.cone(0.07, 0.45, 8, fur, 0, 0.32, -0.5)
 		tail.rotation.x = -2.2
 		upper.add_child(tail)
@@ -557,8 +565,14 @@ static func build_lowpoly(cfg: Dictionary) -> Dictionary:
 	var eye := M("#1c1a22")
 	var shine := M("#ffffff", {"glow": true})
 	for s in [-1.0, 1.0]:
-		hc.add_child(Kit.box(0.035, 0.06, 0.02, eye, s * 0.08, 0.02, r * 0.92))
-		hc.add_child(Kit.box(0.012, 0.014, 0.01, shine, s * 0.08 - 0.008, 0.035, r * 0.92 + 0.012))
+		var e := Kit.box(0.035, 0.06, 0.02, eye, s * 0.08, 0.02, r * 0.92)
+		var sh := Kit.box(0.012, 0.014, 0.01, shine, s * 0.08 - 0.008, 0.035, r * 0.92 + 0.012)
+		e.set_meta("eye", true)
+		e.set_meta("keep", true)
+		sh.set_meta("eye", true)
+		sh.set_meta("keep", true)
+		hc.add_child(e)
+		hc.add_child(sh)
 	hc.add_child(Kit.box(0.05, 0.05, 0.05, M(U.shade_hex(skin, 0.9)), 0, -0.04, r * 0.95))
 	if cfg.get("beard"):
 		var bd := Kit.cone(r * 0.65, r * 0.9, 6, M(cfg["beard"]), 0, -r * 0.7, r * 0.45)
