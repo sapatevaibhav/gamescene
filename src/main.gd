@@ -160,6 +160,7 @@ func _enter_studio() -> void:
 
 func _go_home() -> void:
 	_release_mouse()
+	hud.stop_shot_preview()
 	if studio.recorder.active:
 		studio.recorder.stop()
 	if studio.project_id != "":
@@ -231,6 +232,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if k.keycode == KEY_ESCAPE:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			_release_mouse()
+		elif hud.previewing():
+			hud.stop_shot_preview(true)
 		elif hud.sheet.visible:
 			hud.close_sheet()
 		elif studio.tools.kind != "":

@@ -260,6 +260,7 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 				var head_p := Kit._local_xf(root, sk) * sk.get_bone_global_rest(rig["bones"]["head"]).origin
 				rig["headH"] = clampf(head_p.y + 0.06, 0.4, rig["height"])
 	rig["blink"] = _blink_shapes(scene) if scene else []
+	rig["mouth"] = _mouth_shapes(scene) if scene else []
 	# Framing hints for thumbnails (skinned mesh bounds can't be trusted).
 	root.set_meta("frame_h", float(rig["height"]))
 	root.set_meta("head_h", float(rig["headH"]))
@@ -284,6 +285,27 @@ static func _blink_shapes(scene: Node) -> Array:
 			elif nm.contains("blink") or nm.contains("winka") or (nm.contains("eye") and nm.contains("close")):
 				sides.append([mi, i])
 	return both if not both.is_empty() else sides
+
+
+## Face shapes that open the mouth: [[MeshInstance3D, shape index], ...].
+## Covers VRM/VRoid ("A", "aa", "Fcl_MTH_A"), ARKit ("jawOpen"), MMD
+## ("あ") and game exports ("Mouth_A01", "Mouth_Open01").
+static func _mouth_shapes(scene: Node) -> Array:
+	var best := []
+	var loose := []
+	for n in AssetLib._find_all(scene, "MeshInstance3D"):
+		var mi := n as MeshInstance3D
+		if not (mi.mesh is ArrayMesh):
+			continue
+		var am := mi.mesh as ArrayMesh
+		for i in am.get_blend_shape_count():
+			var nm := String(am.get_blend_shape_name(i)).to_lower().replace(" ", "_")
+			if nm in ["a", "aa", "vrc.v_aa", "fcl_mth_a", "mth_a", "mouth_a", "jawopen", "jaw_open", "mouthopen", "mouth_open", "あ", "mouth_a01", "v_aa"]:
+				best.append([mi, i])
+			elif nm.contains("mouth") and (nm.contains("open") or nm.ends_with("_a01") or nm.ends_with("_a")):
+				loose.append([mi, i])
+	var out := best if not best.is_empty() else loose
+	return out.slice(0, 1)
 
 
 ## Game-style rigs: hide VFX-only meshes, and stop vertex colours (often

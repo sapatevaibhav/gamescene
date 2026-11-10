@@ -6,7 +6,7 @@ extends Node
 const SCRATCH := "user://test_projects/"
 ## Holding the classes keeps their redirected static paths alive: Godot
 ## unloads (and resets) scripts nothing references.
-var _hold := [ProjectStore, ModelRig, AssetLib]
+var _hold := [ProjectStore, ModelRig, AssetLib, AudioFiles, Recorder]
 
 
 func _ready() -> void:
@@ -16,6 +16,8 @@ func _ready() -> void:
 	ProjectStore.DIR = SCRATCH
 	ModelRig.DIR = SCRATCH + "models/"
 	AssetLib.DIR = SCRATCH + "props/"
+	AudioFiles.DIR = SCRATCH + "audio/"
+	Recorder.DIR_OVERRIDE = SCRATCH + "exports/"
 	AssetTags.reload()
 	var args := OS.get_cmdline_user_args()
 	var name: String = args[0] if args.size() > 0 else "test_core"

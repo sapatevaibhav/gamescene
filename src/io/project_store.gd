@@ -98,8 +98,9 @@ static func duplicate_project(id: String) -> String:
 	return nid
 
 
-## Writes a portable project file. Imported models are embedded as base64 so
-## the file opens on another device without the asset store.
+## Writes a portable project file. Imported models, objects and sounds are
+## embedded as base64 so the file opens on another device without the asset
+## store.
 static func export_to(id: String, path: String) -> bool:
 	var d := load_project(id)
 	if d.is_empty():
@@ -115,8 +116,12 @@ static func export_to(id: String, path: String) -> bool:
 			var pid := AssetLib.id_of(str(e[0]))
 			if FileAccess.file_exists(AssetLib.DIR + pid):
 				props[pid] = Marshalls.raw_to_base64(FileAccess.get_file_as_bytes(AssetLib.DIR + pid))
-	if not models.is_empty() or not props.is_empty():
-		d["assets"] = {"models": models, "props": props}
+	var sounds := {}
+	for sid in Sounds.files_used(d):
+		if AudioFiles.has(sid):
+			sounds[sid] = Marshalls.raw_to_base64(FileAccess.get_file_as_bytes(AudioFiles.DIR + sid))
+	if not models.is_empty() or not props.is_empty() or not sounds.is_empty():
+		d["assets"] = {"models": models, "props": props, "sounds": sounds}
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return false
@@ -147,6 +152,11 @@ static func import_from(path: String) -> String:
 		var pf := FileAccess.open(AssetLib.DIR + pid, FileAccess.WRITE)
 		if pf:
 			pf.store_buffer(Marshalls.base64_to_raw(assets["props"][pid]))
+	for sid in (assets.get("sounds", {}) as Dictionary):
+		DirAccess.make_dir_recursive_absolute(AudioFiles.DIR)
+		var sf := FileAccess.open(AudioFiles.DIR + sid, FileAccess.WRITE)
+		if sf:
+			sf.store_buffer(Marshalls.base64_to_raw(assets["sounds"][sid]))
 	d.erase("assets")
 	var id := new_id()
 	if not d.has("name"):
@@ -176,6 +186,12 @@ static func migrate(d: Dictionary) -> Dictionary:
 		if not d.has("keys"):
 			d["keys"] = {}
 		d["v"] = 4
+	if int(d.get("v", 4)) < 5:
+		# v5 adds sound clips on the timeline (sound settings default when
+		# missing).
+		if not d.has("audio"):
+			d["audio"] = []
+		d["v"] = 5
 	return d
 
 

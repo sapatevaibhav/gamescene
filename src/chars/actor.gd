@@ -62,6 +62,10 @@ var _eyes: Array = []
 var _lids: Array = []
 var _eyes_closed := false
 var _zzz: Node3D = null
+## Talking mouths: [node, base scale] shown open, and the closed mouth nodes.
+var _mouths: Array = []
+var _mouth_shut: Array = []
+var _mouth_open := 0.0
 ## Driven by timeline keyframes this tick (behaviours paused).
 var keyed := false
 ## Seconds left in the current attack swing (0 = not attacking).
@@ -129,6 +133,9 @@ func set_look(new_look: Dictionary) -> void:
 func _find_eyes() -> void:
 	_eyes.clear()
 	_lids.clear()
+	_mouths.clear()
+	_mouth_shut.clear()
+	_mouth_open = 0.0
 	_eyes_closed = false
 	var stack: Array = [root()] if root() else []
 	while not stack.is_empty():
@@ -137,6 +144,10 @@ func _find_eyes() -> void:
 			_eyes.append([n, (n as Node3D).scale])
 		elif n.has_meta("lid"):
 			_lids.append(n)
+		elif n.has_meta("mouth_open") and n is Node3D:
+			_mouths.append([n, (n as Node3D).scale])
+		elif n.has_meta("mouth"):
+			_mouth_shut.append(n)
 		stack.append_array(n.get_children())
 
 
@@ -170,6 +181,36 @@ func head_point() -> Vector3:
 	if h and h.is_inside_tree() and rig.get("kind", "") != "sprite":
 		return h.global_position
 	return Vector3(pos.x, head_y(), pos.z)
+
+
+## How open the mouth is while talking (0..1): syllables with short pauses
+## between words. From the actor's clock, so takes repeat exactly.
+func mouth_amount() -> float:
+	if speak_t <= 0.0 or behavior == "sleep":
+		return 0.0
+	if fmod(t * 1.7 + id * 0.37, 1.6) > 1.3:
+		return 0.0
+	return clampf(absf(sin(t * 12.0 + id)) * (0.6 + 0.4 * sin(t * 4.3 + id * 2.0)), 0.0, 1.0)
+
+
+func _update_mouth() -> void:
+	var o := mouth_amount()
+	if o == _mouth_open:
+		return
+	_mouth_open = o
+	var open := o > 0.12
+	for e in _mouths:
+		var n: Node3D = e[0]
+		if is_instance_valid(n):
+			n.visible = open
+			var base: Vector3 = e[1]
+			n.scale = Vector3(base.x, base.y * maxf(0.3, o), base.z)
+	for n in _mouth_shut:
+		if is_instance_valid(n):
+			(n as Node3D).visible = not open
+	for b in rig.get("mouth", []):
+		if is_instance_valid(b[0]):
+			(b[0] as MeshInstance3D).set_blend_shape_value(int(b[1]), o * 0.8)
 
 
 ## Little z's drifting up from a sleeper, and the name tag / speech bubble
@@ -675,6 +716,7 @@ func animate(dt: float, is_player: bool) -> void:
 	var m := rig
 	t += dt
 	_update_eyes()
+	_update_mouth()
 	_update_zzz()
 	var sp := Vector2(vel.x, vel.z).length()
 	walk += sp * dt * 2.4 / maxf(0.6, k())

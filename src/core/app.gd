@@ -4,19 +4,25 @@ extends Node
 signal toast_requested(msg: String)
 signal settings_changed
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 
 ## Per-scene settings are saved with the project; device settings are not.
 var settings := {
 	"time": 11.0, "cycle": false, "weather": "clear", "fog": 110.0, "mood": "day",
 	"frame": "full", "fov": 70.0, "shake": false, "dof": false, "subtitles": true,
 	"fps": 30, "countdown": 3, "restart": true, "res": "1080",
+	"music": "mood", "music_vol": 0.7, "sfx": true, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
+	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true,
 }
 
-const SCENE_KEYS := ["time", "cycle", "weather", "fog", "mood", "frame", "fov", "shake", "dof", "subtitles", "fps", "countdown", "restart", "res"]
+const SCENE_KEYS := ["time", "cycle", "weather", "fog", "mood", "frame", "fov", "shake", "dof", "subtitles", "fps", "countdown", "restart", "res",
+	"music", "music_vol", "sfx", "sfx_vol", "ambience", "amb_vol", "sub_style", "sub_size", "sub_pos", "sub_names"]
+## Sound and subtitle settings a new (or older) scene starts with.
+const AUDIO_DEFAULTS := {"music": "mood", "music_vol": 0.7, "sfx": true, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
+	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true}
 
 var device := {
-	"quality": "high", "show_fps": false, "names": true, "auto_jump": true, "mouse_look": "drag", "ui_scale": 1.0,
+	"quality": "high", "show_fps": false, "names": true, "auto_jump": true, "mouse_look": "drag", "ui_scale": 1.0, "ui_sounds": true,
 }
 
 var is_touch := false
@@ -57,6 +63,16 @@ func _ready() -> void:
 		settings["res"] = "720"
 	load_device()
 	sim_rng.randomize()
+	_warm = WorkerThreadPool.add_task(Synth.prewarm, false, "Make music")
+
+
+var _warm := -1
+
+
+func _exit_tree() -> void:
+	if _warm >= 0:
+		WorkerThreadPool.wait_for_task_completion(_warm)
+		_warm = -1
 
 
 func q() -> Dictionary:
@@ -65,6 +81,29 @@ func q() -> Dictionary:
 
 func toast(msg: String) -> void:
 	toast_requested.emit(msg)
+
+
+func reset_scene_audio() -> void:
+	for k in AUDIO_DEFAULTS:
+		settings[k] = AUDIO_DEFAULTS[k]
+
+
+var _ui_player: AudioStreamPlayer
+
+
+## Interface sounds (the countdown's "beep" and "go"), on the UI bus; off
+## with the "Countdown beeps" setting.
+func ui(name := "click") -> void:
+	if not device.get("ui_sounds", true) or DisplayServer.get_name() == "headless":
+		return
+	if _ui_player == null:
+		SoundDirector.ensure_buses()
+		_ui_player = AudioStreamPlayer.new()
+		_ui_player.bus = "UI"
+		_ui_player.max_polyphony = 4
+		add_child(_ui_player)
+	_ui_player.stream = Synth.sfx(name)
+	_ui_player.play()
 
 
 func set_setting(key: String, value: Variant) -> void:

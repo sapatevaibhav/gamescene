@@ -200,6 +200,17 @@ func _is_water(x: int, y: int, z: int) -> bool:
 	return v != 0 and Blocks.get_block(v).get("kind", "") == "water"
 
 
+## Footstep surface under `p` (see Sounds.surface_of).
+func surface_at(p: Vector3) -> String:
+	var x := int(floor(p.x))
+	var z := int(floor(p.z))
+	for dy in [0.05, 1.05]:
+		var b := get_b(x, int(floor(p.y - dy)), z)
+		if b > 0:
+			return Sounds.surface_of(str(Blocks.get_block(b).get("key", "")))
+	return "grass"
+
+
 func walkable(x: float, z: float) -> bool:
 	return x >= 1.0 and z >= 1.0 and x < WX - 1 and z < WZ - 1 and ground_y(x, z) < WY - 2
 

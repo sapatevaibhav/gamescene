@@ -898,6 +898,9 @@ func v_mood(_a, b: VBoxContainer) -> String:
 			btn.text = "✓ " + m["label"]
 		btn.pressed.connect(func():
 			studio.atmo.apply_mood(k)
+			# The music follows the new mood, unless you picked your own file.
+			if str(App.settings.get("music", "")).begins_with("tune:"):
+				App.settings["music"] = "mood"
 			studio.mark_dirty()
 			_rerender())
 		g.add_child(btn)
@@ -999,7 +1002,9 @@ func v_film(_a, b: VBoxContainer) -> String:
 	var sz := App.export_size(vs.x / vs.y)
 	var enc := "H.264 MP4 (ffmpeg)" if Recorder.ffmpeg_path() != "" else "Motion-JPEG AVI (install ffmpeg for MP4)"
 	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, enc], 12))
-	b.add_child(UIK.toggle("Burn in subtitles for dialogue", App.settings["subtitles"], func(on): App.settings["subtitles"] = on; studio.mark_dirty()))
+	b.add_child(UIK.toggle("Burn in subtitles for dialogue", App.settings["subtitles"], func(on): App.settings["subtitles"] = on; studio.mark_dirty(); _rerender()))
+	if App.settings["subtitles"]:
+		_subtitle_options(b)
 	b.add_child(UIK.toggle("Restart cinematic shot when a take starts", App.settings["restart"], func(on): App.settings["restart"] = on))
 	var cd := UIK.flow()
 	for n in [0, 3, 5]:
@@ -1066,9 +1071,7 @@ func v_shot(i: Variant, b: VBoxContainer) -> String:
 	b.add_child(UIK.toggle("Fade in", s.get("fade_in", false), func(on): s["fade_in"] = on; studio.mark_dirty()))
 	b.add_child(UIK.toggle("Fade out", s.get("fade_out", false), func(on): s["fade_out"] = on; studio.mark_dirty()))
 	var r := UIK.flow()
-	r.add_child(UIK.btn("Preview", func():
-		studio.apply_shot(s)
-		hud.close_sheet(), false, "playtri"))
+	r.add_child(UIK.btn("Preview", func(): hud.start_shot_preview(idx), false, "playtri"))
 	if idx > 0:
 		r.add_child(UIK.btn("Move up", func():
 			studio.shots.remove_at(idx)
@@ -1105,6 +1108,7 @@ func v_settings(_a, b: VBoxContainer) -> String:
 	b.add_child(UIK.toggle("Auto-jump onto blocks", App.device["auto_jump"], func(on): App.set_device("auto_jump", on)))
 	b.add_child(UIK.toggle("Lock the mouse to look around", App.device["mouse_look"] == "capture", func(on): App.set_device("mouse_look", "capture" if on else "drag")))
 	b.add_child(UIK.toggle("Show frame rate", App.device["show_fps"], func(on): App.set_device("show_fps", on)))
+	b.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", true), func(on): App.set_device("ui_sounds", on)))
 	b.add_child(UIK.slider("Interface size", App.device["ui_scale"], 0.8, 1.6, 0.05, func(x): App.set_device("ui_scale", x), func(x): return "%d%%" % int(x * 100)))
 	b.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
 	_section(b, "This scene")
@@ -1143,3 +1147,202 @@ func v_settings(_a, b: VBoxContainer) -> String:
 	credits.meta_clicked.connect(func(url): OS.shell_open(str(url)))
 	b.add_child(credits)
 	return "Settings"
+
+
+# ---------------------------------------------------------------- sound
+
+## A row for a sound: name, a play/stop preview button and a pick action.
+func _sound_row(key: String, sub: String, on: bool, cb: Callable) -> Control:
+	var h := UIK.hbox(6)
+	var pick := Button.new()
+	pick.focus_mode = Control.FOCUS_NONE
+	pick.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	pick.text = Sounds.label(key) + ("   ·  " + sub if sub != "" else "")
+	pick.custom_minimum_size.y = UIK.px(46)
+	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pick.clip_text = true
+	UIK._card_states(pick, on, 12)
+	# Centre the text on the card's face, not face + raised bottom edge.
+	for st in ["normal", "hover", "pressed"]:
+		var sb := pick.get_theme_stylebox(st).duplicate() as StyleBoxFlat
+		sb.content_margin_top -= UIK.px(7)
+		pick.add_theme_stylebox_override(st, sb)
+	pick.pressed.connect(cb)
+	h.add_child(pick)
+	var pv := UIK.icon_btn("pause" if studio.sound.previewing(key) else "playtri", func():
+		studio.sound.preview(key)
+		_rerender(), "Listen", 40, false)
+	h.add_child(pv)
+	return h
+
+
+func _import_sound(then: Callable) -> void:
+	hud.pick_file(PackedStringArray(["*.ogg, *.mp3, *.wav ; Sound files"]), func(path: String):
+		var id := AudioFiles.import_file(path)
+		if id == "":
+			hud.toast(AudioFiles.last_error)
+			return
+		hud.toast("Imported " + AudioFiles.display_name(id) + ".")
+		then.call("file:" + id), "Import music or a sound")
+
+
+## Scene sound: background music, ambience, effects and volumes.
+func v_sound(_a, b: VBoxContainer) -> String:
+	_section(b, "Background music")
+	b.add_child(UIK.para("Plays through the whole scene and in exported videos. For music that starts at a set moment, add it to the timeline's Sound row.", 12))
+	b.add_child(UIK.spacer(2))
+	var cur := str(App.settings.get("music", ""))
+	var top := UIK.flow()
+	top.add_child(UIK.chip("Match the mood", cur == "mood", func():
+		App.settings["music"] = "mood"
+		studio.sound.stop_preview()
+		studio.mark_dirty()
+		_rerender()))
+	top.add_child(UIK.chip("No music", cur == "", func():
+		App.settings["music"] = ""
+		studio.sound.stop_preview()
+		studio.mark_dirty()
+		_rerender()))
+	b.add_child(top)
+	if cur == "mood":
+		var mood := str(App.settings.get("mood", "day"))
+		b.add_child(UIK.para("Playing %s for %s. Changing the mood changes the music (with a crossfade)." % [
+			Sounds.label("tune:" + str(Synth.MOOD_TUNES.get(mood, "meadow"))), str((Styles.MOODS.get(mood, {}) as Dictionary).get("label", mood)).to_lower()], 12))
+	for t in Synth.TUNE_ORDER:
+		var key: String = "tune:" + t
+		b.add_child(_sound_row(key, Synth.TUNES[t]["desc"], cur == key, func():
+			App.settings["music"] = key
+			studio.sound.stop_preview()
+			studio.mark_dirty()
+			_rerender()))
+	for id in AudioFiles.list():
+		var key: String = "file:" + id
+		b.add_child(_sound_row(key, "Imported", cur == key, func():
+			App.settings["music"] = key
+			studio.sound.stop_preview()
+			studio.mark_dirty()
+			_rerender()))
+	b.add_child(UIK.btn("Import music or a sound", func():
+		_import_sound(func(key: String):
+			App.settings["music"] = key
+			studio.mark_dirty()
+			_rerender()), false, "upload"))
+	_section(b, "Ambience")
+	var amb := UIK.flow()
+	for a in Sounds.AMBIENCES:
+		amb.add_child(UIK.chip(a[1], str(App.settings.get("ambience", "auto")) == a[0], func():
+			App.settings["ambience"] = a[0]
+			studio.mark_dirty()
+			_rerender()))
+	b.add_child(amb)
+	if str(App.settings.get("ambience", "auto")) == "auto":
+		var now := Sounds.auto_ambience()
+		for a in Sounds.AMBIENCES:
+			if a[0] == now:
+				b.add_child(UIK.para("Follows the mood and weather: %s right now." % str(a[1]).to_lower(), 12))
+	_section(b, "Effects")
+	b.add_child(UIK.toggle("Footsteps, splashes and hits", App.settings.get("sfx", true), func(on):
+		App.settings["sfx"] = on
+		studio.mark_dirty()))
+	_section(b, "Volume")
+	var pct := func(x: float) -> String: return "%d%%" % int(round(x * 100))
+	b.add_child(UIK.slider("Music", float(App.settings.get("music_vol", 0.7)), 0.0, 1.0, 0.05, func(x):
+		App.settings["music_vol"] = x
+		studio.mark_dirty(), pct))
+	b.add_child(UIK.slider("Effects", float(App.settings.get("sfx_vol", 0.8)), 0.0, 1.0, 0.05, func(x):
+		App.settings["sfx_vol"] = x
+		studio.mark_dirty(), pct))
+	b.add_child(UIK.slider("Ambience", float(App.settings.get("amb_vol", 0.6)), 0.0, 1.0, 0.05, func(x):
+		App.settings["amb_vol"] = x
+		studio.mark_dirty(), pct))
+	b.add_child(UIK.para("Exported videos are mixed at these volumes.", 12))
+	return "Sound"
+
+
+## Picks a sound to put on the timeline at the playhead.
+func v_sounds(_a, b: VBoxContainer) -> String:
+	b.add_child(UIK.para("Starts at %s on the timeline. Drag it to move it, or drag its end to make it shorter or longer (music loops)." % TimelinePanel._fmt(studio.play_t), 12))
+	var add := func(key: String) -> void:
+		var ln := Sounds.length(key)
+		var dur := minf(ln, 12.0) if key.begins_with("tune:") else ln
+		var c := {"src": key, "start": snappedf(studio.play_t, 0.1), "dur": snappedf(maxf(dur, 0.5), 0.1), "vol": 1.0}
+		studio.audio.append(c)
+		studio.sound.stop_preview()
+		studio.mark_dirty()
+		hud.timeline_panel.select_clip(c)
+		hud.close_sheet()
+	_section(b, "Music")
+	for t in Synth.TUNE_ORDER:
+		var key: String = "tune:" + t
+		b.add_child(_sound_row(key, Synth.TUNES[t]["desc"], false, add.bind(key)))
+	_section(b, "Imported")
+	var files := AudioFiles.list()
+	if files.is_empty():
+		b.add_child(UIK.para("Nothing imported yet.", 12))
+	for id in files:
+		var key: String = "file:" + id
+		b.add_child(_sound_row(key, "%.1f s" % Sounds.length(key), false, add.bind(key)))
+	b.add_child(UIK.btn("Import music or a sound", func(): _import_sound(add), false, "upload"))
+	return "Add a sound"
+
+
+## Edits the timeline sound clip selected in the timeline.
+func v_clip(_a, b: VBoxContainer) -> String:
+	var c: Dictionary = hud.timeline_panel.sel_clip
+	if c.is_empty() or not studio.audio.has(c):
+		return "Sound"
+	var key := str(c.get("src", ""))
+	b.add_child(_sound_row(key, "", true, func(): pass))
+	var edited := func() -> void:
+		studio.mark_dirty()
+		hud.timeline_panel.view.queue_redraw()
+	b.add_child(UIK.slider("Volume", float(c.get("vol", 1.0)), 0.0, 1.0, 0.05, func(x):
+		c["vol"] = x
+		edited.call(), func(x: float) -> String: return "%d%%" % int(round(x * 100))))
+	b.add_child(UIK.slider("Starts at", float(c.get("start", 0.0)), 0.0, maxf(60.0, float(c.get("start", 0.0)) + 10.0), 0.1, func(x):
+		c["start"] = x
+		edited.call(), func(x: float) -> String: return "%.1f s" % x))
+	b.add_child(UIK.slider("Length", SoundDirector.clip_len(c), 0.5, maxf(60.0, SoundDirector.clip_len(c) + 10.0), 0.1, func(x):
+		c["dur"] = x
+		edited.call(), func(x: float) -> String: return "%.1f s" % x))
+	if Sounds.length(key) > 0.0 and SoundDirector.clip_len(c) > Sounds.length(key) + 0.05:
+		b.add_child(UIK.para("Longer than the sound, so it loops.", 12))
+	b.add_child(UIK.danger("Remove from the timeline", func():
+		hud.timeline_panel.delete_clip()
+		hud.close_sheet()))
+	return "Sound clip"
+
+
+## Subtitle style, size, position and names, with a live preview.
+func _subtitle_options(b: VBoxContainer) -> void:
+	var set_sub := func(k: String, v: Variant) -> void:
+		App.settings[k] = v
+		studio.mark_dirty()
+		_rerender()
+	var st := UIK.flow()
+	for o in Recorder.SUB_STYLES:
+		st.add_child(UIK.chip(o[1], App.settings.get("sub_style", "box") == o[0], set_sub.bind("sub_style", o[0])))
+	b.add_child(st)
+	var sz := UIK.flow()
+	for o in [["s", "Small"], ["m", "Medium"], ["l", "Large"]]:
+		sz.add_child(UIK.chip(o[1], App.settings.get("sub_size", "m") == o[0], set_sub.bind("sub_size", o[0])))
+	for o in [["bottom", "Bottom"], ["top", "Top"]]:
+		sz.add_child(UIK.chip(o[1], App.settings.get("sub_pos", "bottom") == o[0], set_sub.bind("sub_pos", o[0])))
+	sz.add_child(UIK.chip("Speaker names", App.settings.get("sub_names", true), set_sub.bind("sub_names", not App.settings.get("sub_names", true))))
+	b.add_child(sz)
+	# Preview on a little frame the shape of the video.
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel", UIK.box(Color("2c3e50"), 10))
+	frame.custom_minimum_size = Vector2(0, UIK.px(120))
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_BEGIN if App.settings.get("sub_pos", "bottom") == "top" else BoxContainer.ALIGNMENT_END
+	var center := CenterContainer.new()
+	var sp := PanelContainer.new()
+	var sl := Label.new()
+	Recorder.style_subtitle(sp, sl, UIK.px(300))
+	sl.text = Recorder.subtitle_text("Vaibh", "Shall we go see the lake?")
+	sp.add_child(sl)
+	center.add_child(sp)
+	box.add_child(center)
+	frame.add_child(box)
+	b.add_child(frame)

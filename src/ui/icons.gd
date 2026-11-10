@@ -34,6 +34,7 @@ const PATHS := {
 	"pickI": '<path d="M14 4l6 6-9 9H5v-6z"/><path d="M11 7l6 6"/>',
 	"check": '<path d="M5 12l5 5 9-10"/>',
 	"orbit": '<ellipse cx="12" cy="12" rx="9" ry="4"/><circle cx="12" cy="12" r="2"/>',
+	"speaker": '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>',
 	"plus": '<path d="M12 5v14M5 12h14"/>',
 	"group": '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14 14c3.3 0 6 2.7 6 6"/>',
 	"chase": '<circle cx="15" cy="4.5" r="2.5"/><path d="M4 12h4l3-4 4 3-3 4 3 3v4M11 15l-4 5"/><path d="M19 9h3M18 13h3"/>',

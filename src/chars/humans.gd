@@ -101,6 +101,10 @@ static func anime_tex(kind: String, a: String) -> Material:
 	elif kind == "blush":
 		img = Painter.new_img(64, 32)
 		Painter.radial(img, 32, 16, 2, 28, [[0.0, Color(1, 120 / 255.0, 140 / 255.0, 0.55)], [1.0, Color(1, 120 / 255.0, 140 / 255.0, 0.0)]])
+	elif kind == "mouth_open":
+		img = Painter.new_img(64, 48)
+		Painter.ellipse(img, 32, 24, 22, 18, U.col("#7a2c38"))
+		Painter.ellipse(img, 32, 33, 13, 8, U.col("#e07a86"))
 	else:
 		img = Painter.new_img(64, 32)
 		Painter.stroke(img, Painter.quad_pts(Vector2(22, 12), Vector2(32, 20), Vector2(42, 12)), 4, U.col("#9a4250"))
@@ -360,7 +364,14 @@ static func build_anime(cfg: Dictionary) -> Dictionary:
 	var bl := anime_tex("blush", "")
 	face_decal(hc, bl, -r * 0.48, -r * 0.45, r, r * 0.36, r * 0.18)
 	face_decal(hc, bl, r * 0.48, -r * 0.45, r, r * 0.36, r * 0.18)
-	face_decal(hc, anime_tex("mouth", ""), 0, -r * 0.7, r, r * 0.26, r * 0.13)
+	var mouth := face_decal(hc, anime_tex("mouth", ""), 0, -r * 0.7, r, r * 0.26, r * 0.13)
+	var mouth_o := face_decal(hc, anime_tex("mouth_open", ""), 0, -r * 0.72, r, r * 0.2, r * 0.16)
+	# Tagged so the actor can open the mouth while talking.
+	mouth.set_meta("mouth", true)
+	mouth.set_meta("keep", true)
+	mouth_o.set_meta("mouth_open", true)
+	mouth_o.set_meta("keep", true)
+	mouth_o.visible = false
 	hair_anime(hc, r, mH, g.call("hairStyle", "short"))
 	if cfg.get("ears", "") == "pointy":
 		for s in [-1.0, 1.0]:
@@ -574,6 +585,11 @@ static func build_lowpoly(cfg: Dictionary) -> Dictionary:
 		hc.add_child(e)
 		hc.add_child(sh)
 	hc.add_child(Kit.box(0.05, 0.05, 0.05, M(U.shade_hex(skin, 0.9)), 0, -0.04, r * 0.95))
+	var mo := Kit.box(0.07, 0.04, 0.02, M("#5a2630"), 0, -0.115, r * 0.86)
+	mo.visible = false
+	mo.set_meta("mouth_open", true)
+	mo.set_meta("keep", true)
+	hc.add_child(mo)
 	if cfg.get("beard"):
 		var bd := Kit.cone(r * 0.65, r * 0.9, 6, M(cfg["beard"]), 0, -r * 0.7, r * 0.45)
 		bd.rotation.x = PI

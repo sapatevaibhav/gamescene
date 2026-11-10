@@ -201,6 +201,31 @@ func prop_top(x: float, z: float) -> float:
 	return best
 
 
+## Footstep surface under `p` (see Sounds.surface_of): what you stand on
+## (a rock, a log...), else the ground's own colour band.
+func surface_at(p: Vector3) -> String:
+	var th := terrain_h(p.x, p.z)
+	if p.y > th + 0.15:
+		var best: Dictionary = {}
+		var bd := 4.0
+		for q in props:
+			var d := Vector2(p.x - float(q.x), p.z - float(q.z)).length()
+			if d < bd:
+				bd = d
+				best = q
+		if not best.is_empty():
+			return Sounds.surface_of(str(best.get("key", "")))
+	if App.settings.get("weather", "") == "snow":
+		return "snow"
+	var i := clampi(int(floor(p.x)), 0, TN - 1)
+	var j := clampi(int(floor(p.z)), 0, TN - 1)
+	if path[j * TN + i] == 1:
+		return "dirt"
+	if th < water + 0.35:
+		return "sand"
+	return "grass"
+
+
 func walkable(x: float, z: float) -> bool:
 	return terrain_h(x, z) > water
 

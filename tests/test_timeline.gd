@@ -106,7 +106,7 @@ func _studio(studio: Studio) -> void:
 	ok(studio.timeline.has_track("Renamed") and studio.cues[-1]["actor"] == "Renamed", "rename updates keys and cues")
 	studio.play_scene(false)
 	var d := studio.serialize()
-	ok(d.has("keys") and (d["keys"] as Dictionary).has("Renamed") and int(d["v"]) == 4, "keys are saved (schema v4)")
+	ok(d.has("keys") and (d["keys"] as Dictionary).has("Renamed") and int(d["v"]) == App.SCHEMA_VERSION, "keys are saved (schema v%d)" % App.SCHEMA_VERSION)
 	var err := studio.load_data(JSON.parse_string(JSON.stringify(d)))
 	ok(err == "" and studio.timeline.track("Renamed").size() == 2 and studio.timeline.track(Timeline.CAM).size() == 2, "keys load back")
 	await _director(studio)

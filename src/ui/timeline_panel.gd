@@ -20,6 +20,8 @@ var ease_btn: Button
 var del_btn: Button
 var loop := false
 var cam_preview := true
+## The sound clip picked on the Sound row (one of studio.audio), or {}.
+var sel_clip: Dictionary = {}
 var _prev_cam_mode := ""
 
 
@@ -199,8 +201,28 @@ func select(track_name: String, key_i: int) -> void:
 	var changed := track_name != view.sel_track or key_i != view.sel_key
 	view.sel_track = track_name
 	view.sel_key = key_i
+	if track_name != TimelineView.SOUND and not sel_clip.is_empty():
+		sel_clip = {}
+		changed = true
 	if changed:
 		rebuild_bar()
+
+
+func select_clip(c: Dictionary) -> void:
+	view.sel_track = TimelineView.SOUND
+	view.sel_key = -1
+	sel_clip = c
+	rebuild_bar()
+	view.queue_redraw()
+
+
+func delete_clip() -> void:
+	if sel_clip.is_empty():
+		return
+	studio.audio.erase(sel_clip)
+	sel_clip = {}
+	studio.mark_dirty()
+	key_edited()
 
 
 # ---------------------------------------------------------------- toolbar
@@ -219,6 +241,16 @@ func rebuild_bar() -> void:
 	time_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bar.add_child(time_label)
 	bar.add_child(UIK.chip("Loop", loop, func(): loop = not loop; rebuild_bar()))
+	if view.sel_track == TimelineView.SOUND:
+		bar.add_child(UIK.btn("Add sound", func(): hud.open_sheet("sounds"), true, "plus"))
+		if not sel_clip.is_empty():
+			bar.add_child(UIK.btn("Edit", func(): hud.open_sheet("clip"), false, "speaker"))
+			del_btn = UIK.icon_btn("trash", delete_clip, "Remove sound", 38, false)
+			bar.add_child(del_btn)
+		bar.add_child(UIK.icon_btn("close", hud.toggle_timeline, "Close timeline", 38, false))
+		tick()
+		hud.layout()
+		return
 	var who := "Camera" if view.sel_track == Timeline.CAM else view.sel_track
 	key_btn = UIK.btn("Key " + who, add_key, true, "pin")
 	bar.add_child(key_btn)
@@ -259,6 +291,9 @@ class TimelineView:
 	var _pending_seek := -1.0
 
 	const ACTION_COLORS := {"say": UIK.SECONDARY_500, "walkto": Color("4CAF7A"), "runto": Color("3E9B68")}
+	## Row id of the sound clips.
+	const SOUND := "♪sound"
+	const SOUND_COLOR := Color("8A6BD8")
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
@@ -275,7 +310,7 @@ class TimelineView:
 		return float(UIK.px(22))
 
 	func rows() -> Array:
-		var r := [Timeline.CAM]
+		var r := [Timeline.CAM, SOUND]
 		for a in panel.studio.actors:
 			r.append(a.name)
 		return r
@@ -339,10 +374,13 @@ class TimelineView:
 			var tn: String = rr[i]
 			var on := tn == sel_track
 			draw_rect(Rect2(0, y, size.x, rh - 1), Color(UIK.TAPE, 0.10) if on else (Color(UIK.GRAY_800, 0.9) if i % 2 == 0 else Color(UIK.GRAY_800, 0.6)))
-			var label := "Camera" if tn == Timeline.CAM else tn
+			var label := "Camera" if tn == Timeline.CAM else ("♪ Sound" if tn == SOUND else tn)
 			if st.player and tn == st.player.name:
 				label = "★ " + label
 			draw_string(font, Vector2(UIK.px(8), y + rh * 0.5 + fs * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, nw - UIK.px(12), fs, UIK.TAPE if on else UIK.INK)
+			if tn == SOUND:
+				_draw_clips(y, font)
+				continue
 			if tn != Timeline.CAM:
 				_draw_cues(tn, y, font)
 			_draw_keys(tn, y, on)
@@ -366,6 +404,34 @@ class TimelineView:
 			if txt == "say":
 				txt = "“%s”" % str(c.get("text", ""))
 			draw_string(font, Vector2(x0 + 5, y + rh * 0.5 + UIK.px(4)), txt, HORIZONTAL_ALIGNMENT_LEFT, maxf(0.0, r.size.x - 8), UIK.px(11), Color.WHITE)
+
+	func _draw_clips(y: float, font: Font) -> void:
+		var rh := _row_h()
+		for c in panel.studio.audio:
+			var x0 := t_to_x(float(c.get("start", 0)))
+			var x1 := t_to_x(float(c.get("start", 0)) + SoundDirector.clip_len(c))
+			var r := Rect2(x0, y + 4, maxf(4.0, x1 - x0), rh - 9)
+			var sel: bool = c == panel.sel_clip
+			draw_style_box(UIK.box(Color(SOUND_COLOR, 0.95 if sel else 0.7), 6, UIK.TAPE if sel else Color(0, 0, 0, 0), 2 if sel else 0), r)
+			# Where a shorter sound loops back to its start.
+			var ln := Sounds.length(str(c.get("src", "")))
+			if ln > 0.0:
+				var tl := float(c.get("start", 0)) + ln
+				while tl < float(c.get("start", 0)) + SoundDirector.clip_len(c) - 0.05:
+					var lx := t_to_x(tl)
+					draw_line(Vector2(lx, y + 6), Vector2(lx, y + rh - 7), Color(1, 1, 1, 0.35), 1.0)
+					tl += ln
+			draw_string(font, Vector2(x0 + 5, y + rh * 0.5 + UIK.px(4)), "♪ " + Sounds.label(str(c.get("src", ""))), HORIZONTAL_ALIGNMENT_LEFT, maxf(0.0, r.size.x - 8), UIK.px(11), Color.WHITE)
+
+	func _hit_clip(x: float) -> Array:
+		var arr: Array = panel.studio.audio
+		for i in range(arr.size() - 1, -1, -1):
+			var c: Dictionary = arr[i]
+			var x0 := t_to_x(float(c.get("start", 0)))
+			var x1 := t_to_x(float(c.get("start", 0)) + SoundDirector.clip_len(c))
+			if x >= x0 - 2 and x <= x1 + 4:
+				return [c, x1 - x < UIK.px(8)]
+		return []
 
 	func _draw_keys(tn: String, y: float, on_row: bool) -> void:
 		var arr := panel.studio.timeline.track(tn)
@@ -441,6 +507,19 @@ class TimelineView:
 			var tn: String = rr[ri]
 			if p.x < _name_w():
 				panel.select(tn, -1)
+				queue_redraw()
+				return
+			if tn == SOUND:
+				var hcl := _hit_clip(p.x)
+				if not hcl.is_empty():
+					panel.select_clip(hcl[0])
+					_drag_cue = hcl[0]
+					_drag = "cue_end" if hcl[1] else "cue"
+					_drag_off = x_to_t(p.x) - float(_drag_cue.get("start", 0))
+					return
+				panel.select(tn, -1)
+				_drag = "scrub"
+				_pending_seek = x_to_t(p.x)
 				queue_redraw()
 				return
 			var ki := _hit_key(tn, p.x)

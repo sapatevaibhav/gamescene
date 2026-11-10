@@ -15,6 +15,7 @@ var player: Actor = null
 var atmo := Atmosphere.new()
 var camera := CameraRig.new()
 var recorder := Recorder.new()
+var sound := SoundDirector.new()
 var tools: EditorTools
 
 var project_id := ""
@@ -32,6 +33,8 @@ var start_state: Array = []
 var scene_seed := 1
 ## Keyframes for timeline mode (actor and camera tracks).
 var timeline := Timeline.new()
+## Sound clips on the timeline: [{src, start, dur, vol}] (see SoundDirector).
+var audio: Array = []
 ## Timeline clock while directing ("Play scene").
 var playing := false
 ## Frozen on the playhead (timeline mode): only the player can move.
@@ -47,6 +50,7 @@ var input_crouch := false
 var _undo: Array = []
 var _redo: Array = []
 var _time := 0.0
+var _heard := false
 
 
 func _ready() -> void:
@@ -59,6 +63,9 @@ func _ready() -> void:
 	recorder.studio = self
 	add_child(recorder)
 	recorder.finished.connect(func(_p, _s): recording_changed.emit(false))
+	sound.studio = self
+	add_child(sound)
+	recorder.started.connect(sound.restart)
 	tools = EditorTools.new()
 	tools.studio = self
 	add_child(tools)
@@ -81,6 +88,8 @@ func _clear() -> void:
 	world = null
 	cues = []
 	shots = []
+	audio = []
+	sound.stop_all()
 	timeline.clear()
 	start_state = []
 	playing = false
@@ -118,6 +127,7 @@ func new_scene(key: String) -> void:
 	scene_seed = randi() % 100000
 	App.sim_rng.seed = scene_seed
 	await _default_cast()
+	App.reset_scene_audio()
 	App.settings["frame"] = "full"
 	App.settings["fov"] = 70.0
 	App.settings["shake"] = false
@@ -183,6 +193,7 @@ func load_data(d: Dictionary) -> String:
 	if off != 0.0:
 		_shift_legacy(d, off)
 	var st: Dictionary = d.get("settings", {})
+	App.reset_scene_audio()
 	for k in st:
 		if App.SCENE_KEYS.has(k):
 			App.settings[k] = st[k]
@@ -199,6 +210,7 @@ func load_data(d: Dictionary) -> String:
 		add_actor({"name": "You", "look": {"preset": presets.keys()[0]}, "isPlayer": true, "x": 40.0, "z": 36.0})
 	camera.load_view(d.get("view", {}), d.get("cine", {}))
 	cues = d.get("cues", [])
+	audio = (d.get("audio", []) as Array).filter(func(c): return c is Dictionary and c.has("src"))
 	timeline.load_data(d.get("keys", {}))
 	shots = d.get("shots", [])
 	if shots.is_empty():
@@ -240,7 +252,7 @@ func serialize() -> Dictionary:
 	return {"app": "gamescene", "v": App.SCHEMA_VERSION, "name": project_name, "style": style_key, "seed": scene_seed,
 		"world": world.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player)),
 		"settings": settings, "cine": camera.cine_dict(), "view": camera.to_dict(),
-		"cues": cues, "keys": timeline.to_data(), "shots": shots, "start": start_state}
+		"cues": cues, "keys": timeline.to_data(), "audio": audio, "shots": shots, "start": start_state}
 
 
 func mark_dirty() -> void:
@@ -500,6 +512,7 @@ func nearest_threat(a: Actor) -> Actor:
 
 func on_line_spoken(a: Actor, text: String, dur: float) -> void:
 	recorder.show_subtitle(a.name, text, dur)
+	sound.speech(a)
 
 
 func _separate() -> void:
@@ -572,7 +585,7 @@ func play_scene(on: bool) -> void:
 
 ## Has anything to play: script cues or keyframes.
 func has_script() -> bool:
-	return not cues.is_empty() or not timeline.keys.is_empty()
+	return not cues.is_empty() or not timeline.keys.is_empty() or not audio.is_empty()
 
 
 ## Jumps the scene to `t` seconds by replaying the simulation from the scene
@@ -674,6 +687,8 @@ func script_length() -> float:
 	var t := 0.0
 	for c in cues:
 		t = maxf(t, float(c.get("start", 0)) + float(c.get("dur", 3)))
+	for c in audio:
+		t = maxf(t, float(c.get("start", 0)) + SoundDirector.clip_len(c))
 	return maxf(t, timeline.length())
 
 
@@ -782,7 +797,11 @@ func _update_player(dt: float) -> void:
 
 func _process(delta: float) -> void:
 	if world == null or not in_studio:
+		if _heard:
+			sound.stop_all()
+			_heard = false
 		return
+	_heard = true
 	var dt := App.fixed_dt if App.fixed_dt > 0.0 else minf(delta, 0.05)
 	_time += dt
 	if playing and paused:
@@ -799,6 +818,7 @@ func _process(delta: float) -> void:
 	_hide_actors_near_camera()
 	atmo.tick(dt, camera.global_position)
 	world.animate(dt, _time)
+	sound.tick(dt)
 	recorder.tick(dt)
 	if dirty and not recorder.active:
 		_save_t -= delta

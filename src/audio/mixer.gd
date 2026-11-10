@@ -1,0 +1,112 @@
+class_name AudioMixer
+## Renders the sound log of a recording into one track for the video. Each
+## event is {t, key, cat, vol, from, loop, until, fi, fo}: start `key` at `t`
+## seconds into the video, `from` seconds into the sound, optionally looping,
+## stopping at `until` (or the end), with fade in/out times. Streams are
+## decoded through AudioStreamPlayback.mix_audio, so .ogg/.mp3/.wav and the
+## built-in sounds all work, with or without ffmpeg.
+
+const RATE := 44100
+
+
+## Mono samples for `dur` seconds. `vols` scales each category
+## ("music", "sfx", "amb").
+static func render(events: Array, dur: float, vols: Dictionary) -> PackedFloat32Array:
+	var n := int(ceil(dur * RATE))
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var decoded := {}
+	for e in events:
+		var key := str(e.get("key", ""))
+		if not decoded.has(key):
+			decoded[key] = decode(Sounds.stream(key))
+		var pcm: PackedFloat32Array = decoded[key]
+		var m := pcm.size()
+		if m == 0:
+			continue
+		var gain := float(e.get("vol", 1.0)) * float(vols.get(str(e.get("cat", "sfx")), 1.0))
+		if gain <= 0.001:
+			continue
+		var i0 := int(float(e.get("t", 0.0)) * RATE)
+		var i1 := n
+		if e.has("until") and float(e["until"]) >= 0.0:
+			i1 = mini(n, int(float(e["until"]) * RATE))
+		var loop: bool = e.get("loop", false)
+		if not loop:
+			i1 = mini(i1, i0 + m - int(float(e.get("from", 0.0)) * RATE))
+		var src := int(float(e.get("from", 0.0)) * RATE) % m
+		var fi := maxi(1, int(float(e.get("fi", 0.0)) * RATE))
+		var fo := maxi(1, int(float(e.get("fo", 0.0)) * RATE))
+		var span := i1 - i0
+		for j in range(maxi(0, -i0), span):
+			var g := gain
+			if j < fi:
+				g *= float(j) / fi
+			if span - j < fo:
+				g *= float(span - j) / fo
+			out[i0 + j] += pcm[src] * g
+			src += 1
+			if src >= m:
+				if not loop:
+					break
+				src = 0
+	# Gentle limiter so busy scenes don't clip.
+	for i in n:
+		var x := out[i]
+		if absf(x) > 0.8:
+			out[i] = signf(x) * (0.8 + (absf(x) - 0.8) / (1.0 + (absf(x) - 0.8) * 5.0))
+	return out
+
+
+## One pass of a stream as mono samples at RATE.
+static func decode(s: AudioStream) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	if s == null:
+		return out
+	var ln := s.get_length()
+	if ln <= 0.0:
+		return out
+	var frames := int(ceil(ln * RATE))
+	var pb := s.instantiate_playback()
+	if pb == null:
+		return out
+	pb.start(0.0)
+	var buf := pb.mix_audio(1.0, frames)
+	pb.stop()
+	out.resize(buf.size())
+	for i in buf.size():
+		var v := buf[i]
+		out[i] = (v.x + v.y) * 0.5
+	return out
+
+
+## 16-bit PCM bytes (little endian) for the samples.
+static func pcm16(s: PackedFloat32Array) -> PackedByteArray:
+	var d := PackedByteArray()
+	d.resize(s.size() * 2)
+	for i in s.size():
+		d.encode_s16(i * 2, int(clampf(s[i], -1.0, 1.0) * 32767.0))
+	return d
+
+
+## Writes a mono 16-bit WAV file.
+static func save_wav(path: String, s: PackedFloat32Array) -> bool:
+	var data := pcm16(s)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_buffer("RIFF".to_ascii_buffer())
+	f.store_32(36 + data.size())
+	f.store_buffer("WAVEfmt ".to_ascii_buffer())
+	f.store_32(16)
+	f.store_16(1)
+	f.store_16(1)
+	f.store_32(RATE)
+	f.store_32(RATE * 2)
+	f.store_16(2)
+	f.store_16(16)
+	f.store_buffer("data".to_ascii_buffer())
+	f.store_32(data.size())
+	f.store_buffer(data)
+	f.close()
+	return true

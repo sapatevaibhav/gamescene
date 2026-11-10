@@ -43,8 +43,8 @@
 | 0.13 | Pixel 2D side-view style, replacing Tactical: tile world, sprite characters, building (timeline, director mode and export work too) | Done |
 | 0.14 | Pixel 2D top view, sprite imports (.png sheets, .ase/.aseprite), Indian default names, side-view passing | Done |
 | 0.15 | Pixel 2D polish (tile-set imports, more tiles, objects and backdrops, house interiors), swimming in every style, pets beside the player | Done |
-| **0.16** | **Audio and dialogue (Phase D)** | **Next** |
-| 0.17 | Export reliability and extras (Phase C) | |
+| 0.16 | Audio and dialogue (Phase D): sounds made in code, footsteps by surface, ambience, music and imported audio on a timeline Sound row, sound in exported videos, subtitle styles, talking mouths | Done |
+| **0.17** | **Export reliability and extras (Phase C)** | **Next** |
 | 0.18 | VRM spring bones, blinking and the animation library (Phase E core) | |
 | 0.19 | Packaging for Android, iOS and desktop (Phase I) | |
 | 0.20 | Templates, onboarding, credits and licence (Phases J and K) | |
@@ -80,11 +80,11 @@
 
 ## Phase D: Audio and dialogue
 
-- [ ] Background music and imported audio, on an audio track in the timeline.
-- [ ] A bundled pack of free-licensed sound effects: footsteps by surface, ambience and UI sounds.
-- [ ] Subtitle styling. Dialogue stays as text bubbles, with no voice audio required.
-- [ ] Characters' mouths move while their speech bubble shows.
-- [ ] Audio mixed into the exported video.
+- [x] Background music and imported audio, on an audio track in the timeline (0.16).
+- [x] A bundled pack of sound effects: footsteps by surface, ambience and UI sounds (0.16; synthesized in code, so original rather than downloaded).
+- [x] Subtitle styling. Dialogue stays as text bubbles, with no voice audio required (0.16).
+- [x] Characters' mouths move while their speech bubble shows (0.16).
+- [x] Audio mixed into the exported video (0.16).
 
 ## Phase E: Characters and assets
 

@@ -12,7 +12,7 @@ func _ready() -> void:
 		await m._new_scene(style)
 		var hud: Hud = m.hud
 		var a: Actor = m.studio.actors[1]
-		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null], ["imports", null]]
+		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null], ["imports", null], ["sound", null], ["sounds", null]]
 		if m.studio.world.is_voxel:
 			views += [["blocks", null], ["maker", null], ["prefabs", null]]
 		elif m.studio.is_flat():
@@ -36,6 +36,25 @@ func _ready() -> void:
 			m.studio.tools.set_tool(t)
 			await get_tree().process_frame
 		m.studio.tools.set_tool("")
+		# The timeline with a sound clip picked, and its edit sheet.
+		m.studio.audio = [{"src": "tune:meadow", "start": 0.0, "dur": 4.0, "vol": 1.0}]
+		hud.toggle_timeline()
+		hud.timeline_panel.select_clip(m.studio.audio[0])
+		hud.open_sheet("clip")
+		await get_tree().process_frame
+		hud.toggle_timeline()
+		m.studio.audio = []
+		# Previewing a shot, then leaving the preview.
+		var mode0: String = m.studio.camera.mode
+		hud.start_shot_preview(0)
+		await get_tree().process_frame
+		if not hud.previewing() or m.studio.camera.mode != "cine":
+			push_error("shot preview didn't start")
+		hud.stop_shot_preview(true)
+		await get_tree().process_frame
+		if hud.previewing() or m.studio.camera.mode != mode0 or hud.view_stack.is_empty() or hud.view_stack[-1][0] != "shot":
+			push_error("shot preview didn't end back on the shot (%s)" % m.studio.camera.mode)
+		hud.close_sheet()
 		hud.toggle_record()
 		await get_tree().create_timer(0.1).timeout
 		hud.close_sheet()

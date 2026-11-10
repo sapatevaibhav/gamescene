@@ -98,7 +98,7 @@ func _ready() -> void:
 	# Dock.
 	dock.add_theme_stylebox_override("panel", _bar_panel())
 	dock_row.add_theme_constant_override("separation", UIK.px(2))
-	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Script"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["film", "film", "Film"]]:
+	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Script"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["sound", "speaker", "Sound"], ["film", "film", "Film"]]:
 		var b := _dock_button(tab[0], tab[1], tab[2])
 		dock_btns[tab[0]] = b
 		dock_row.add_child(b)
@@ -386,6 +386,9 @@ func layout() -> void:
 	pad.position = Vector2(vs.x - pad.size.x - m - 2, vs.y - slate.size.y - pad.size.y - m * 3)
 	restore_btn.size = restore_btn.get_combined_minimum_size()
 	restore_btn.position = Vector2(m, vs.y - restore_btn.size.y - m)
+	if _pv_bar and _pv_bar.visible:
+		_pv_bar.size = _pv_bar.get_combined_minimum_size()
+		_pv_bar.position = Vector2((vs.x - _pv_bar.size.x) / 2, m + (play_bar.size.y + m if play_bar.visible else 0.0))
 	if wide():
 		var w := float(UIK.px(400))
 		sheet.position = Vector2(vs.x - w - 16, top_right.size.y + m * 2)
@@ -680,6 +683,64 @@ func _tool_action(a: String) -> void:
 
 # ---------------------------------------------------------------- recording
 
+# ---------------------------------------------------------------- shot preview
+
+var _pv: Dictionary = {}
+var _pv_bar: PanelContainer
+
+
+func previewing() -> bool:
+	return not _pv.is_empty()
+
+
+## Looks through shot `i` of the shot list until you stop (bar or Esc); the
+## camera then goes back to how it was.
+func start_shot_preview(i: int) -> void:
+	if i < 0 or i >= studio.shots.size():
+		return
+	var cam := studio.camera
+	if _pv.is_empty():
+		_pv = {"view": cam.to_dict(), "cine": cam.cine.duplicate(true), "free_pos": cam.free_pos}
+	_pv["shot"] = i
+	studio.apply_shot(studio.shots[i])
+	close_sheet()
+	if _pv_bar == null:
+		_pv_bar = PanelContainer.new()
+		_pv_bar.add_theme_stylebox_override("panel", _bar_panel())
+		add_child(_pv_bar)
+	UIK.clear(_pv_bar)
+	var h := UIK.hbox(8)
+	var l := UIK.label("Previewing “%s”" % str(studio.shots[i].get("name", "Shot")), 14, UIK.INK, true)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(l)
+	h.add_child(UIK.btn("Back to shot", func(): stop_shot_preview(true), false, "undo"))
+	h.add_child(UIK.btn("Stop preview", func(): stop_shot_preview(false), true, "close"))
+	_pv_bar.add_child(h)
+	_pv_bar.visible = true
+	layout()
+
+
+func stop_shot_preview(reopen := false) -> void:
+	if _pv.is_empty():
+		return
+	var cam := studio.camera
+	var v: Dictionary = _pv["view"]
+	cam.cine = _pv["cine"]
+	cam.free_pos = _pv["free_pos"]
+	cam.set_mode(str(v.get("mode", "third")))
+	cam.yaw = float(v.get("yaw", cam.yaw))
+	cam.pitch = float(v.get("pitch", cam.pitch))
+	cam.dist = float(v.get("dist", cam.dist))
+	var i := int(_pv.get("shot", 0))
+	_pv = {}
+	if _pv_bar:
+		_pv_bar.visible = false
+	if reopen:
+		open_sheet("film")
+		push_view("shot", i)
+	layout()
+
+
 func toggle_record() -> void:
 	if _counting:
 		return
@@ -693,10 +754,13 @@ func toggle_record() -> void:
 		for i in range(n, 0, -1):
 			countdown.text = str(i)
 			countdown.visible = true
+			App.ui("beep")
 			await get_tree().create_timer(0.8).timeout
 		countdown.visible = false
 		_counting = false
-	if not studio.start_take():
+	if studio.start_take():
+		App.ui("go")
+	else:
 		toast("Recording couldn’t start.")
 
 

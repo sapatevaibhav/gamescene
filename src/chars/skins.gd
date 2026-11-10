@@ -374,6 +374,24 @@ static func _add_lids(head: Node3D, img: Image) -> void:
 		head.add_child(lid)
 
 
+## A dark mouth on the face, shown (and stretched) while talking.
+static func _add_mouth(head: Node3D) -> void:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color("4a1f26")
+	var mo := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(2.0 * PX, 1.2 * PX)
+	mo.mesh = q
+	mo.material_override = m
+	mo.position = Vector3(0, (8.0 - 6.4) * PX, 4.0 * PX + 0.005)
+	mo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mo.visible = false
+	mo.set_meta("mouth_open", true)
+	mo.set_meta("keep", true)
+	head.add_child(mo)
+
+
 static func build_model(img: Image, legacy: bool, slim: bool) -> Dictionary:
 	var tex_h := 32.0 if legacy else 64.0
 	var mats := _skin_mats(img)
@@ -404,6 +422,7 @@ static func build_model(img: Image, legacy: bool, slim: bool) -> Dictionary:
 	head.add_child(Kit.mi(_skin_box(S["head"], tex_h, false, 0.0), mat, 0, 4 * PX, 0))
 	head.add_child(Kit.mi(_skin_box(ov(S["head"]), tex_h, false, 1.0), omat, 0, 4 * PX, 0))
 	_add_lids(head, img)
+	_add_mouth(head)
 	var a_r: Dictionary = (S["armR"] as Dictionary).duplicate()
 	a_r["w"] = aw
 	var a_l: Dictionary = (S["armL"] as Dictionary).duplicate()

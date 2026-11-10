@@ -10,7 +10,7 @@ godot --path .            # run the app
 godot -e --path .         # open in the Godot editor
 ```
 
-Video export writes H.264 MP4 through `ffmpeg` when it is installed, and Motion-JPEG AVI otherwise. Videos go to `~/Videos/GameScene Studio/` and screenshots to `~/Pictures/GameScene Studio/`. Scenes are saved in Godot's user folder (`~/.local/share/godot/app_userdata/GameScene Studio/projects/` on Linux).
+Video export writes H.264 MP4 with AAC sound through `ffmpeg` when it is installed, and Motion-JPEG AVI with PCM sound otherwise. Videos go to `~/Videos/GameScene Studio/` and screenshots to `~/Pictures/GameScene Studio/`. Scenes are saved in Godot's user folder (`~/.local/share/godot/app_userdata/GameScene Studio/projects/` on Linux).
 
 ## Test
 
@@ -34,6 +34,7 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_sprites` | Pixel sprite imports: PNG strips and RPG grids, Aseprite files (compressed/raw/linked cels, layers, tags) and using them as characters and objects |
 | `test_swim` | Swimming in every world (float line, head above water, swim pose, climbing out) and pets starting beside the player |
 | `test_sleep` | Sleepers close their eyes in every style (eye pieces, blocky eyelids, imported models' face shapes), z's float over them, awake characters blink |
+| `test_audio` | Every built-in sound, ambience and tune is made, audible and identical each run; footsteps by surface in every style; ambience follows the weather; timeline sound clips; the recording's sound log, mix and AVI sound stream; audio imports; saving sound settings |
 | `test_styles` | Per-style import rules, the low-poly triangle cap, scene names, every action on imported models |
 | `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
 | `look_pixel` | Needs a window: renders the Pixel 2D style to `user://look/pixel-*.png` |
@@ -53,8 +54,9 @@ src/world/           Blocks + VoxelWorld (blocky), TerrainWorld + Props (other s
 src/chars/           Actor (behaviour + animation), Rigs/Skins/Humans (characters), ModelRig (.glb/.vrm)
 src/cam/             CameraRig: follow, first person, free, cinematic shots and paths, DOF
 src/fx/              Atmosphere: sky, sun/moon, fog, post effects, weather, day/night
-src/rec/             Recorder (off-screen, fixed-timestep video export) and AviWriter
-src/io/              ProjectStore: versioned JSON saves, import/export, web-save migration
+src/rec/             Recorder (off-screen, fixed-timestep video export, sound mixed in) and AviWriter
+src/audio/           Synth (every built-in sound and tune, made in code), SoundDirector (live sound + recording log), AudioMixer, Sounds
+src/io/              ProjectStore: versioned JSON saves, import/export, web-save migration; AudioFiles (imported sounds)
 src/ui/              Home, Hud, Sheets (panels), UIK (widgets), Icons, IconStudio (thumbnails)
 src/shaders/         sky, toon, outline, flat, terrain, water, grass, bubble
 legacy/              the original single-file web build, kept for reference
@@ -69,4 +71,4 @@ Use **Add → Objects → Import** to bring in trees, rocks or whole asset packs
 
 ## Project files
 
-Projects are JSON at schema `v: 3`, and older saves are migrated when they load. Files exported from the old web build (`v: 2` and the earlier "blockset" format) open directly through **Open a file** on the home screen. Exported project files carry any imported 3D models inside them, so they open on another device.
+Projects are JSON at schema `v: 5`, and older saves are migrated when they load. Files exported from the old web build (`v: 2` and the earlier "blockset" format) open directly through **Open a file** on the home screen. Exported project files carry any imported 3D models, objects and sounds inside them, so they open on another device.

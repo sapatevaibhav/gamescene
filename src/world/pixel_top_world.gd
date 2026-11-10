@@ -116,6 +116,14 @@ func set_ground(x: int, z: int, id: int, rebuild_now := true) -> void:
 		rebuild()
 
 
+## Footstep surface under `p` (see Sounds.surface_of).
+func surface_at(p: Vector3) -> String:
+	var id := ground_id(int(floor(p.x)), int(floor(p.z)))
+	if id <= 0 or id >= PixelTopArt.GROUND.size():
+		return "stone" if id >= TileSets.CUSTOM_BASE else "grass"
+	return Sounds.surface_of(str((PixelTopArt.GROUND[id] as Dictionary).get("name", "")))
+
+
 func solid_cell(x: int, z: int) -> bool:
 	if not in_bounds(x, z):
 		return true

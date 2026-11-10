@@ -251,6 +251,19 @@ func body_blocked(p: Vector3) -> bool:
 	return box_hits(p)
 
 
+## Footstep surface under `p` (see Sounds.surface_of).
+func surface_at(p: Vector3) -> String:
+	var x := int(floor(p.x))
+	var y := int(floor(p.y - 0.05))
+	for k in 2:
+		var id := tile(x, y - k)
+		if id > 0 and id < TileSets.CUSTOM_BASE:
+			return Sounds.surface_of(str(PixelTiles.ID.find_key(id)))
+		if id >= TileSets.CUSTOM_BASE:
+			return "stone"
+	return "grass"
+
+
 func walkable(x: float, _z := 0.0) -> bool:
 	if x < 1.0 or x >= W - 1:
 		return false

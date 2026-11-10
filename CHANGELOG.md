@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.15.0)
+## What's supported (as of 0.16.0)
 
 ### Platforms and engine
 
@@ -41,9 +41,10 @@ Worlds are bounded. Scenes saved at the old 48 m size open centred in the 80 m w
 | Environment objects | `.glb`, `.gltf`, `.fbx` (pick many at once; low-poly up to 20k triangles). Not in blocky | Add → Objects → Your 3D objects | Leaves get alpha cut-out and wind; small objects don't collide; trees collide at the trunk. Per style, like characters |
 | Pixel tile sets | `.png`, `.webp` grids of 16, 32 or 8 px tiles. Pixel 2D only, per view | Tiles/Ground → Your tile sets | Side view: in the way or behind; top view: ground |
 | Pixel sprites (characters and objects) | `.png`, `.webp` sheets (strip, RPG grid, single), `.ase`, `.aseprite` (frames, layers, tags as actions). Pixel 2D only, per view | Add → Sprite; Add a character → Your sprites; Buildings/Objects → Your sprites | Aseprite tags with `_down`/`_up`/`_left`/`_right` set top-view directions |
+| Music and sounds | `.ogg`, `.mp3`, `.wav` (up to 60 MB) | Sound → Import music or a sound; Timeline → Sound row → Add sound | Shared by every scene; embedded in exported scene files |
 | Blocky skins | `.png` 64×64 or legacy 64×32. Blocky only | Add → Character → Upload skin, or Add → Skin | Slim arms supported |
 | Custom blocks | `.png` / `.jpg` / `.webp` (scaled to 16×16), or pattern + colours | Blocks → Make your own block | Saved inside the scene |
-| Scenes | `.json` (this app, web build v1 "blockset" and v2) | Home → Open a file | Imported models are embedded in exported scene files |
+| Scenes | `.json` (this app, web build v1 "blockset" and v2) | Home → Open a file | Imported models, objects and sounds are embedded in exported scene files |
 
 ### Character rigs (procedural animation without clips)
 
@@ -53,13 +54,29 @@ and English/Sketchfab), Daz Genesis, Character Creator/iClone, Valve/Source,
 3ds Max Biped, and generic `L/R` prefixes or suffixes. Clips named idle, walk,
 run, dance, wave, sit, jump or talk are played when present.
 
+### Sound
+
+Every built-in sound is made in code when the app starts (nothing is
+downloaded or sampled):
+
+| What | Built in |
+|---|---|
+| Music | 11 looping tunes. By default the music follows the mood: Meadow (daylight), Golden Hour (sunset), Daydream (dreamy), Enchanted (fantasy), Midnight (horror night), Rainy Day (storm), Snowfall (snow), with a crossfade when the mood changes. Also Adventure, Playful, Mystery and Chase or any imported file |
+| Ambience | Birds, crickets, rain, wind, water. "Automatic" follows the mood and weather |
+| Footsteps | Grass, dirt, stone, wood, sand, snow and water, picked from what's underfoot in every style, 4 variations each |
+| Effects | Splashes and swim strokes, jumps, landings, swings, hits, a pop when someone speaks |
+| Interface | Countdown beeps before a take (can be turned off in Settings) |
+
+Effects get quieter with distance from the camera. Music, effects and
+ambience have their own volume; exported videos are mixed at those volumes.
+
 ### Export
 
 | What | Format | Options |
 |---|---|---|
-| Video | H.264 MP4 through ffmpeg, Motion-JPEG AVI otherwise | 720p, 1080p, 1440p, 4K · 24/30/60 fps · full, 16:9, 9:16, 1:1 · subtitles · shot list with fades and title cards |
+| Video | H.264 MP4 with AAC sound through ffmpeg, Motion-JPEG AVI with PCM sound otherwise | 720p, 1080p, 1440p, 4K · 24/30/60 fps · full, 16:9, 9:16, 1:1 · subtitles (box, outline or cinema yellow; 3 sizes; top or bottom) · shot list with fades and title cards |
 | Screenshot | PNG | Same resolutions and frames as video |
-| Scene | `.json` | Embeds imported models |
+| Scene | `.json` | Embeds imported models, objects and sounds |
 
 ### Controls (desktop)
 
@@ -82,7 +99,7 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 
 - The built-in characters are made from primitive shapes. For anime game-quality characters, import VRM, GLB or FBX models.
 - FBX textures load only if the image files ship alongside the model. Effect, ramp and lightmap maps referenced by game rigs are often missing; they're skipped.
-- No audio yet.
+- Dialogue is text (speech bubbles and subtitles); there's no voice recording or text-to-speech. Sound is mono, with no left/right panning.
 - Keyframed characters move in straight lines between keys and pass through walls. Scrubbing backwards replays the scene from the start, so it slows down on long scenes.
 - Mobile and desktop export presets (Android, iOS, Windows, macOS) are not configured.
 - Big CC0 model packs (for example Quaternius on itch.io) must be downloaded by hand, then imported.
@@ -92,6 +109,37 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 ## [Unreleased]
 
 ### Added
+- **Music that follows the mood.** Six new calm tunes, one per mood: Golden Hour (sunset), Daydream (dreamy), Enchanted (fantasy, with a harp), Midnight (horror night, quiet and eerie), Rainy Day (storm) and Snowfall (snow, music box). Daylight keeps Meadow. New scenes, and older scenes without a music choice, use **Match the mood** (Sound tab). Picking a mood switches the music with a 1.5 s crossfade. A built-in tune you picked goes back to following the mood when you change the mood; an imported file you picked stays.
+- **Leaving a shot preview.** Preview in a shot's panel (Film) shows a bar with **Back to shot** and **Stop preview**, and Esc also ends it. Either way the camera goes back to how it was.
+
+### Changed
+- Button clicks and the notification pop are gone; only the countdown beeps before a take remain (Settings → Countdown beeps).
+- Changing the background music crossfades instead of cutting.
+
+### Fixed
+- **Split-second static, like a loose microphone cable, every few seconds.**
+  - **Night crickets:** they were a 4.5 kHz tone switched on and off 30 times a second, which sounds like electrical buzz. Their rhythms also divided the 8 s loop evenly, so two crickets lined up into a louder buzz every 4 s. They now chirp like real crickets: 3–4 short, soft syllables at slightly different pitches, with loose, random timing so they never line up, and a little softened, as if a short way off. The night wind is a bit quieter too.
+  - **Footsteps:** they had random single-sample "grit" in them, heard as crackle whenever someone walked near the camera. Footsteps are now soft scuffs with a low thud; snow's crunch is made of short, smooth grains.
+  - **Swings and jumps** were plain hiss; they're now proper whooshes.
+  - Every world sound now has its highs gently softened and its ends faded, and the daytime birdsong is quieter.
+  - Tests check that no effect has clicks or crackle and that the crickets never build into a buzz.
+- The tune names in the Sound panel's music list sat a little below the middle of their rows (centred over the button's raised bottom edge too). They're now centred on the face of the row.
+- **Music seemed to play twice, or repeat.** Live music was kept in step with the scene clock, which runs behind real time when the frame rate drops (under 20 fps). Each time the gap passed a third of a second the music was pulled back, so you heard the same bit again. Live music now keeps its own time; exported videos still use the scene clock, so they stay in sync with the picture.
+
+## [0.16.0] - 2026-11-10
+
+### Added
+- **Sound.** A new **Sound** tab sets the scene's sound:
+  - **Background music**: 5 built-in tunes (Meadow, Adventure, Playful, Mystery, Chase), made in code and looping, or any imported `.ogg`, `.mp3` or `.wav`. Each has a listen button.
+  - **Ambience**: birds, crickets, rain, wind or water. "Automatic" follows the mood and weather (rain in a storm, crickets at night).
+  - **Footsteps and effects** on or off, and separate **volumes** for music, effects and ambience.
+- **Footsteps by surface in every style**: grass, dirt, stone, wood, sand, snow and water, from the block, tile, ground or object underfoot. There are also splashes and swim strokes, jumps, landings, swings, hits, and a soft pop when someone speaks. Sounds fade with distance from the camera.
+- **A Sound row on the timeline.** Add music or an imported sound at the playhead, drag it to move it, drag its end to shorten it (or lengthen it: music loops, and the loop points show on the clip), and edit its volume, start and length. Clips play with the scene: on the timeline, in director mode, in takes and in film exports.
+- **Exported videos have sound.** Everything you hear while recording is logged and mixed into one track: AAC in the MP4 (through ffmpeg), or PCM inside the AVI when ffmpeg isn't installed. Background music restarts from the top when a take or export starts.
+- **Subtitle styles**: Box, Outline or Cinema yellow, in three sizes, at the bottom or top, with or without the speaker's name, and a preview in the Film panel.
+- **Mouths move while characters talk**: built-in anime, low-poly and blocky characters open their mouths in time with the speech bubble. Imported models use their mouth shape when they have one ("A"/"aa" on VRM and VRoid, "jawOpen", MMD "あ", or game exports such as Mavuika's "Mouth_A01"). Pixel 2D sprites already had talking frames.
+- **Interface sounds**: clicks, countdown beeps before a take, and a pop for notifications. They can be turned off in Settings.
+- Tests: `test_audio` (every sound is made, audible and identical on every run; footsteps in every style; ambience follows the weather; clips start, pause and stop on time; recording logs and mixes the sound; the AVI sound stream checked with ffprobe; imports; saving and loading).
 - **Sleeping looks like sleeping.** Eyes close in every style:
   - Built-in anime and low-poly characters and creatures squash their eyes shut.
   - Blocky characters get skin-coloured eyelids over their painted eyes.
@@ -101,12 +149,14 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 - Tests: `test_sleep`.
 
 ### Changed
+- Scene files are now version 5 (sound clips and sound settings). Older scenes open with no clips and the default sound settings.
 - "Building your scene…" now has a see-through dark backdrop instead of leaving the screen as it was.
 - **Swimming stays upright everywhere.** No more lying flat: in 3D, entering deep water used to tip the character over abruptly, and turning while swimming looked like a sudden snap. Swimmers now pull with their arms and kick with their head and shoulders out, with a forward lean that eases in when moving. The side view is back to the upright stroke.
 - **Top view house interiors** show only the room you're in, with plain black around it. Outdoors, no interiors are visible. Rooms sit well away from the map, so you can't see into them from its edge.
 - Top view: swimmers are drawn where they actually are (the waterline at their position, not on the sand behind), and the ripple under a swimmer is only as wide as the body.
 
 ### Fixed
+- Running the tests left an empty video in your Videos folder each time. Test recordings now go to the tests' scratch folder.
 - **Imported characters slept on their side or face down** whenever they weren't facing straight ahead. The lying-down rotation was applied in the wrong order. They now lie on their back facing the sky, like the built-in characters, at any angle. They also stood up for a moment whenever they spoke a line in their sleep.
 - The camera hid a sleeping character whenever it was anywhere within their standing height above them, so looking down on a sleeper could make them vanish.
 - **Warnings on closing the app** ("RIDs were leaked", "ObjectDB instances were leaked at exit"). Fixed three causes: two unused grids on the home screen, a timeline label that was never shown, and pairs of chatting characters that kept each other alive.
