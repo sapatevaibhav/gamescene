@@ -783,10 +783,9 @@ func _on_recording(on: bool) -> void:
 		slate_dot.modulate.a = 1.0
 
 
-func _on_progress(frac: float) -> void:
-	var p := modal.get_node_or_null("progress")
-	if p:
-		(p.find_child("bar", true, false) as ProgressBar).value = frac * 100.0
+func _on_progress(_frac: float) -> void:
+	if studio.recorder.frames % 5 == 0:
+		_refresh_progress()
 
 
 func _on_take_done(path: String, secs: float) -> void:
@@ -814,20 +813,84 @@ func show_progress(title: String) -> void:
 	card.name = "progress"
 	var v: VBoxContainer = card.get_child(0)
 	v.add_child(UIK.label(title, 20, UIK.INK, true))
-	v.add_child(UIK.para("Rendering every frame at full quality. The editor keeps running underneath.", 13))
+	var info := UIK.para("Starting…", 14, UIK.INK)
+	info.name = "info"
+	v.add_child(info)
 	var bar := ProgressBar.new()
 	bar.name = "bar"
 	bar.custom_minimum_size = Vector2(UIK.px(320), UIK.px(14))
 	bar.show_percentage = false
 	v.add_child(bar)
+	var note := UIK.para("Rendering every frame at full quality.", 12)
+	note.name = "note"
+	v.add_child(note)
 	var row := UIK.hbox()
+	row.name = "row"
 	row.alignment = BoxContainer.ALIGNMENT_END
-	row.add_child(UIK.btn("Cancel", func():
-		studio.recorder.cancel()
-		UIK.clear(modal)))
 	v.add_child(row)
 	modal.add_child(card)
 	_center(card)
+	# Keep the time left and the cool-down countdown ticking.
+	var t := Timer.new()
+	t.wait_time = 0.5
+	t.autostart = true
+	t.timeout.connect(_refresh_progress)
+	card.add_child(t)
+	_progress_buttons()
+	_refresh_progress()
+
+
+## Pause / resume, save for later (resumable exports), cancel.
+func _progress_buttons() -> void:
+	var p := modal.get_node_or_null("progress")
+	if p == null:
+		return
+	var row: HBoxContainer = p.find_child("row", true, false)
+	UIK.clear(row)
+	var rec := studio.recorder
+	if rec.paused:
+		row.add_child(UIK.btn("Resume", func():
+			rec.resume()
+			_progress_buttons()
+			_refresh_progress(), true, "playtri"))
+	else:
+		row.add_child(UIK.btn("Pause", func():
+			rec.pause()
+			_progress_buttons()
+			_refresh_progress(), false, "pause"))
+	if rec.can_suspend():
+		row.add_child(UIK.btn("Finish later", func():
+			UIK.clear(modal)
+			rec.suspend(), false, "check"))
+	row.add_child(UIK.danger("Cancel", func():
+		rec.cancel()
+		UIK.clear(modal)))
+
+
+func _refresh_progress() -> void:
+	var p := modal.get_node_or_null("progress")
+	if p == null or not studio.recorder.active:
+		return
+	var s := studio.recorder.status()
+	var fr := float(studio.recorder.fps)
+	var parts := ["Shot %d of %d" % [s["shot"], s["shots"]], "%s / %s" % [U.fmt_time(s["frames"] / fr), U.fmt_time(s["total"] / fr)]]
+	if s["cooling"]:
+		parts.append("cooling down, back in %ds" % int(ceil(s["cool_left"])))
+	elif s["paused"]:
+		parts.append("paused")
+	elif float(s["eta"]) >= 0.0:
+		parts.append("about %s left" % U.fmt_time(float(s["eta"]) + 1.0))
+	(p.find_child("info", true, false) as Label).text = "  ·  ".join(parts)
+	(p.find_child("bar", true, false) as ProgressBar).value = 100.0 * float(s["frames"]) / maxf(1.0, float(s["total"]))
+	var note := "Rendering every frame at full quality."
+	if s["cooling"]:
+		note = "Rendering slowed right down, so the device is probably hot. Taking a short break (Settings → Pause exports to cool down)."
+	elif s["resumable"]:
+		note += " You can pause, or finish later: it carries on where it stopped, even after closing the app."
+	(p.find_child("note", true, false) as Label).text = note
+	var paused_btn := (p.find_child("row", true, false) as Node).get_child(0) as Button
+	if paused_btn and paused_btn.text != ("Resume" if s["paused"] else "Pause"):
+		_progress_buttons()
 
 
 func _card() -> PanelContainer:
@@ -844,6 +907,36 @@ func _card() -> PanelContainer:
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.add_child(UIK.vbox(10))
 	return card
+
+
+## Starts the film export, offering to carry on an unfinished one.
+func export_film_flow() -> void:
+	var j := studio.unfinished_export()
+	if j.is_empty():
+		_start_film(false, {})
+		return
+	UIK.clear(modal)
+	var card := _card()
+	var v: VBoxContainer = card.get_child(0)
+	v.add_child(UIK.label("Carry on exporting?", 20, UIK.INK, true))
+	v.add_child(UIK.para("An export of this scene stopped at %d%% (%s of %s). Carry on from there, or start again from the beginning." % [
+		int(100.0 * float(j["done"]) / maxf(1.0, float(j["total"]))), U.fmt_time(float(j["done"]) / float(j["fps"])), U.fmt_time(float(j["total"]) / float(j["fps"]))], 14))
+	var row := UIK.hbox()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(UIK.btn("Start again", func(): _start_film(false, {})))
+	row.add_child(UIK.btn("Carry on", func(): _start_film(true, j), true, "playtri"))
+	v.add_child(row)
+	modal.add_child(card)
+	_center(card)
+
+
+func _start_film(resume: bool, j: Dictionary) -> void:
+	UIK.clear(modal)
+	if not resume:
+		Recorder.discard_job(str(studio.project_id))
+	close_sheet()
+	if studio.export_film(j):
+		show_progress("Carrying on the export" if resume else "Exporting film")
 
 
 func ask(msg: String, yes: String, cb: Callable) -> void:

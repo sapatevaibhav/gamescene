@@ -12,17 +12,18 @@ var settings := {
 	"frame": "full", "fov": 70.0, "shake": false, "dof": false, "subtitles": true,
 	"fps": 30, "countdown": 3, "restart": true, "res": "1080",
 	"music": "mood", "music_vol": 0.7, "sfx": true, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
-	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true,
+	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true, "bg": "scene",
 }
 
 const SCENE_KEYS := ["time", "cycle", "weather", "fog", "mood", "frame", "fov", "shake", "dof", "subtitles", "fps", "countdown", "restart", "res",
-	"music", "music_vol", "sfx", "sfx_vol", "ambience", "amb_vol", "sub_style", "sub_size", "sub_pos", "sub_names"]
-## Sound and subtitle settings a new (or older) scene starts with.
-const AUDIO_DEFAULTS := {"music": "mood", "music_vol": 0.7, "sfx": true, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
-	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true}
+	"music", "music_vol", "sfx", "sfx_vol", "ambience", "amb_vol", "sub_style", "sub_size", "sub_pos", "sub_names", "bg"]
+## Sound, subtitle and export background settings a new (or older) scene
+## starts with.
+const SCENE_DEFAULTS := {"music": "mood", "music_vol": 0.7, "sfx": true, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
+	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true, "bg": "scene"}
 
 var device := {
-	"quality": "high", "show_fps": false, "names": true, "auto_jump": true, "mouse_look": "drag", "ui_scale": 1.0, "ui_sounds": true,
+	"quality": "high", "show_fps": false, "names": true, "auto_jump": true, "mouse_look": "drag", "ui_scale": 1.0, "ui_sounds": true, "cool_down": false,
 }
 
 var is_touch := false
@@ -61,9 +62,14 @@ func _ready() -> void:
 	device["mouse_look"] = "drag" if is_mobile else "capture"
 	if is_mobile:
 		settings["res"] = "720"
+		# Phones get hot on long exports: pause to cool down by default.
+		device["cool_down"] = true
 	load_device()
 	sim_rng.randomize()
-	_warm = WorkerThreadPool.add_task(Synth.prewarm, false, "Make music")
+	# Make the music ahead of time, but not in headless runs (tests, tools):
+	# they make a tune only when they need it.
+	if DisplayServer.get_name() != "headless":
+		_warm = WorkerThreadPool.add_task(Synth.prewarm, false, "Make music")
 
 
 var _warm := -1
@@ -71,6 +77,7 @@ var _warm := -1
 
 func _exit_tree() -> void:
 	if _warm >= 0:
+		Synth.stop_prewarm = true
 		WorkerThreadPool.wait_for_task_completion(_warm)
 		_warm = -1
 
@@ -83,9 +90,9 @@ func toast(msg: String) -> void:
 	toast_requested.emit(msg)
 
 
-func reset_scene_audio() -> void:
-	for k in AUDIO_DEFAULTS:
-		settings[k] = AUDIO_DEFAULTS[k]
+func reset_scene_defaults() -> void:
+	for k in SCENE_DEFAULTS:
+		settings[k] = SCENE_DEFAULTS[k]
 
 
 var _ui_player: AudioStreamPlayer

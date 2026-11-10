@@ -2,6 +2,8 @@
 // vertex colour alpha), shimmering normals, depth-tinted colour and fresnel.
 shader_type spatial;
 render_mode blend_mix, depth_draw_always, cull_back, specular_schlick_ggx;
+// The scene clock (set by the studio), so every render of a moment matches.
+global uniform float scene_time;
 
 uniform vec3 shallow : source_color = vec3(0.23, 0.58, 0.80);
 uniform vec3 deep : source_color = vec3(0.04, 0.20, 0.36);
@@ -21,14 +23,14 @@ void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	top_face = NORMAL.y > 0.5 ? 1.0 : 0.0;
 	if (COLOR.a > 0.5) {
-		VERTEX.y += -surface_drop + h(wpos.xz, TIME) * wave_height;
+		VERTEX.y += -surface_drop + h(wpos.xz, scene_time) * wave_height;
 	}
 }
 
 void fragment() {
 	if (top_face > 0.5) {
 		float e = 0.08;
-		float t = TIME;
+		float t = scene_time;
 		vec2 p = wpos.xz * 2.2;
 		float dx = h(p + vec2(e, 0.0), t) - h(p - vec2(e, 0.0), t);
 		float dz = h(p + vec2(0.0, e), t) - h(p - vec2(0.0, e), t);

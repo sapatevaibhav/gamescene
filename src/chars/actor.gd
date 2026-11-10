@@ -322,6 +322,46 @@ func line() -> String:
 	return str(Rigs.CHATTER[int(App.sim_randf() * Rigs.CHATTER.size()) % Rigs.CHATTER.size()])
 
 
+## Back to how the scene starts, at `p` facing `y`: every bit of state the
+## simulation reads, so each take (and a resumed export) plays out exactly
+## the same whatever happened before.
+func reset_sim(p: Vector3, y: float, b: String) -> void:
+	pos = p
+	vel = Vector3.ZERO
+	yaw = y
+	goto = {}
+	speak_t = 0.0
+	set_behavior(b)
+	home = pos
+	t = 0.0
+	wait = 0.5
+	next_line = 3.0
+	turn_t = 0.0
+	flip = false
+	keyed = false
+	walk = 0.0
+	target = {}
+	partner = null
+	hy = 0.0
+	hp = 0.0
+	head_yaw = 0.0
+	head_pitch = 0.0
+	on_ground = false
+	blocked = false
+	crouch = false
+	on_ladder = false
+	swimming = false
+	_climb_t = 0.0
+	_swim_lean = 0.0
+	attack_t = 0.0
+	hurt_t = 0.0
+	last_line = ""
+	if is_instance_valid(bubble):
+		bubble.queue_free()
+	bubble = null
+	bubble_t = 0.0
+
+
 func set_behavior(b: String, permanent := true) -> void:
 	if partner:
 		partner.partner = null

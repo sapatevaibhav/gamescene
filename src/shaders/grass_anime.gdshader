@@ -5,6 +5,8 @@
 // cost nothing (chunks beyond fade_end are culled on the CPU side too).
 shader_type spatial;
 render_mode cull_disabled;
+// The scene clock (set by the studio), so every render of a moment matches.
+global uniform float scene_time;
 
 uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_disable;
 uniform vec3 base_color : source_color = vec3(0.16, 0.42, 0.17);
@@ -20,9 +22,9 @@ varying float v_gust;
 void vertex() {
 	vec3 ip = MODEL_MATRIX[3].xyz;
 	float h = 1.0 - UV.y;
-	float wave = sin(TIME * 1.1 - (ip.x * 0.9 + ip.z * 0.55) * 0.14);
+	float wave = sin(scene_time * 1.1 - (ip.x * 0.9 + ip.z * 0.55) * 0.14);
 	v_gust = smoothstep(0.25, 1.0, wave);
-	float sway = sin(TIME * 2.1 + ip.x * 0.7 + ip.z * 0.45) * 0.1 + v_gust * 0.35;
+	float sway = sin(scene_time * 2.1 + ip.x * 0.7 + ip.z * 0.45) * 0.1 + v_gust * 0.35;
 	VERTEX.x += sway * h * h * wind_strength * 0.5;
 	VERTEX.z += sway * h * h * wind_strength * 0.3;
 	// Shrink with distance: hides the fade-out and saves fill rate.

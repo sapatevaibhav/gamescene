@@ -162,7 +162,11 @@ func _go_home() -> void:
 	_release_mouse()
 	hud.stop_shot_preview()
 	if studio.recorder.active:
-		studio.recorder.stop()
+		# A film export carries on next time; a take is saved as it is.
+		if studio.recorder.can_suspend():
+			studio.recorder.suspend()
+		else:
+			studio.recorder.stop()
 	if studio.project_id != "":
 		await studio.save_now(true)
 	studio.in_studio = false

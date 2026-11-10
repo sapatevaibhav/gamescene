@@ -1,6 +1,8 @@
 // Animated water: layered waves, fresnel, depth tint and shoreline foam.
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular_schlick_ggx;
+// The scene clock (set by the studio), so every render of a moment matches.
+global uniform float scene_time;
 
 uniform vec4 water_color : source_color = vec4(0.35, 0.72, 0.88, 1.0);
 uniform vec4 deep_color : source_color = vec4(0.06, 0.22, 0.36, 1.0);
@@ -34,11 +36,11 @@ float wave_h(vec2 p, float t) {
 
 void vertex() {
 	w_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX.y += (sin(w_pos.x * 0.6 + TIME * 0.8) + cos(w_pos.z * 0.5 + TIME * 0.6)) * 0.02;
+	VERTEX.y += (sin(w_pos.x * 0.6 + scene_time * 0.8) + cos(w_pos.z * 0.5 + scene_time * 0.6)) * 0.02;
 }
 
 void fragment() {
-	float t = TIME;
+	float t = scene_time;
 	vec2 p = w_pos.xz;
 	float e = 0.08;
 	float h0 = wave_h(p, t);

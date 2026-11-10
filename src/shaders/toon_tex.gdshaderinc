@@ -1,3 +1,5 @@
+// The scene clock (set by the studio), so every render of a moment matches.
+global uniform float scene_time;
 // Shared body of toon_tex (single-sided) and toon_tex_ds (double-sided leaves).
 
 uniform vec4 albedo : source_color = vec4(1.0);
@@ -13,7 +15,7 @@ void vertex() {
 	if (wind > 0.0) {
 		vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		float h = clamp(VERTEX.y / max(model_height, 0.1), 0.0, 1.0);
-		float w = sin(TIME * 1.7 + wp.x * 0.45 + wp.z * 0.35) * 0.6 + sin(TIME * 3.1 + wp.y * 1.3) * 0.4;
+		float w = sin(scene_time * 1.7 + wp.x * 0.45 + wp.z * 0.35) * 0.6 + sin(scene_time * 3.1 + wp.y * 1.3) * 0.4;
 		VERTEX += vec3(w, w * 0.3, w * 0.7) * wind * h * h;
 	}
 }

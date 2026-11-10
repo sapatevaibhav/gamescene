@@ -44,8 +44,8 @@
 | 0.14 | Pixel 2D top view, sprite imports (.png sheets, .ase/.aseprite), Indian default names, side-view passing | Done |
 | 0.15 | Pixel 2D polish (tile-set imports, more tiles, objects and backdrops, house interiors), swimming in every style, pets beside the player | Done |
 | 0.16 | Audio and dialogue (Phase D): sounds made in code, footsteps by surface, ambience, music and imported audio on a timeline Sound row, sound in exported videos, subtitle styles, talking mouths | Done |
-| **0.17** | **Export reliability and extras (Phase C)** | **Next** |
-| 0.18 | VRM spring bones, blinking and the animation library (Phase E core) | |
+| 0.17 | Export reliability (progress, pause, finish later, resume after a crash, cooling down), green/blue screen and transparent export, mood music, single-render recording | Done |
+| **0.18** | **VRM spring bones, blinking and the animation library (Phase E core)** | **Next** |
 | 0.19 | Packaging for Android, iOS and desktop (Phase I) | |
 | 0.20 | Templates, onboarding, credits and licence (Phases J and K) | |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
@@ -74,9 +74,9 @@
 - [x] Several shots per scene, joined with cuts, fades and title cards.
 - [x] Off-screen frame-by-frame rendering from 720p to 4K, encoded to MP4 with ffmpeg and an AVI fallback.
 - [x] Burned-in subtitles and screenshots.
-- [ ] Export reliability: progress, cancel and resume. Pause when the device gets hot.
-- [ ] Green-screen background and transparent export where the codec allows it.
-- [ ] Encoding on phones, either through bundled ffmpeg or the platform's native encoder.
+- [x] Export reliability: progress, cancel and resume. Pause when the device gets hot (0.17; resume works with ffmpeg segments and PNG sequences, and the cool-down watches for frames slowing down, since there is no temperature reading).
+- [x] Green-screen background and transparent export where the codec allows it (0.17: green, blue, ProRes 4444 MOV or PNG sequence).
+- [ ] Encoding on phones, either through bundled ffmpeg or the platform's native encoder (moved to packaging, 0.19; phones use the built-in AVI writer until then).
 
 ## Phase D: Audio and dialogue
 

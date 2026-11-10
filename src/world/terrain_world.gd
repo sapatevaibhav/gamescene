@@ -1284,7 +1284,8 @@ func animate(dt: float, t: float) -> void:
 	for p in props:
 		var n: Node3D = p.node
 		if n.has_meta("spin"):
-			(n.get_meta("spin") as Node3D).rotation.z -= dt * 0.7
+			# From the scene clock (not added up), so every render matches.
+			(n.get_meta("spin") as Node3D).rotation.z = -fmod(t * 0.7, TAU)
 		if n.has_meta("flicker"):
 			var arr: Array = n.get_meta("flicker")
 			for i in arr.size():

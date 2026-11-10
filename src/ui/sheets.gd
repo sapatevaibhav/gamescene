@@ -976,10 +976,8 @@ func v_film(_a, b: VBoxContainer) -> String:
 		studio.shots.append({"name": "Shot %d" % (studio.shots.size() + 1), "mode": "cine", "shot": "orbit", "target": "", "dur": 4.0, "dist": 6.0, "height": 2.2})
 		studio.mark_dirty()
 		hud.push_view("shot", studio.shots.size() - 1), false, "plus"))
-	sr.add_child(UIK.btn("Export film", func():
-		if studio.export_film():
-			hud.close_sheet()
-			hud.show_progress("Exporting film"), true, "film"))
+	var unfinished := studio.unfinished_export()
+	sr.add_child(UIK.btn("Carry on export" if not unfinished.is_empty() else "Export film", hud.export_film_flow, true, "film"))
 	b.add_child(sr)
 	_section(b, "Output")
 	var res := UIK.flow()
@@ -998,10 +996,22 @@ func v_film(_a, b: VBoxContainer) -> String:
 			studio.mark_dirty()
 			_rerender()))
 	b.add_child(fr)
+	_section(b, "Background")
+	var bgr := UIK.flow()
+	for o in Recorder.BACKGROUNDS:
+		bgr.add_child(UIK.chip(o[1], str(App.settings.get("bg", "scene")) == o[0], func():
+			App.settings["bg"] = o[0]
+			studio.mark_dirty()
+			_rerender()))
+	b.add_child(bgr)
+	var bgk := str(App.settings.get("bg", "scene"))
+	if bgk in ["green", "blue"]:
+		b.add_child(UIK.para("The world and sky are replaced by flat %s behind the characters, for keying in a video editor. Characters keep their lighting." % ("green" if bgk == "green" else "blue"), 12))
+	elif bgk == "alpha":
+		b.add_child(UIK.para("Only the characters, on a transparent background, to lay over other footage.", 12))
 	var vs := hud.get_viewport_rect().size
 	var sz := App.export_size(vs.x / vs.y)
-	var enc := "H.264 MP4 (ffmpeg)" if Recorder.ffmpeg_path() != "" else "Motion-JPEG AVI (install ffmpeg for MP4)"
-	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, enc], 12))
+	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, Recorder.kind_label(Recorder.choose_kind(bgk, Recorder.ffmpeg_path() != ""))], 12))
 	b.add_child(UIK.toggle("Burn in subtitles for dialogue", App.settings["subtitles"], func(on): App.settings["subtitles"] = on; studio.mark_dirty(); _rerender()))
 	if App.settings["subtitles"]:
 		_subtitle_options(b)
@@ -1109,6 +1119,7 @@ func v_settings(_a, b: VBoxContainer) -> String:
 	b.add_child(UIK.toggle("Lock the mouse to look around", App.device["mouse_look"] == "capture", func(on): App.set_device("mouse_look", "capture" if on else "drag")))
 	b.add_child(UIK.toggle("Show frame rate", App.device["show_fps"], func(on): App.set_device("show_fps", on)))
 	b.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", true), func(on): App.set_device("ui_sounds", on)))
+	b.add_child(UIK.toggle("Pause exports to cool down when the device slows", App.device.get("cool_down", false), func(on): App.set_device("cool_down", on)))
 	b.add_child(UIK.slider("Interface size", App.device["ui_scale"], 0.8, 1.6, 0.05, func(x): App.set_device("ui_scale", x), func(x): return "%d%%" % int(x * 100)))
 	b.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
 	_section(b, "This scene")
@@ -1337,12 +1348,10 @@ func _subtitle_options(b: VBoxContainer) -> void:
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_BEGIN if App.settings.get("sub_pos", "bottom") == "top" else BoxContainer.ALIGNMENT_END
 	var center := CenterContainer.new()
-	var sp := PanelContainer.new()
 	var sl := Label.new()
-	Recorder.style_subtitle(sp, sl, UIK.px(300))
+	Recorder.style_subtitle(sl, UIK.px(300))
 	sl.text = Recorder.subtitle_text("Vaibh", "Shall we go see the lake?")
-	sp.add_child(sl)
-	center.add_child(sp)
+	center.add_child(sl)
 	box.add_child(center)
 	frame.add_child(box)
 	b.add_child(frame)

@@ -4,6 +4,8 @@
 // and wind sway. Vertex COLOR.r = per-card random, COLOR.g = height in canopy.
 shader_type spatial;
 render_mode cull_disabled;
+// The scene clock (set by the studio), so every render of a moment matches.
+global uniform float scene_time;
 
 uniform sampler2D leaf_tex : source_color, filter_linear_mipmap, repeat_disable;
 uniform vec3 top_color : source_color = vec3(0.55, 0.78, 0.3);
@@ -22,8 +24,8 @@ void vertex() {
 	v_h = COLOR.g;
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec3 root = MODEL_MATRIX[3].xyz;
-	float gust = 0.6 + 0.4 * sin(TIME * 0.35 + root.x * 0.07 + root.z * 0.05);
-	float w = sin(TIME * 1.7 + wp.x * 0.45 + wp.z * 0.35 + v_rand * 6.0) * 0.6 + sin(TIME * 3.1 + wp.y * 1.3 + v_rand * 12.0) * 0.4;
+	float gust = 0.6 + 0.4 * sin(scene_time * 0.35 + root.x * 0.07 + root.z * 0.05);
+	float w = sin(scene_time * 1.7 + wp.x * 0.45 + wp.z * 0.35 + v_rand * 6.0) * 0.6 + sin(scene_time * 3.1 + wp.y * 1.3 + v_rand * 12.0) * 0.4;
 	VERTEX += vec3(w, w * 0.35, w * 0.7) * wind * gust * (0.35 + v_h);
 }
 

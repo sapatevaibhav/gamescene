@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.16.0)
+## What's supported (as of 0.17.0)
 
 ### Platforms and engine
 
@@ -75,6 +75,8 @@ ambience have their own volume; exported videos are mixed at those volumes.
 | What | Format | Options |
 |---|---|---|
 | Video | H.264 MP4 with AAC sound through ffmpeg, Motion-JPEG AVI with PCM sound otherwise | 720p, 1080p, 1440p, 4K · 24/30/60 fps · full, 16:9, 9:16, 1:1 · subtitles (box, outline or cinema yellow; 3 sizes; top or bottom) · shot list with fades and title cards |
+| Background | Scene, green screen, blue screen, or transparent: ProRes 4444 MOV with sound through ffmpeg, a PNG sequence plus `sound.wav` otherwise | Green and blue screen keep the characters' lighting |
+| Reliability | Film exports through ffmpeg (and PNG sequences) can pause, finish later and carry on after a crash, rendered in 10 s parts and joined at the end | Optional pause to cool down when rendering slows sharply (on by default on phones) |
 | Screenshot | PNG | Same resolutions and frames as video |
 | Scene | `.json` | Embeds imported models, objects and sounds |
 
@@ -102,21 +104,36 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 - Dialogue is text (speech bubbles and subtitles); there's no voice recording or text-to-speech. Sound is mono, with no left/right panning.
 - Keyframed characters move in straight lines between keys and pass through walls. Scrubbing backwards replays the scene from the start, so it slows down on long scenes.
 - Mobile and desktop export presets (Android, iOS, Windows, macOS) are not configured.
+- Phones export Motion-JPEG AVI (no ffmpeg); native phone encoders come with packaging (0.19). AVI exports can pause but not carry on after closing the app.
+- Falling leaves, motes and other particles aren't replayed exactly, so they can differ slightly where a resumed export carries on.
 - Big CC0 model packs (for example Quaternius on itch.io) must be downloaded by hand, then imported.
 
 ---
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-10
+
 ### Added
+- **Export reliability.** The export panel shows the shot, time done and total, and time left, with **Pause**, **Finish later** and **Cancel**.
+  - Film exports through ffmpeg are rendered in 10-second parts, with a small job file noting what's done. **Finish later**, going Home, opening another scene, closing the app, or even a crash keeps the finished parts.
+  - Exporting the same scene again offers **Carry on** (or **Start again**). The scene is replayed to where it stopped without rendering, then recording carries on, and the parts are joined into one video with its sound. A test checks that the carried-on frames match an uninterrupted export.
+  - **Pause exports to cool down** (Settings): if frames start taking more than twice as long as they did early on (a hot phone or laptop throttling), the export pauses for 20 s, then carries on. On by default on phones.
+- **Green screen, blue screen and transparent backgrounds** (Film → Background). The world, sky, fog and weather are replaced by flat green or blue behind the characters, who keep their lighting. Transparent exports only the characters, as ProRes 4444 `.mov` with sound through ffmpeg, or a PNG sequence with `sound.wav` without it.
+- Tests: A test that doesn't load now fails at once, and a suite that hangs fails after 10 minutes, instead of the run waiting forever. `tests/run.sh` prints each suite's time and the slowest ones.
+- Tests: `test_export` (resuming matches an uninterrupted export frame for frame and sound for sound; pausing; a crash keeps finished parts; carry on and finish later; a changed scene isn't resumed; segments join into one video with sound; PNG sequences; backgrounds; cooling down; a live take).
 - **Music that follows the mood.** Six new calm tunes, one per mood: Golden Hour (sunset), Daydream (dreamy), Enchanted (fantasy, with a harp), Midnight (horror night, quiet and eerie), Rainy Day (storm) and Snowfall (snow, music box). Daylight keeps Meadow. New scenes, and older scenes without a music choice, use **Match the mood** (Sound tab). Picking a mood switches the music with a 1.5 s crossfade. A built-in tune you picked goes back to following the mood when you change the mood; an imported file you picked stays.
 - **Leaving a shot preview.** Preview in a shot's panel (Film) shows a bar with **Back to shot** and **Stop preview**, and Esc also ends it. Either way the camera goes back to how it was.
 
 ### Changed
+- **Recording no longer draws the scene twice.** While recording, the window shows the frame being recorded (letterboxed) instead of rendering the scene again, which roughly halves the work and makes takes and exports much smoother. You also see exactly what goes into the video, green screen included. Vsync is off while recording, so a window that is hidden or on another workspace no longer slows an export to a crawl.
+- Recording starts with a third of a second of warm-up (the scene stands still while the renderer settles), so the first frames look like the rest.
 - Button clicks and the notification pop are gone; only the countdown beeps before a take remain (Settings → Countdown beeps).
 - Changing the background music crossfades instead of cutting.
 
 ### Fixed
+- **The first subtitle of a session was an empty or oversized box** for its first frames in exported videos. Subtitles are now drawn directly, sized from the measured text, and appear correctly from the first frame.
+- **Takes and exports of the same scene didn't play out identically.** Starting a take now resets everything that drives the scene, not just positions: who speaks next in a conversation, walk cycles (so footsteps land the same), speech bubbles left over from before, partners and targets. Wind in grass and trees, water, clouds and the windmill now run on the scene's clock instead of the engine's, so the same moment always renders the same.
 - **Split-second static, like a loose microphone cable, every few seconds.**
   - **Night crickets:** they were a 4.5 kHz tone switched on and off 30 times a second, which sounds like electrical buzz. Their rhythms also divided the 8 s loop evenly, so two crickets lined up into a louder buzz every 4 s. They now chirp like real crickets: 3–4 short, soft syllables at slightly different pitches, with loose, random timing so they never line up, and a little softened, as if a short way off. The night wind is a bit quieter too.
   - **Footsteps:** they had random single-sample "grit" in them, heard as crackle whenever someone walked near the camera. Footsteps are now soft scuffs with a low thud; snow's crunch is made of short, smooth grains.

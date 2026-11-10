@@ -10,7 +10,7 @@ godot --path .            # run the app
 godot -e --path .         # open in the Godot editor
 ```
 
-Video export writes H.264 MP4 with AAC sound through `ffmpeg` when it is installed, and Motion-JPEG AVI with PCM sound otherwise. Videos go to `~/Videos/GameScene Studio/` and screenshots to `~/Pictures/GameScene Studio/`. Scenes are saved in Godot's user folder (`~/.local/share/godot/app_userdata/GameScene Studio/projects/` on Linux).
+Video export writes H.264 MP4 with AAC sound through `ffmpeg` when it is installed, and Motion-JPEG AVI with PCM sound otherwise. Transparent exports are ProRes 4444 MOV (ffmpeg) or a PNG sequence. Unfinished film exports are kept in a hidden `.gamescene-work` folder next to the videos until they're carried on or started again. Videos go to `~/Videos/GameScene Studio/` and screenshots to `~/Pictures/GameScene Studio/`. Scenes are saved in Godot's user folder (`~/.local/share/godot/app_userdata/GameScene Studio/projects/` on Linux).
 
 ## Test
 
@@ -33,9 +33,10 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_pixel_top` | Pixel 2D top view: world, WASD walking, blocking, ground painting and objects through the camera, facing frames, draw order, save/load, replay; side-view passing; default names |
 | `test_sprites` | Pixel sprite imports: PNG strips and RPG grids, Aseprite files (compressed/raw/linked cels, layers, tags) and using them as characters and objects |
 | `test_swim` | Swimming in every world (float line, head above water, swim pose, climbing out) and pets starting beside the player |
-| `test_sleep` | Sleepers close their eyes in every style (eye pieces, blocky eyelids, imported models' face shapes), z's float over them, awake characters blink |
+| `test_sleep` | Sleepers lie down and close their eyes in every style (eye pieces, blocky eyelids), the name tag and z's sit at the head, awake characters blink |
 | `test_audio` | Every built-in sound, ambience and tune is made, audible and identical each run; footsteps by surface in every style; ambience follows the weather; timeline sound clips; the recording's sound log, mix and AVI sound stream; audio imports; saving sound settings |
-| `test_styles` | Per-style import rules, the low-poly triangle cap, scene names, every action on imported models |
+| `test_export` | Resumed film exports match an uninterrupted one frame for frame and sound for sound, pausing, a crash keeps finished parts, carry on and finish later, segments joined with sound (ffmpeg), PNG sequences, green/blue/transparent backgrounds, cooling down, live takes |
+| `test_styles` | Per-style import rules, the low-poly triangle cap, scene names |
 | `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
 | `look_pixel` | Needs a window: renders the Pixel 2D style to `user://look/pixel-*.png` |
 | `look_scene` | Needs a window: renders a few views of one style to `user://look/` for a visual check (`-- look_scene anime`) |

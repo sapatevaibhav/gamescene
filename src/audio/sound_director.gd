@@ -60,6 +60,11 @@ func play(name: String, v := 0, vol := 1.0) -> void:
 	if not App.settings.get("sfx", true) or vol <= 0.01:
 		return
 	var key := "sfx:%s:%d" % [name, v]
+	var rec: Recorder = studio.recorder if studio else null
+	if rec and rec.skipping:
+		# Replaying to where a resumed export stopped: log only.
+		rec.log_sound({"key": key, "cat": "sfx", "vol": vol})
+		return
 	var p := _pool[_next]
 	_next = (_next + 1) % _pool.size()
 	p.stream = Sounds.stream(key)
@@ -68,7 +73,6 @@ func play(name: String, v := 0, vol := 1.0) -> void:
 	heard.append(key)
 	if heard.size() > 64:
 		heard.pop_front()
-	var rec: Recorder = studio.recorder if studio else null
 	if rec and rec.active:
 		rec.log_sound({"key": key, "cat": "sfx", "vol": vol})
 
@@ -389,6 +393,7 @@ static func _set_loop(st: AudioStream, loop: bool) -> void:
 
 ## Restarts the loops from their beginning (a take or export starts).
 func restart() -> void:
+	_feet.clear()
 	_stop_voice("bg", 0.0)
 	for name in _voices.keys():
 		if str(name).begins_with("clip:"):

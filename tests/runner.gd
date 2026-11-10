@@ -18,10 +18,21 @@ func _ready() -> void:
 	AssetLib.DIR = SCRATCH + "props/"
 	AudioFiles.DIR = SCRATCH + "audio/"
 	Recorder.DIR_OVERRIDE = SCRATCH + "exports/"
+	Recorder.JOB_DIR = SCRATCH + "jobs/"
 	AssetTags.reload()
 	var args := OS.get_cmdline_user_args()
 	var name: String = args[0] if args.size() > 0 else "test_core"
 	var s: GDScript = load("res://tests/%s.gd" % name)
+	if s == null or not s.can_instantiate():
+		# A test that doesn't load (parse error) fails at once, instead of
+		# leaving the runner waiting forever.
+		push_error("FAIL: test script %s didn't load" % name)
+		get_tree().quit(1)
+		return
+	# A hung test fails after 10 minutes instead of blocking the run.
+	get_tree().create_timer(600.0).timeout.connect(func():
+		push_error("FAIL: %s took over 10 minutes" % name)
+		get_tree().quit(1))
 	var n: Node = s.new()
 	add_child(n)
 

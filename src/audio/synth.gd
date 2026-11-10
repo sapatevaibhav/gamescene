@@ -26,13 +26,25 @@ static func _put(key: String, w: AudioStreamWAV) -> void:
 ## Makes the music ahead of time (run on a worker thread at startup), so
 ## picking a tune never stalls the interface.
 static func prewarm() -> void:
-	# The mood tunes first: scenes follow the mood by default.
+	# The mood tunes first: scenes follow the mood by default. Stops early
+	# when the app quits (see App._exit_tree), so quitting never waits long.
+	var todo: Array = []
 	for m in MOOD_TUNES:
-		tune(MOOD_TUNES[m])
+		todo.append(MOOD_TUNES[m])
 	for t in TUNE_ORDER:
+		if not t in todo:
+			todo.append(t)
+	for t in todo:
+		if stop_prewarm:
+			return
 		tune(t)
 	for a in ["day", "night"]:
+		if stop_prewarm:
+			return
 		ambience(a)
+
+
+static var stop_prewarm := false
 
 
 ## Sound effects. `v` picks a variation (footsteps have 4).

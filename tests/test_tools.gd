@@ -57,6 +57,10 @@ func _ready() -> void:
 		for p in tw.props.duplicate():
 			if Vector2(p.x - 8.5, p.z - 40.5).length() < 5:
 				tw.remove_prop(p)
+		# The world is random: keep the cast off the spot so nothing blocks it.
+		for x in studio.actors:
+			if Vector2(x.pos.x - 8.5, x.pos.z - 40.5).length() < 4:
+				x.pos = Vector3(30, tw.ground_at(30, 30), 30)
 		var n := tw.props.size()
 		var key: String = Props.defs(style).keys()[0]
 		studio.tools.set_tool("objects", {"prop": key})

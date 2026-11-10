@@ -1,5 +1,7 @@
 // Mood-driven sky: gradient, sun and moon discs, drifting clouds, stars.
 shader_type sky;
+// The scene clock (set by the studio), so every render of a moment matches.
+global uniform float scene_time;
 
 uniform vec3 sky_top : source_color = vec3(0.32, 0.55, 0.92);
 uniform vec3 sky_horizon : source_color = vec3(0.75, 0.86, 0.98);
@@ -59,13 +61,13 @@ void sky() {
 	if (stars > 0.001 && h > 0.0) {
 		vec2 sp = d.xz / (d.y + 0.25) * 140.0;
 		float s = hash(floor(sp));
-		float tw = 0.6 + 0.4 * sin(TIME * 2.0 + s * 40.0);
+		float tw = 0.6 + 0.4 * sin(scene_time * 2.0 + s * 40.0);
 		col += vec3(step(0.9965, s) * stars * tw * smoothstep(0.0, 0.25, h));
 	}
 	// Clouds on a curved layer.
 	{
 		if (h > 0.0 && clouds > 0.01) {
-			vec2 uv = d.xz / (d.y + 0.18) * cloud_scale + vec2(TIME * cloud_speed, TIME * cloud_speed * 0.4);
+			vec2 uv = d.xz / (d.y + 0.18) * cloud_scale + vec2(scene_time * cloud_speed, scene_time * cloud_speed * 0.4);
 			float n = fbm(uv);
 			float c = smoothstep(1.0 - clouds, 1.0 - clouds + cloud_sharp, n);
 			float f2 = fbm(uv * 2.0 + 3.0);

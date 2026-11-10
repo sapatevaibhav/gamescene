@@ -76,7 +76,10 @@ func _ready() -> void:
 
 func _clear() -> void:
 	if recorder.active:
-		recorder.stop()
+		if recorder.can_suspend():
+			recorder.suspend()
+		else:
+			recorder.stop()
 	tools.set_tool("")
 	for a in actors:
 		a.dispose()
@@ -127,7 +130,7 @@ func new_scene(key: String) -> void:
 	scene_seed = randi() % 100000
 	App.sim_rng.seed = scene_seed
 	await _default_cast()
-	App.reset_scene_audio()
+	App.reset_scene_defaults()
 	App.settings["frame"] = "full"
 	App.settings["fov"] = 70.0
 	App.settings["shake"] = false
@@ -193,7 +196,7 @@ func load_data(d: Dictionary) -> String:
 	if off != 0.0:
 		_shift_legacy(d, off)
 	var st: Dictionary = d.get("settings", {})
-	App.reset_scene_audio()
+	App.reset_scene_defaults()
 	for k in st:
 		if App.SCENE_KEYS.has(k):
 			App.settings[k] = st[k]
@@ -556,18 +559,7 @@ func reset_to_start() -> void:
 		if a == null:
 			continue
 		var p: Array = s["pos"]
-		a.pos = Vector3(p[0], p[1], p[2])
-		a.vel = Vector3.ZERO
-		a.yaw = s["yaw"]
-		a.goto = {}
-		a.speak_t = 0
-		a.set_behavior(s["behavior"])
-		a.home = a.pos
-		a.t = 0.0
-		a.wait = 0.5
-		a.next_line = 3.0
-		a.turn_t = 0.0
-		a.keyed = false
+		a.reset_sim(Vector3(p[0], p[1], p[2]), float(s["yaw"]), str(s["behavior"]))
 	App.sim_rng.seed = scene_seed
 	play_t = 0.0
 	_fired.clear()
@@ -711,15 +703,30 @@ func apply_shot(shot: Dictionary) -> void:
 		camera.set_mode(mode)
 
 
-func export_film() -> bool:
+## The film export size for the current window and settings.
+func export_size() -> Vector2i:
+	var vs := get_viewport().get_visible_rect().size
+	return App.export_size(vs.x / vs.y)
+
+
+## An unfinished film export of this scene that can carry on, or {}.
+func unfinished_export() -> Dictionary:
+	return Recorder.find_job(self, int(App.settings["fps"]))
+
+
+## Exports the shot list from the scene start. `resume` carries on an
+## unfinished export (from unfinished_export()).
+func export_film(resume: Dictionary = {}) -> bool:
 	if shots.is_empty():
 		App.toast("Add at least one shot first.")
 		return false
 	reset_to_start()
+	_time = 0.0
 	playing = has_script()
 	paused = false
-	var vs := get_viewport().get_visible_rect().size
-	var ok := recorder.start(App.export_size(vs.x / vs.y), int(App.settings["fps"]), shots)
+	# A resumed export keeps the size it started at, whatever the window is now.
+	var size := Vector2i(int(resume["w"]), int(resume["h"])) if resume.has("w") else export_size()
+	var ok := recorder.start(size, int(App.settings["fps"]), shots, resume)
 	if ok:
 		recording_changed.emit(true)
 	return ok
@@ -802,6 +809,9 @@ func _process(delta: float) -> void:
 			_heard = false
 		return
 	_heard = true
+	if recorder.holding():
+		# An export on hold (paused, cooling down, or warming up): freeze.
+		return
 	var dt := App.fixed_dt if App.fixed_dt > 0.0 else minf(delta, 0.05)
 	_time += dt
 	if playing and paused:
@@ -818,6 +828,8 @@ func _process(delta: float) -> void:
 	_hide_actors_near_camera()
 	atmo.tick(dt, camera.global_position)
 	world.animate(dt, _time)
+	# Wind, water and clouds run on the scene clock, not the engine's.
+	RenderingServer.global_shader_parameter_set("scene_time", _time)
 	sound.tick(dt)
 	recorder.tick(dt)
 	if dirty and not recorder.active:
