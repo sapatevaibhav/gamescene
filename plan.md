@@ -45,8 +45,8 @@
 | 0.15 | Pixel 2D polish (tile-set imports, more tiles, objects and backdrops, house interiors), swimming in every style, pets beside the player | Done |
 | 0.16 | Audio and dialogue (Phase D): sounds made in code, footsteps by surface, ambience, music and imported audio on a timeline Sound row, sound in exported videos, subtitle styles, talking mouths | Done |
 | 0.17 | Export reliability (progress, pause, finish later, resume after a crash, cooling down), green/blue screen and transparent export, mood music, single-render recording | Done |
-| **0.18** | **VRM spring bones, blinking and the animation library (Phase E core)** | **Next** |
-| 0.19 | Packaging for Android, iOS and desktop (Phase I) | |
+| 0.18 | Spring bones (hair, skirts, coats), blinking and feelings on imported faces, and the animation library (Mixamo-style clips fitted to any humanoid) | Done |
+| **0.19** | **Packaging for Android, iOS and desktop (Phase I)** | **Next** |
 | 0.20 | Templates, onboarding, credits and licence (Phases J and K) | |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
@@ -90,9 +90,10 @@
 
 - [x] Import `.glb`, `.vrm`, `.gltf` and `.fbx` characters, with bone matching and rig-aware sizing.
 - [x] Import environment objects.
-- [ ] Full VRM support: MToon shading, spring bones for hair and cloth, expressions and blinking.
+- [x] Spring bones for hair and cloth, expressions and blinking (0.18; for VRM and any other rig, from bone names or shape).
+- [ ] MToon shading for VRM (the anime style's cel shading is used instead).
 - [x] Add sleep, fight, point, laugh, cry and celebrate (0.11).
-- [ ] Animation library: retarget Mixamo-style clips onto any humanoid.
+- [x] Animation library: retarget Mixamo-style clips onto any humanoid (0.18).
 - [ ] A pose library to save and reuse poses.
 - [ ] Attachment points for held weapons and props.
 - [ ] Characters saved as reusable presets, with a size setting per character.

@@ -261,6 +261,14 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 				rig["headH"] = clampf(head_p.y + 0.06, 0.4, rig["height"])
 	rig["blink"] = _blink_shapes(scene) if scene else []
 	rig["mouth"] = _mouth_shapes(scene) if scene else []
+	rig["expr"] = _expr_shapes(scene) if scene else {}
+	var ssk: Skeleton3D = rig["skel"]
+	if ssk:
+		# Skeleton space -> character space (+Z forward, Y up), for clips.
+		var sxf := Kit._local_xf(root, ssk)
+		rig["char_q"] = sxf.basis.get_rotation_quaternion()
+		rig["skel_scale"] = sxf.basis.get_scale().x
+		rig["springs"] = SpringRig.build(ssk, rig["bones"])
 	# Framing hints for thumbnails (skinned mesh bounds can't be trusted).
 	root.set_meta("frame_h", float(rig["height"]))
 	root.set_meta("head_h", float(rig["headH"]))
@@ -306,6 +314,47 @@ static func _mouth_shapes(scene: Node) -> Array:
 				loose.append([mi, i])
 	var out := best if not best.is_empty() else loose
 	return out.slice(0, 1)
+
+
+## Face shapes for feelings, by name: {"joy": [[mesh, index], ...],
+## "angry": [...], "sorrow": [...], "surprised": [...]}. Covers VRM 0 / 1
+## ("Joy", "happy", "Angry", "Sorrow", "sad", "Surprised"), VRoid
+## ("Fcl_ALL_Joy" ...), MMD (笑い, 怒り, 困る) and game exports
+## ("Mouth_Smile01", "Brow_Angry_L", "Brow_Trouble_R" ...).
+const EXPR_WORDS := {
+	"joy": ["joy", "happy", "smile", "笑"],
+	"angry": ["angry", "anger", "怒"],
+	"sorrow": ["sorrow", "sad", "trouble", "困", "悲"],
+	"surprised": ["surprised", "surprise", "驚"],
+}
+
+
+static func _expr_shapes(scene: Node) -> Dictionary:
+	var out := {}
+	for n in AssetLib._find_all(scene, "MeshInstance3D"):
+		var mi := n as MeshInstance3D
+		if not (mi.mesh is ArrayMesh):
+			continue
+		var am := mi.mesh as ArrayMesh
+		for i in am.get_blend_shape_count():
+			var nm := String(am.get_blend_shape_name(i)).to_lower()
+			# Eye-closing shapes would fight the blinking.
+			if nm.contains("blink") or nm.contains("close"):
+				continue
+			# VRM's "Fun" (a happy, relaxed face) counts as joy.
+			var kind := "joy" if nm == "fun" or nm == "fcl_all_fun" else ""
+			for k in EXPR_WORDS:
+				if kind != "":
+					break
+				for w in EXPR_WORDS[k]:
+					if nm.contains(w):
+						kind = k
+						break
+			if kind != "":
+				var arr: Array = out.get_or_add(kind, [])
+				if arr.size() < 4:
+					arr.append([mi, i])
+	return out
 
 
 ## Game-style rigs: hide VFX-only meshes, and stop vertex colours (often
@@ -503,8 +552,42 @@ const BASIC_STATES := ["idle", "walk", "run", "jump"]
 
 
 static func animate(a: Actor, dt: float, sp: float, _is_player: bool) -> void:
-	var m := a.rig
 	var state := _state(a, sp)
+	var key := library_clip(a, state)
+	if key != "":
+		# A clip from the animation library plays this action.
+		if a._clip_state != state:
+			a._clip_state = state
+			a._clip_t = 0.0
+		a._clip_t += dt * (clampf(sp / 1.7, 0.6, 2.2) if state in ["walk", "run"] else 1.0)
+		var r := a.root()
+		r.position = a.pos
+		r.basis = Basis(Vector3.UP, a.yaw).scaled_local(Vector3.ONE * a.k())
+		AnimLib.apply(a, key, a._clip_t)
+	else:
+		a._clip_state = ""
+		_animate_body(a, dt, sp, state)
+	# Hair, skirts and tails follow whatever pose was set.
+	var springs: SpringRig = a.rig.get("springs")
+	if springs:
+		springs.step(dt, a.height())
+
+
+## The library clip this character uses for `state`, or "".
+static func library_clip(a: Actor, state: String) -> String:
+	var anims: Dictionary = a.look.get("anims", {}) if a.look.get("anims") is Dictionary else {}
+	if anims.is_empty():
+		return ""
+	var key := str(anims.get(state, ""))
+	if key == "" and state == "run":
+		key = str(anims.get("walk", ""))
+	if key != "" and AnimLib.clip(key).is_empty():
+		return ""
+	return key
+
+
+static func _animate_body(a: Actor, dt: float, sp: float, state: String) -> void:
+	var m := a.rig
 	var ap: AnimationPlayer = m.get("anim")
 	var clips: Dictionary = m["clips"]
 	if state == "sleep" and not clips.has("sleep"):
@@ -552,26 +635,14 @@ static func _pose_angles(a: Actor, state: String, sp: float) -> Dictionary:
 			p["lowerArmL"] = Vector2(-0.5, 0)
 			p["headPitch"] = sin(t * 7.0) * 0.06
 		"dance":
-			var b := absf(sin(t * 8.0))
-			p["lift"] = b * 0.05
-			if int(floor(t / 4.0)) % 2 == 0:
-				p["upperArmL"] = Vector2(-2.6 + sin(t * 8.0) * 0.35, 0.2)
-				p["upperArmR"] = Vector2(-2.6 - sin(t * 8.0) * 0.35, 0.2)
-				p["lowerArmL"] = Vector2(-0.4, 0)
-				p["lowerArmR"] = Vector2(-0.4, 0)
-				p["upperLegL"] = Vector2(maxf(0.0, sin(t * 8.0)) * -0.5, 0)
-				p["upperLegR"] = Vector2(maxf(0.0, -sin(t * 8.0)) * -0.5, 0)
-				p["lowerLegL"] = Vector2(maxf(0.0, sin(t * 8.0)) * 0.7, 0)
-				p["lowerLegR"] = Vector2(maxf(0.0, -sin(t * 8.0)) * 0.7, 0)
-			else:
-				p["upperArmL"] = Vector2(-0.3, 1.2 + sin(t * 6.0) * 0.4)
-				p["upperArmR"] = Vector2(-0.3, 1.2 - sin(t * 6.0) * 0.4)
-				p["lowerArmL"] = Vector2(-0.9, 0)
-				p["lowerArmR"] = Vector2(-0.9, 0)
-				p["lowerLegL"] = Vector2(b * 0.4, 0)
-				p["lowerLegR"] = Vector2(b * 0.4, 0)
-				p["spin"] = sin(t * 3.0) * 0.6
-			p["headPitch"] = sin(t * 8.0) * 0.1
+			var dp := Actor.dance_pose(a.dance_style, t)
+			for k in dp:
+				if dp[k] is Vector2:
+					p[k] = dp[k]
+			p["lift"] = float(dp["lift"])
+			p["spin"] = float(dp["spin"])
+			p["spine"] = Vector2(0.0, float(dp["lean"]))
+			p["headPitch"] = float(dp["hpitch"])
 		"wave":
 			p["upperArmR"] = Vector2(-2.5, 0.35)
 			p["lowerArmR"] = Vector2(-0.4 + sin(t * 9.0) * 0.45, 0)
@@ -625,11 +696,12 @@ static func _pose_angles(a: Actor, state: String, sp: float) -> Dictionary:
 			p["upperArmR"] = Vector2(-1.5, 0.05)
 			p["lowerArmR"] = Vector2(0.0, 0)
 		"fight":
-			# Guard up, knees soft.
-			p["upperArmL"] = Vector2(-0.8, 0.15)
-			p["upperArmR"] = Vector2(-0.6, 0.15)
-			p["lowerArmL"] = Vector2(-1.8, 0)
-			p["lowerArmR"] = Vector2(-1.8, 0)
+			# Boxer's guard: elbows down and a little out, fists up in front
+			# of each shoulder (apart, not crossed over the chest).
+			p["upperArmL"] = Vector2(-0.55, 0.4)
+			p["upperArmR"] = Vector2(-0.45, 0.4)
+			p["lowerArmL"] = Vector2(-1.9, 0)
+			p["lowerArmR"] = Vector2(-1.9, 0)
 			p["upperLegL"] = Vector2(-0.25, 0.1)
 			p["upperLegR"] = Vector2(0.15, 0.1)
 			p["lowerLegL"] = Vector2(0.35, 0)

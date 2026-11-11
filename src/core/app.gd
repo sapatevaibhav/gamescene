@@ -76,6 +76,7 @@ var _warm := -1
 
 
 func _exit_tree() -> void:
+	Media.wait_all()
 	if _warm >= 0:
 		Synth.stop_prewarm = true
 		WorkerThreadPool.wait_for_task_completion(_warm)

@@ -24,6 +24,7 @@ godot --path . -- --smoke                                      # rendered end-to
 |---|---|
 | `test_core` | Seeded RNG matches the web build, RLE format, save migration, and simulates NPC behaviours, script cues, save/reload and undo in every style |
 | `test_tools` | Block place/break/prefab, object place/select/rotate/resize/delete, ground sculpting, moving and selecting actors, undo/redo |
+| `test_home` | Home screen: deleting the selected scenes, the Recordings and Screenshots tabs and thumbnails |
 | `test_ui` | Opens every panel and tool in every style |
 | `test_voxel` | Blocks, atlas, the 5 world generators, rays, save round trip |
 | `test_terrain` | Every prop, world generation, picking, collisions, save round trip |
@@ -36,6 +37,7 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_sleep` | Sleepers lie down and close their eyes in every style (eye pieces, blocky eyelids), the name tag and z's sit at the head, awake characters blink |
 | `test_audio` | Every built-in sound, ambience and tune is made, audible and identical each run; footsteps by surface in every style; ambience follows the weather; timeline sound clips; the recording's sound log, mix and AVI sound stream; audio imports; saving sound settings |
 | `test_export` | Resumed film exports match an uninterrupted one frame for frame and sound for sound, pausing, a crash keeps finished parts, carry on and finish later, segments joined with sound (ffmpeg), PNG sequences, green/blue/transparent backgrounds, cooling down, live takes |
+| `test_anim` | Animation library (a clip fitted to a differently built rig: other names, A-pose, rolled axes, Z-up), spring bones (trail, settle, replay exactly), feelings on faces, clips saved and exported. Uses models made in code (`tests/fixtures.gd`) |
 | `test_styles` | Per-style import rules, the low-poly triangle cap, scene names |
 | `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
 | `look_pixel` | Needs a window: renders the Pixel 2D style to `user://look/pixel-*.png` |

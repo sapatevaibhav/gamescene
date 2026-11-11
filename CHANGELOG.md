@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.17.0)
+## What's supported (as of 0.18.0)
 
 ### Platforms and engine
 
@@ -53,6 +53,11 @@ humanoid, Unreal (UE4/UE5), Blender, Blender Rigify, VRM/VRoid, MMD (Japanese
 and English/Sketchfab), Daz Genesis, Character Creator/iClone, Valve/Source,
 3ds Max Biped, and generic `L/R` prefixes or suffixes. Clips named idle, walk,
 run, dance, wave, sit, jump or talk are played when present.
+
+Imported characters also get:
+- **Animation library**: clips from Mixamo and other `.fbx`/`.glb`/`.gltf` files, fitted to any humanoid (other bone names, A-pose or T-pose, any axes) and picked per action (character → Animations).
+- **Spring bones**: hair, skirts, coats, sleeves, tails and ribbons sway and trail, found from bone names (VRoid `J_Sec_*`, hair, skirt ...) or, on rigs with meaningless names, from chains hanging off the head or torso.
+- **Feelings**: joy, anger, sorrow and surprise from the model's own face shapes (VRM, VRoid, MMD and game exports), plus blinking and mouth shapes while talking.
 
 ### Sound
 
@@ -105,12 +110,32 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 - Keyframed characters move in straight lines between keys and pass through walls. Scrubbing backwards replays the scene from the start, so it slows down on long scenes.
 - Mobile and desktop export presets (Android, iOS, Windows, macOS) are not configured.
 - Phones export Motion-JPEG AVI (no ffmpeg); native phone encoders come with packaging (0.19). AVI exports can pause but not carry on after closing the app.
+- VRM's MToon shading isn't used; VRM characters get the anime style's cel shading instead.
 - Falling leaves, motes and other particles aren't replayed exactly, so they can differ slightly where a resumed export carries on.
 - Big CC0 model packs (for example Quaternius on itch.io) must be downloaded by hand, then imported.
 
 ---
 
 ## [Unreleased]
+
+## [0.18.0] - 2026-11-11
+
+### Added
+- **Animation library.** Import Mixamo-style animation files (`.fbx`, `.glb`, `.gltf`; every clip in a file comes in) and use them for an imported character's actions: Idle, Walk, Run, Talk, Dance, Wave, Sit, Celebrate, Laugh, Cry, Point, Fight or Sleep (character → **Animations**). Clips are stored rig-neutral, so one clip fits any humanoid: other bone names, an A-pose character with a T-pose clip, rolled bone axes or a Z-up armature. Walking and running clips speed up with the character. Clips play on the scene clock, so takes and resumed exports repeat exactly, and exported scene files carry the clips they use.
+- **Spring bones.** Hair, skirts, coats, sleeves, tails, capes and ribbons on imported characters sway, trail behind when the character moves and settle back, and stay out of the head, body and legs. Chains come from bone names (VRoid's `J_Sec_*`, "hair", "skirt", MMD 髪/スカート ...) or, for rigs with meaningless names (converted MMD models), from chains of bones hanging off the head or torso. They run on the scene clock too.
+- **Feelings on imported faces.** Characters whose models have the face shapes look happy while celebrating, laughing, dancing or waving, sad while crying, angry while fighting and surprised while fleeing, easing in and out. Works with VRM 0/1 and VRoid names, MMD shapes and game exports (brow and mouth shapes, as on the Mavuika model).
+- **Dance styles.** A character set to Dance gets a Dance section: **Mix** (changes style every few seconds, as before) or one style that keeps looping: Hands up, Sway, Spin, Robot, Disco, Jumping jacks, Twist and Clap (five new). Built-in and imported characters dance the same styles; Pixel 2D characters keep their dance frames. Saved with the character.
+- **Chat while doing a task** (character panel, under "Notice the player", off by default): when on, the character says one of their lines every few seconds whatever they're doing (dancing, sitting, patrolling ...), not only when chatting.
+- **Recordings and screenshots on the home screen.** "Your scenes" has tabs: Scenes, Recordings and Screenshots, each with a count, showing one full grid at a time. Recordings and screenshots have thumbnails (videos through ffmpeg) and open when tapped. **Select** works on every tab: pick several, then Delete (with a confirmation) or, for recordings and screenshots, **Show in folder**, which opens the folder with those files highlighted (each file's menu does the same for one). On Linux every selected file is highlighted (Thunar, Nautilus, Dolphin, Nemo, Caja); Explorer and Finder highlight one file at a time, so with several selected the first is shown and a note says so. On phones, **Share** takes its place: it opens the system share sheet once phone builds include the share plugin (0.19), and until then opens the file in the phone's viewer. **Open folder** opens the export folder. PNG-sequence exports are listed as recordings.
+- Tests: `test_anim` (with models built in code: a clip imported and fitted to a differently built rig, arms pointing the same way as the clip; spring bones trailing, settling and replaying exactly; feelings; saving and exporting clips).
+
+### Changed
+- Selecting on the home screen no longer moves the page: the hint, All/None, Show in folder and Delete are on a bar floating at the bottom, and Select turns into Done in place.
+- `test_bulk` became `test_home` (also checks the Recordings and Screenshots tabs).
+
+### Fixed
+- **The app could crash when closing** after the home screen had shown recordings or screenshots: thumbnail jobs that had finished were never released, and the thread pool crashed at shutdown. They are now released as they finish and waited for on exit.
+- **Imported characters' fighting stance looked like they were holding one hand with the other**: the guard crossed the forearms over the chest. It's now a boxer's guard, elbows down and a little out, fists apart in front of the shoulders.
 
 ## [0.17.0] - 2026-11-10
 

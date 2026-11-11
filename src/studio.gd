@@ -205,7 +205,8 @@ func load_data(d: Dictionary) -> String:
 	for c in d.get("cast", []):
 		var p: Array = c.get("pos", [40, 0, 40])
 		add_actor({"name": c.get("name", "Someone"), "look": c.get("look", {}), "behavior": c.get("behavior", "idle"), "notice": c.get("notice", true),
-			"lines": c.get("lines", []), "x": p[0], "y": p[1], "z": p[2], "yaw": c.get("yaw", 0.0), "isPlayer": c.get("player", false)})
+			"lines": c.get("lines", []), "dance": c.get("dance", "mix"), "chat": c.get("chat", false),
+			"x": p[0], "y": p[1], "z": p[2], "yaw": c.get("yaw", 0.0), "isPlayer": c.get("player", false)})
 	if player == null and not actors.is_empty():
 		player = actors[0]
 	if player == null:
@@ -323,6 +324,7 @@ func _restore_cast(cast: Array) -> void:
 	for c in cast:
 		var p: Array = c["pos"]
 		add_actor({"name": c["name"], "look": c["look"], "behavior": c["behavior"], "notice": c.get("notice", true), "lines": c.get("lines", []),
+			"dance": c.get("dance", "mix"), "chat": c.get("chat", false),
 			"x": p[0], "y": p[1], "z": p[2], "yaw": c["yaw"], "isPlayer": c.get("player", false)})
 
 

@@ -650,9 +650,20 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 			t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			g.add_child(t)
 		b.add_child(g)
+	if a.base_behavior == "dance" or a.behavior == "dance":
+		_section(b, "Dance")
+		var dg := UIK.flow()
+		for d in Actor.DANCES:
+			dg.add_child(UIK.chip(d[1], a.dance_style == d[0], func():
+				a.dance_style = d[0]
+				studio.mark_dirty()
+				_rerender()))
+		b.add_child(dg)
+		b.add_child(UIK.para("Mix changes style every few seconds; any other style loops." if a.rig.get("kind", "") != "sprite" else "Pixel 2D characters have one dance; the style is used by other characters.", 12))
 	if a != studio.player:
 		b.add_child(UIK.toggle("Notice the player (turn to look)", a.notice, func(on: bool): a.notice = on; studio.mark_dirty()))
-	_section(b, "Lines (one per line, said when chatting)")
+		b.add_child(UIK.toggle("Chat while doing a task", a.chat_busy, func(on: bool): a.chat_busy = on; studio.mark_dirty()))
+	_section(b, "Lines (one per line, said when chatting%s)" % (" and while busy" if a.chat_busy else ""))
 	var te := TextEdit.new()
 	te.text = "\n".join(PackedStringArray(a.lines.map(func(x): return str(x))))
 	te.custom_minimum_size.y = UIK.px(110)
@@ -679,6 +690,8 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 		r1.add_child(UIK.btn("Play as them", func():
 			studio.set_player(a)
 			_rerender(), false, "play"))
+	if a.rig.get("kind", "") == "model" and a.rig.get("skel") != null:
+		r1.add_child(UIK.btn("Animations", func(): hud.push_view("anims", a.id), false, "dance"))
 	b.add_child(r1)
 	_section(b, "Look")
 	var f := _picks(b)
@@ -1355,3 +1368,63 @@ func _subtitle_options(b: VBoxContainer) -> void:
 	box.add_child(center)
 	frame.add_child(box)
 	b.add_child(frame)
+
+
+# ---------------------------------------------------------------- animation library
+
+const ANIM_ACTIONS := [["idle", "Idle"], ["walk", "Walk"], ["run", "Run"], ["talk", "Talk"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"],
+	["celebrate", "Celebrate"], ["laugh", "Laugh"], ["cry", "Cry"], ["point", "Point"], ["fight", "Fight"], ["sleep", "Sleep"]]
+var _anim_action := "dance"
+
+
+## Picks library clips for an imported character's actions.
+func v_anims(id: Variant, b: VBoxContainer) -> String:
+	var a := studio.actor_by_id(int(id))
+	if a == null:
+		return ""
+	var anims: Dictionary = a.look.get("anims", {}) if a.look.get("anims") is Dictionary else {}
+	b.add_child(UIK.para("Use animation clips (Mixamo and other .fbx, .glb or .gltf files) for %s's actions. Clips are fitted to any humanoid, whatever its rest pose or bone names." % a.name, 12))
+	b.add_child(UIK.btn("Import animations", func():
+		hud.pick_file(PackedStringArray(["*.fbx, *.glb, *.gltf ; Animation files"]), func(path: String):
+			hud.toast("Importing " + path.get_file() + "…")
+			var lid := AnimLib.import_file(path)
+			if lid == "":
+				hud.toast(AnimLib.last_error)
+				return
+			hud.toast("Added %d clip%s." % [(AnimLib.load_lib(lid).get("clips", []) as Array).size(), "" if (AnimLib.load_lib(lid).get("clips", []) as Array).size() == 1 else "s"])
+			_rerender(), "Import animations"), false, "upload"))
+	_section(b, "Action")
+	var acts := UIK.flow()
+	for ac in ANIM_ACTIONS:
+		var label: String = ac[1] + (" ●" if anims.has(ac[0]) else "")
+		acts.add_child(UIK.chip(label, _anim_action == ac[0], func():
+			_anim_action = ac[0]
+			_rerender()))
+	b.add_child(acts)
+	_section(b, "Clip for %s" % _anim_action)
+	var cur := str(anims.get(_anim_action, ""))
+	var set_clip := func(key: String) -> void:
+		var d: Dictionary = anims.duplicate()
+		if key == "":
+			d.erase(_anim_action)
+		else:
+			d[_anim_action] = key
+		a.look["anims"] = d
+		studio.mark_dirty()
+		_rerender()
+	b.add_child(UIK.chip("Built-in pose", cur == "", set_clip.bind("")))
+	var clips := AnimLib.all_clips()
+	if clips.is_empty():
+		b.add_child(UIK.para("No clips yet. Import some to get started.", 12))
+	for c in clips:
+		var row := UIK.hbox(6)
+		var pick := UIK.chip("%s  ·  %.1f s" % [c[1], c[2]], cur == c[0], set_clip.bind(str(c[0])))
+		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pick.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.add_child(pick)
+		b.add_child(row)
+	if not _anim_action in ["idle", "walk", "run", "talk"]:
+		b.add_child(UIK.btn("Try it", func():
+			a.set_behavior(_anim_action, false)
+			hud.close_sheet(), false, "playtri"))
+	return "Animations"

@@ -54,9 +54,12 @@ func _ready() -> void:
 		cam.pitch = 1.5
 		cam.update_camera(0.016)
 		var tw: TerrainWorld = studio.world
+		# The world is random: clear a wide spot (big tree canopies reach in
+		# and catch the tap) and start with nothing selected.
 		for p in tw.props.duplicate():
-			if Vector2(p.x - 8.5, p.z - 40.5).length() < 5:
+			if Vector2(p.x - 8.5, p.z - 40.5).length() < 10:
 				tw.remove_prop(p)
+		studio.tools.sel = {}
 		# The world is random: keep the cast off the spot so nothing blocks it.
 		for x in studio.actors:
 			if Vector2(x.pos.x - 8.5, x.pos.z - 40.5).length() < 4:

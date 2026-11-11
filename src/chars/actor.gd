@@ -66,6 +66,19 @@ var _zzz: Node3D = null
 var _mouths: Array = []
 var _mouth_shut: Array = []
 var _mouth_open := 0.0
+## Imported faces: current weight of each feeling ("joy", "angry" ...).
+var _expr := {}
+## Library clip playing (see ModelRig.library_clip): its action and time.
+var _clip_state := ""
+var _clip_t := 0.0
+## Dance style ("mix" cycles through all of them; see DANCES).
+var dance_style := "mix"
+## Say their lines every few seconds while doing their task (dancing,
+## sitting, patrolling ...), not only when chatting.
+var chat_busy := false
+
+const DANCES := [["mix", "Mix"], ["hands_up", "Hands up"], ["sway", "Sway"], ["spin", "Spin"], ["robot", "Robot"],
+	["disco", "Disco"], ["jacks", "Jumping jacks"], ["twist", "Twist"], ["clap", "Clap"]]
 ## Driven by timeline keyframes this tick (behaviours paused).
 var keyed := false
 ## Seconds left in the current attack swing (0 = not attacking).
@@ -87,6 +100,8 @@ func _init(s: Node, o: Dictionary) -> void:
 	base_behavior = behavior
 	notice = o.get("notice", true) != false
 	lines = (o.get("lines", []) as Array).duplicate()
+	dance_style = str(o.get("dance", "mix"))
+	chat_busy = o.get("chat", false) == true
 	pos = Vector3(float(o.get("x", 40)), float(o.get("y", 0)), float(o.get("z", 40)))
 	home = pos
 	yaw = float(o.get("yaw", 0))
@@ -191,6 +206,122 @@ func mouth_amount() -> float:
 	if fmod(t * 1.7 + id * 0.37, 1.6) > 1.3:
 		return 0.0
 	return clampf(absf(sin(t * 12.0 + id)) * (0.6 + 0.4 * sin(t * 4.3 + id * 2.0)), 0.0, 1.0)
+
+
+## The dance pose at time `t` for a style, shared by built-in and imported
+## characters: arm and leg angles per slot (x swings forward/up when
+## negative, y moves the limb out to the side), plus "lift" (bounce, a
+## fraction of height), "spin", "sway" (metres sideways), "lean", "hyaw"
+## and "hpitch". "mix" changes style every 4 seconds.
+static func dance_pose(style: String, t: float) -> Dictionary:
+	if style == "mix" or not DANCES.any(func(d): return d[0] == style):
+		style = DANCES[1 + int(floor(t / 4.0)) % (DANCES.size() - 1)][0]
+	var s8 := sin(t * 8.0)
+	var b := absf(s8)
+	var p := {"lift": 0.0, "spin": 0.0, "sway": 0.0, "lean": 0.0, "hyaw": sin(t * 4.0) * 0.2, "hpitch": s8 * 0.08}
+	match style:
+		"hands_up":
+			p["upperArmL"] = Vector2(-2.7 + s8 * 0.35, 0.2)
+			p["upperArmR"] = Vector2(-2.7 - s8 * 0.35, 0.2)
+			p["lowerArmL"] = Vector2(-0.4, 0)
+			p["lowerArmR"] = Vector2(-0.4, 0)
+			p["upperLegL"] = Vector2(maxf(0.0, s8) * -0.5, 0)
+			p["upperLegR"] = Vector2(maxf(0.0, -s8) * -0.5, 0)
+			p["lowerLegL"] = Vector2(maxf(0.0, s8) * 0.7, 0)
+			p["lowerLegR"] = Vector2(maxf(0.0, -s8) * 0.7, 0)
+			p["lift"] = b * 0.05
+		"sway":
+			var s6 := sin(t * 6.0)
+			p["upperArmL"] = Vector2(-0.3, 1.1 + s6 * 0.45)
+			p["upperArmR"] = Vector2(-0.3, 1.1 - s6 * 0.45)
+			p["lowerArmL"] = Vector2(-0.8, 0)
+			p["lowerArmR"] = Vector2(-0.8, 0)
+			p["lean"] = s6 * 0.16
+			p["sway"] = s6 * 0.05
+		"spin":
+			p["upperArmL"] = Vector2(0.0, 1.45)
+			p["upperArmR"] = Vector2(0.0, 1.45)
+			p["spin"] = t * 5.0
+			p["lift"] = absf(sin(t * 10.0)) * 0.03
+		"robot":
+			# Stiff, on the beat: one arm up, one down, switching each beat.
+			var beat := int(floor(t * 2.0)) % 2
+			p["upperArmL"] = Vector2(-1.57 if beat == 0 else -0.2, 0.25)
+			p["upperArmR"] = Vector2(-0.2 if beat == 0 else -1.57, 0.25)
+			p["lowerArmL"] = Vector2(-1.57 if beat == 1 else 0.0, 0)
+			p["lowerArmR"] = Vector2(-1.57 if beat == 0 else 0.0, 0)
+			p["hyaw"] = 0.5 if beat == 0 else -0.5
+			p["hpitch"] = 0.0
+			p["spin"] = 0.25 if beat == 0 else -0.25
+		"disco":
+			# Point up across, then down across; the other hand on the hip.
+			var up := int(floor(t * 2.0)) % 2 == 0
+			p["upperArmR"] = Vector2(-2.7, 0.55) if up else Vector2(-0.5, -0.35)
+			p["lowerArmR"] = Vector2(0.0, 0)
+			p["upperArmL"] = Vector2(-0.2, 0.6)
+			p["lowerArmL"] = Vector2(-1.6, 0)
+			p["lift"] = b * 0.03
+			p["lean"] = 0.08 if up else -0.08
+		"jacks":
+			var j := (sin(t * 7.0) + 1.0) * 0.5
+			p["upperArmL"] = Vector2(0.0, 0.15 + j * 2.7)
+			p["upperArmR"] = Vector2(0.0, 0.15 + j * 2.7)
+			p["upperLegL"] = Vector2(0.0, j * 0.35)
+			p["upperLegR"] = Vector2(0.0, j * 0.35)
+			p["lift"] = absf(sin(t * 7.0)) * 0.06
+		"twist":
+			var tw := sin(t * 9.0)
+			p["upperArmL"] = Vector2(-0.6 - tw * 0.3, 0.3)
+			p["upperArmR"] = Vector2(-0.6 + tw * 0.3, 0.3)
+			p["lowerArmL"] = Vector2(-1.4, 0)
+			p["lowerArmR"] = Vector2(-1.4, 0)
+			p["upperLegL"] = Vector2(-0.25, 0)
+			p["upperLegR"] = Vector2(-0.25, 0)
+			p["lowerLegL"] = Vector2(0.5, 0)
+			p["lowerLegR"] = Vector2(0.5, 0)
+			p["spin"] = tw * 0.5
+			p["lift"] = -0.03
+		"clap":
+			# Hands together over the head on the beat.
+			var c := absf(sin(t * 6.0))
+			p["upperArmL"] = Vector2(-2.5, 0.08 + c * 0.35)
+			p["upperArmR"] = Vector2(-2.5, 0.08 + c * 0.35)
+			p["lowerArmL"] = Vector2(-0.3, 0)
+			p["lowerArmR"] = Vector2(-0.3, 0)
+			p["lift"] = absf(sin(t * 6.0)) * 0.04
+	return p
+
+
+## Feelings on imported faces that have the shapes: joy while celebrating,
+## laughing, dancing or waving; sorrow while crying; anger while fighting;
+## surprise while fleeing. Eased in and out.
+func _update_expr(dt: float) -> void:
+	var shapes: Dictionary = rig.get("expr", {})
+	if shapes.is_empty():
+		return
+	var want := ""
+	match behavior:
+		"celebrate", "laugh", "dance", "wave":
+			want = "joy"
+		"cry":
+			want = "sorrow"
+		"fight", "chase":
+			want = "angry"
+		"flee":
+			want = "surprised"
+	var rate := 1.0 - exp(-dt * 6.0)
+	for kind in shapes:
+		var target := (0.6 if behavior == "wave" else 1.0) if kind == want else 0.0
+		var cur := float(_expr.get(kind, 0.0))
+		var nv := lerpf(cur, target, rate)
+		if absf(nv - target) < 0.002:
+			nv = target
+		if nv == cur and _expr.has(kind):
+			continue
+		_expr[kind] = nv
+		for s in shapes[kind]:
+			if is_instance_valid(s[0]):
+				(s[0] as MeshInstance3D).set_blend_shape_value(int(s[1]), nv)
 
 
 func _update_mouth() -> void:
@@ -356,6 +487,12 @@ func reset_sim(p: Vector3, y: float, b: String) -> void:
 	attack_t = 0.0
 	hurt_t = 0.0
 	last_line = ""
+	_clip_state = ""
+	_clip_t = 0.0
+	_expr = {}
+	var springs: SpringRig = rig.get("springs")
+	if springs:
+		springs.reset()
 	if is_instance_valid(bubble):
 		bubble.queue_free()
 	bubble = null
@@ -726,6 +863,12 @@ func update_npc(dt: float) -> void:
 				if next_line <= 0:
 					next_line = 5.0 + App.sim_randf() * 4.0
 					say(line())
+	if chat_busy and not behavior in ["talk", "chase", "flee", "sleep"]:
+		# "Chat while doing a task": a line every few seconds, whatever they do.
+		next_line -= dt
+		if next_line <= 0:
+			next_line = 6.0 + App.sim_randf() * 4.0
+			say(line(), 2.4)
 	if look_at == null and notice and player and player != self and pd < 7 and not behavior in ["dance", "flee", "sleep", "cry"]:
 		look_at = player
 	move_body(dt)
@@ -757,6 +900,7 @@ func animate(dt: float, is_player: bool) -> void:
 	t += dt
 	_update_eyes()
 	_update_mouth()
+	_update_expr(dt)
 	_update_zzz()
 	var sp := Vector2(vel.x, vel.z).length()
 	walk += sp * dt * 2.4 / maxf(0.6, k())
@@ -857,25 +1001,21 @@ func animate(dt: float, is_player: bool) -> void:
 		var hgt: float = m.get("height", 1.8)
 		match behavior:
 			"dance":
-				var style := int(floor(t / 4.0)) % 3
-				if style == 0:
-					arm_l.rotation = Vector3(-2.7 + sin(t * 8) * 0.35, 0, 0)
-					arm_r.rotation = Vector3(-2.7 - sin(t * 8) * 0.35, 0, 0)
-					model.position.y = absf(sin(t * 8)) * hgt * 0.05
-					leg_l.rotation.x = maxf(0, sin(t * 8)) * -0.5
-					leg_r.rotation.x = maxf(0, -sin(t * 8)) * -0.5
-				elif style == 1:
-					upper.rotation.z = sin(t * 6) * 0.16
-					arm_l.rotation = Vector3(0, 0, 0.9 + sin(t * 6) * 0.5)
-					arm_r.rotation = Vector3(0, 0, -0.9 + sin(t * 6) * 0.5)
-					model.position.x = sin(t * 6) * 0.05
-				else:
-					model.rotation.y = t * 5
-					arm_l.rotation = Vector3(0, 0, 1.45)
-					arm_r.rotation = Vector3(0, 0, -1.45)
-					model.position.y = absf(sin(t * 10)) * hgt * 0.03
-				hyaw = sin(t * 4) * 0.25
-				hpitch = sin(t * 8) * 0.1
+				var dp := dance_pose(dance_style, t)
+				var al: Vector2 = dp.get("upperArmL", Vector2.ZERO)
+				var ar: Vector2 = dp.get("upperArmR", Vector2.ZERO)
+				arm_l.rotation = Vector3(al.x, 0, al.y)
+				arm_r.rotation = Vector3(ar.x, 0, -ar.y)
+				var ll: Vector2 = dp.get("upperLegL", Vector2.ZERO)
+				var lr: Vector2 = dp.get("upperLegR", Vector2.ZERO)
+				leg_l.rotation = Vector3(ll.x, 0, ll.y)
+				leg_r.rotation = Vector3(lr.x, 0, -lr.y)
+				model.position.y = float(dp["lift"]) * hgt
+				model.position.x = float(dp["sway"])
+				model.rotation.y = float(dp["spin"])
+				upper.rotation.z = float(dp["lean"])
+				hyaw = float(dp["hyaw"])
+				hpitch = float(dp["hpitch"])
 			"wave":
 				arm_r.rotation = Vector3(0, 0, -2.5 + sin(t * 9) * 0.4)
 			"sit":
@@ -1023,5 +1163,5 @@ func on_hit(from: Actor) -> void:
 
 
 func to_dict(is_player: bool) -> Dictionary:
-	return {"name": name, "look": look, "behavior": base_behavior, "notice": notice, "lines": lines,
+	return {"name": name, "look": look, "behavior": base_behavior, "notice": notice, "lines": lines, "dance": dance_style, "chat": chat_busy,
 		"pos": [U.r2(pos.x), U.r2(pos.y), U.r2(pos.z)], "yaw": U.r2(yaw), "player": is_player}
