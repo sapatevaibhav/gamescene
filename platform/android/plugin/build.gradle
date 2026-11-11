@@ -1,0 +1,29 @@
+// GameScene Studio's Android plugin (Godot v2 plugin). Build with
+// platform/android/build.sh, which copies the AARs into
+// addons/gamescene_native/bin/.
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    namespace = "com.gamescene.studio"
+    compileSdk = 36
+    defaultConfig {
+        minSdk = 24
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    // Provided by the exported app; must match the Godot version.
+    compileOnly "org.godotengine:godot:4.7.2.stable"
+    // Also added to the app by the export plugin (FileProvider).
+    implementation "androidx.core:core:1.13.1"
+}

@@ -35,10 +35,25 @@ var fixed_dt := 0.0
 var sim_rng := RandomNumberGenerator.new()
 
 const QUALITY := {
-	"low": {"label": "Battery saver", "scale": 0.6, "shadow": 1024, "ssao": false, "ssil": false, "vfog": false, "glow": false, "msaa": 0, "grass": 0.35, "cast": 16, "lights": 0, "fxaa": true},
-	"balanced": {"label": "Balanced", "scale": 0.8, "shadow": 2048, "ssao": false, "ssil": false, "vfog": false, "glow": true, "msaa": 0, "grass": 0.6, "cast": 24, "lights": 4, "fxaa": true},
-	"high": {"label": "High", "scale": 1.0, "shadow": 4096, "ssao": true, "ssil": false, "vfog": true, "glow": true, "msaa": 2, "grass": 1.0, "cast": 40, "lights": 10, "fxaa": false},
-	"ultra": {"label": "Cinematic", "scale": 1.0, "shadow": 8192, "ssao": true, "ssil": true, "vfog": true, "glow": true, "msaa": 4, "grass": 1.4, "cast": 60, "lights": 16, "fxaa": false},
+	"low": {"label": "Battery saver", "scale": 0.6, "shadow": 1024, "ssao": false, "ssil": false, "vfog": false, "glow": false, "msaa": 0, "grass": 0.35, "cast": 16, "lights": 0, "fxaa": true,
+		"far": 0.6, "splits": 1, "shadow_far": 50.0},
+	"balanced": {"label": "Balanced", "scale": 0.8, "shadow": 2048, "ssao": false, "ssil": false, "vfog": false, "glow": true, "msaa": 0, "grass": 0.6, "cast": 24, "lights": 4, "fxaa": true,
+		"far": 0.8, "splits": 2, "shadow_far": 90.0},
+	"high": {"label": "High", "scale": 1.0, "shadow": 4096, "ssao": true, "ssil": false, "vfog": true, "glow": true, "msaa": 2, "grass": 1.0, "cast": 40, "lights": 10, "fxaa": false,
+		"far": 1.0, "splits": 4, "shadow_far": 90.0},
+	"ultra": {"label": "Cinematic", "scale": 1.0, "shadow": 8192, "ssao": true, "ssil": true, "vfog": true, "glow": true, "msaa": 4, "grass": 1.4, "cast": 60, "lights": 16, "fxaa": false,
+		"far": 1.0, "splits": 4, "shadow_far": 90.0},
+}
+
+## Phones (Mobile renderer): phone screens have far more pixels than their
+## GPUs can shade, so the 3D view renders smaller and is scaled up; shadow
+## maps and MSAA are capped (big shadow maps with MSAA crashed an Adreno 610
+## driver), and grass thins out further.
+const PHONE := {
+	"low": {"scale": 0.5, "grass": 0.2, "far": 0.5},
+	"balanced": {"scale": 0.67, "grass": 0.4, "far": 0.7},
+	"high": {"scale": 0.85},
+	"ultra": {"scale": 1.0},
 }
 
 const RES := {
@@ -54,7 +69,10 @@ const FRAMES := {"full": 0.0, "16:9": 16.0 / 9.0, "9:16": 9.0 / 16.0, "1:1": 1.0
 func _ready() -> void:
 	is_mobile = OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
 	is_touch = is_mobile or DisplayServer.is_touchscreen_available()
+	phone_gpu = is_mobile and RenderingServer.get_current_rendering_method() == "mobile"
 	device["quality"] = "balanced" if is_mobile else "high"
+	if is_mobile and weak_gpu(RenderingServer.get_video_adapter_name()):
+		device["quality"] = "low"
 	# Integrated GPUs (Intel UHD/Iris, AMD APUs) default to Balanced.
 	if RenderingServer.get_video_adapter_type() == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
 		device["quality"] = "balanced"
@@ -83,8 +101,47 @@ func _exit_tree() -> void:
 		_warm = -1
 
 
+## Space taken by the status bar, notch and gesture bar on phones, in
+## viewport pixels: position = (left, top), size = (right, bottom).
+func safe_insets() -> Rect2:
+	if not is_mobile:
+		return Rect2()
+	var safe := Rect2(DisplayServer.get_display_safe_area())
+	var win := Rect2(Vector2(DisplayServer.window_get_position()), Vector2(DisplayServer.window_get_size()))
+	if safe.size.x <= 0 or safe.size.y <= 0:
+		return Rect2()
+	return Rect2(maxf(0.0, safe.position.x - win.position.x), maxf(0.0, safe.position.y - win.position.y),
+		maxf(0.0, win.end.x - safe.end.x), maxf(0.0, win.end.y - safe.end.y))
+
+
 func q() -> Dictionary:
-	return QUALITY.get(device["quality"], QUALITY["high"])
+	var d: Dictionary = QUALITY.get(device["quality"], QUALITY["high"])
+	if not phone_gpu:
+		return d
+	d = d.duplicate()
+	d.merge(PHONE.get(device["quality"], {}), true)
+	d["shadow"] = mini(int(d["shadow"]), 2048)
+	d["msaa"] = 0
+	return d
+
+
+## Cheaper shaders (terrain without normal maps, fewer foliage cards): phone
+## GPUs below High.
+func lite_shading() -> bool:
+	return phone_gpu and device["quality"] in ["low", "balanced"]
+
+
+## Phone GPUs: the Mobile renderer on a phone or tablet.
+var phone_gpu := false
+
+
+## Older and entry-level phone GPUs, which start on Battery saver.
+static func weak_gpu(adapter: String) -> bool:
+	var a := adapter.to_lower()
+	for pat in ["adreno (tm) 5", "adreno (tm) 60", "adreno (tm) 61", "adreno (tm) 62", "adreno (tm) 63", "adreno (tm) 64", "mali-t", "mali-g5", "mali-g71", "mali-g72", "powervr"]:
+		if a.contains(pat):
+			return true
+	return false
 
 
 func toast(msg: String) -> void:

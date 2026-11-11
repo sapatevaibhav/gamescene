@@ -136,10 +136,46 @@ static func make_theme() -> Theme:
 		if st in ["hover", "hover_pressed"]:
 			cb.bg_color = Color(1, 1, 1, 0.05)
 		t.set_stylebox(st, "CheckButton", cb)
+	# The switch is drawn at the interface scale (Godot's own is a fixed
+	# 16 px icon, tiny on phones), about as tall as the text beside it.
+	var on := _switch(true, TAPE)
+	var off := _switch(false, GRAY_500)
+	for n in ["checked", "checked_mirrored"]:
+		t.set_icon(n, "CheckButton", on)
+		t.set_icon(n + "_disabled", "CheckButton", on)
+	for n in ["unchecked", "unchecked_mirrored"]:
+		t.set_icon(n, "CheckButton", off)
+		t.set_icon(n + "_disabled", "CheckButton", off)
+	t.set_constant("h_separation", "CheckButton", px(12))
 	t.set_stylebox("normal", "OptionButton", box(RAISE, 12, LINE))
 	t.set_stylebox("hover", "OptionButton", box(RAISE_HI, 12, LINE))
 	t.set_stylebox("pressed", "OptionButton", box(RAISE_HI, 12, LINE))
 	return t
+
+
+## A toggle switch: a pill with a white knob (right when on), drawn 3x
+## larger and scaled down for smooth edges.
+static func _switch(on: bool, track: Color) -> Texture2D:
+	var h := px(24)
+	var w := px(42)
+	var ss := 3
+	var img := Image.create(w * ss, h * ss, false, Image.FORMAT_RGBA8)
+	var r := h * ss / 2.0
+	var knob := r - 3.0 * ss * scale
+	var kx := (w * ss - r) if on else r
+	for y in h * ss:
+		for x in w * ss:
+			var p := Vector2(x + 0.5, y + 0.5)
+			# Distance to the pill's centre line.
+			var cx := clampf(p.x, r, w * ss - r)
+			var c := track
+			if p.distance_to(Vector2(cx, r)) > r:
+				continue
+			if p.distance_to(Vector2(kx, r)) <= knob:
+				c = Color.WHITE if on else GRAY_200
+			img.set_pixel(x, y, c)
+	img.resize(w, h, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(img)
 
 
 static func _dot(d: int, c: Color) -> Texture2D:
@@ -477,6 +513,9 @@ static func toggle(title: String, on: bool, cb: Callable) -> CheckButton:
 	c.button_pressed = on
 	c.focus_mode = Control.FOCUS_NONE
 	c.add_theme_font_size_override("font_size", px(15))
+	# Long labels wrap instead of widening the panel (phones).
+	c.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	c.toggled.connect(cb)
 	return c
 

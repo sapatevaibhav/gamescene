@@ -4,6 +4,8 @@ extends Node
 ## or saved-for-later export resumes from its segments and joins into one
 ## video with sound; PNG sequences resume too; green/blue screen and
 ## transparency hide the world; exports cool down when the device slows.
+## Phones (0.19): without ffmpeg, MP4 goes through the phone plugin's encoder
+## (a fake plugin stands in for it here), in resumable segments too.
 ## Rendering is replaced by solid frames ("fake_frames") or no output ("dry"),
 ## so this runs headless.
 
@@ -45,6 +47,8 @@ func _ready() -> void:
 	else:
 		print("skip MP4 segment checks: no ffmpeg")
 	await _png(st)
+	await _phone(st)
+	_open_and_share()
 	st.in_studio = false
 	print("FAILS: ", fails)
 	get_tree().quit(1 if fails > 0 else 0)
@@ -277,3 +281,112 @@ func _png(st: Studio) -> void:
 	App.settings["bg"] = "scene"
 	Recorder._ffmpeg = had[0]
 	Recorder._ffmpeg_checked = had[1]
+
+
+## Stands in for the Android plugin (GameSceneNative): segments are text
+## files saying how many frames they got; the join writes what it was given.
+class FakePhone:
+	extends RefCounted
+	var opened := {}
+	var shared: Array = []
+	var joins := 0
+
+	func can_encode() -> bool:
+		return true
+
+	func enc_open(path: String, w: int, h: int, fps: int, _br: int) -> int:
+		var id := opened.size() + 1
+		opened[id] = {"path": path, "w": w, "h": h, "fps": fps, "n": 0, "bad": 0}
+		return id
+
+	func enc_frame(id: int, data: PackedByteArray) -> bool:
+		var e: Dictionary = opened[id]
+		if data.size() != int(e["w"]) * int(e["h"]) * 4:
+			e["bad"] = int(e["bad"]) + 1
+		e["n"] = int(e["n"]) + 1
+		return true
+
+	func enc_close(id: int) -> bool:
+		var e: Dictionary = opened[id]
+		var f := FileAccess.open(str(e["path"]), FileAccess.WRITE)
+		f.store_string("%d %d" % [e["n"], e["bad"]])
+		f.close()
+		return true
+
+	func mux_start(segs: PackedStringArray, wav: String, out: String, fps: int) -> bool:
+		var total := 0
+		var bad := 0
+		for sg in segs:
+			var parts := FileAccess.get_file_as_string(sg).split(" ")
+			total += int(parts[0])
+			bad += int(parts[1])
+		var f := FileAccess.open(out, FileAccess.WRITE)
+		f.store_string("frames=%d bad=%d segs=%d sound=%s fps=%d" % [total, bad, segs.size(), FileAccess.file_exists(wav), fps])
+		f.close()
+		joins += 1
+		return true
+
+	func mux_state() -> String:
+		return "ok"
+
+	func share(paths: PackedStringArray, _title: String) -> bool:
+		shared = Array(paths)
+		return true
+
+
+func _phone(st: Studio) -> void:
+	var rec := st.recorder
+	var had := [Recorder._ffmpeg, Recorder._ffmpeg_checked]
+	Recorder._ffmpeg = ""
+	Recorder._ffmpeg_checked = true
+	var phone := FakePhone.new()
+	Native.fake = phone
+	ok(Recorder.kind_for("scene") == "mp4" and Recorder.kind_for("alpha") == "png" and Recorder.kind_label("mp4").contains("phone"),
+		"a phone without ffmpeg makes MP4 with its own encoder (transparent stays PNG)")
+	rec.fake_frames = true
+	Recorder.SEG_FRAMES = 5
+	ok(st.export_film() and rec.kind == "mp4" and rec._enc == "native" and rec.job.get("enc") == "native", "the phone film export starts and keeps a job")
+	ok(not rec._work.begins_with(Recorder.output_dir()), "its parts are kept in the app's own storage")
+	for i in 7:
+		_frame(st)
+	rec.suspend()
+	await _wait_inactive(rec)
+	var j := st.unfinished_export()
+	ok(not j.is_empty() and int(j["done"]) == 7, "'Finish later' keeps all 7 frames (%s)" % j.get("done", "?"))
+	Native.fake = null
+	ok(st.unfinished_export().is_empty(), "without the phone encoder it can't carry on")
+	Native.fake = phone
+	var done := [false, ""]
+	rec.finished.connect(func(p, _s): done[0] = true; done[1] = p, CONNECT_ONE_SHOT)
+	ok(st.export_film(j) and rec.frames == 7, "it carries on from frame 7")
+	while rec.active:
+		_frame(st)
+	var t0 := Time.get_ticks_msec()
+	while not done[0] and Time.get_ticks_msec() - t0 < 30000:
+		await get_tree().create_timer(0.05).timeout
+	var got := FileAccess.get_file_as_string(str(done[1])) if done[0] else ""
+	ok(got == "frames=20 bad=0 segs=5 sound=true fps=%d" % FPS, "the segments and the soundtrack are joined into one MP4 (%s)" % got)
+	ok(str(done[1]).ends_with(".mp4") and st.unfinished_export().is_empty() and not DirAccess.dir_exists_absolute(rec._work), "the job and parts are cleaned up")
+	Recorder.SEG_FRAMES = 0
+	rec.fake_frames = false
+	Native.fake = null
+	Recorder._ffmpeg = had[0]
+	Recorder._ffmpeg_checked = had[1]
+
+
+func _open_and_share() -> void:
+	var dir := Recorder.output_dir()
+	var a := dir.path_join("a.json")
+	FileAccess.open(a, FileAccess.WRITE).store_string("{}")
+	var main_script: GDScript = load("res://src/main.gd")
+	var got: PackedStringArray = main_script.launch_files(PackedStringArray(["--verbose", a, dir.path_join("missing.json"), dir.path_join("x.png")]))
+	ok(got == PackedStringArray([a]), "a project file named on the command line is opened (and nothing else)")
+	var phone := FakePhone.new()
+	Native.fake = phone
+	var frames := dir.path_join("seq")
+	DirAccess.make_dir_recursive_absolute(frames)
+	for n in ["frame_00001.png", "frame_00002.png"]:
+		FileAccess.open(frames.path_join(n), FileAccess.WRITE).store_8(0)
+	Media.share([a, frames])
+	ok(phone.shared.size() == 3 and phone.shared[0] == a, "sharing goes to the share sheet, a PNG sequence as its frames")
+	Native.fake = null

@@ -10,15 +10,16 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.18.0)
+## What's supported (as of 0.19.0)
 
 ### Platforms and engine
 
 | | |
 |---|---|
 | Engine | Godot 4.7 (GDScript), Forward+ on desktop, Mobile renderer on phones |
-| Tested on | Linux desktop (Intel UHD 620 iGPU, Vulkan) |
-| Should run on | Windows, macOS, Android, iOS (export presets not set up yet) |
+| Tested on | Linux desktop (Intel UHD 620 iGPU, Vulkan); Android 16 phone (Snapdragon 662 / Adreno 610, 4 GB, Vulkan Mobile renderer) |
+| Builds | Linux x86_64, Windows x86_64 (`.exe`), macOS universal (`.zip`, ad-hoc signed), Android APK (arm64) and Play Store bundle (arm64 + armv7), iOS (Xcode project, needs a Mac). See `platform/README.md` |
+| Should run on | Windows and macOS (built, not run yet), iOS (not built) |
 | Network | None. Fully offline, with no accounts and no telemetry |
 
 ### World styles
@@ -79,9 +80,10 @@ ambience have their own volume; exported videos are mixed at those volumes.
 
 | What | Format | Options |
 |---|---|---|
-| Video | H.264 MP4 with AAC sound through ffmpeg, Motion-JPEG AVI with PCM sound otherwise | 720p, 1080p, 1440p, 4K · 24/30/60 fps · full, 16:9, 9:16, 1:1 · subtitles (box, outline or cinema yellow; 3 sizes; top or bottom) · shot list with fades and title cards |
+| Video | H.264 MP4 with AAC sound through ffmpeg on desktop or the phone's own encoder on Android; Motion-JPEG AVI with PCM sound otherwise | 720p, 1080p, 1440p, 4K · 24/30/60 fps · full, 16:9, 9:16, 1:1 · subtitles (box, outline or cinema yellow; 3 sizes; top or bottom) · shot list with fades and title cards |
 | Background | Scene, green screen, blue screen, or transparent: ProRes 4444 MOV with sound through ffmpeg, a PNG sequence plus `sound.wav` otherwise | Green and blue screen keep the characters' lighting |
-| Reliability | Film exports through ffmpeg (and PNG sequences) can pause, finish later and carry on after a crash, rendered in 10 s parts and joined at the end | Optional pause to cool down when rendering slows sharply (on by default on phones) |
+| Reliability | Film exports through ffmpeg or the Android encoder (and PNG sequences) can pause, finish later and carry on after a crash, rendered in 10 s parts and joined at the end |
+| On phones | Android: exports are copied into the gallery (Movies / Pictures → "GameScene Studio"); Share opens the system share sheet; scenes are shared as files | Exports also stay on the Recordings tab | Optional pause to cool down when rendering slows sharply (on by default on phones) |
 | Screenshot | PNG | Same resolutions and frames as video |
 | Scene | `.json` | Embeds imported models, objects and sounds |
 
@@ -102,14 +104,17 @@ ambience have their own volume; exported videos are mixed at those volumes.
 
 Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for their menu.
 
+Opening files: drop a scene file (`.json`) on the window to open it; inside a scene, drop 3D objects (`.glb`, `.gltf`, `.fbx`) or sounds (`.ogg`, `.mp3`, `.wav`) to add them to the library. `GameSceneStudio scene.json` opens a scene from the command line (how desktops open files with an app). On Android, "Open with" or "Share" a `.json` to GameScene Studio.
+
 ### Known limitations
 
 - The built-in characters are made from primitive shapes. For anime game-quality characters, import VRM, GLB or FBX models.
 - FBX textures load only if the image files ship alongside the model. Effect, ramp and lightmap maps referenced by game rigs are often missing; they're skipped.
 - Dialogue is text (speech bubbles and subtitles); there's no voice recording or text-to-speech. Sound is mono, with no left/right panning.
 - Keyframed characters move in straight lines between keys and pass through walls. Scrubbing backwards replays the scene from the start, so it slows down on long scenes.
-- Mobile and desktop export presets (Android, iOS, Windows, macOS) are not configured.
-- Phones export Motion-JPEG AVI (no ffmpeg); native phone encoders come with packaging (0.19). AVI exports can pause but not carry on after closing the app.
+- iOS: the plugin (encoder, share sheet, Photos) is written but not built (needs a Mac), so iOS builds export Motion-JPEG AVI into Documents. AVI exports can pause but not carry on after closing the app.
+- Android keeps a copy of each export in the app (for the Recordings tab) as well as the one in the gallery; deleting it in the app leaves the gallery copy.
+- The home screen and studio fit a phone held upright, but the studio is easiest to use in landscape.
 - VRM's MToon shading isn't used; VRM characters get the anime style's cel shading instead.
 - Falling leaves, motes and other particles aren't replayed exactly, so they can differ slightly where a resumed export carries on.
 - Big CC0 model packs (for example Quaternius on itch.io) must be downloaded by hand, then imported.
@@ -117,6 +122,36 @@ Touch: left-thumb joystick, drag to look, pinch to zoom, tap a character for the
 ---
 
 ## [Unreleased]
+
+## [0.19.0] - 2026-11-11
+
+### Added
+- **Packaging.** Export presets for Linux, Windows, macOS, Android (APK and Play Store bundle) and iOS, with platform icons (Android adaptive and themed, iOS, Windows `.ico`) and version info. `platform/export.sh` builds them into `build/`. Phones use the Mobile renderer; textures are also imported for phones (ETC2/ASTC).
+- **Android plugin** (`platform/android`, Kotlin, added to Android exports by `addons/gamescene_native`): **H.264 MP4 export on phones** through the phone's own encoder (MediaCodec), in resumable 10 s parts joined with AAC sound, so phone film exports can finish later and carry on after a crash like desktop ones; **exports in the gallery** (Movies / Pictures → "GameScene Studio"); **the system share sheet** for recordings, screenshots and scene files; **"Open with" GameScene Studio** for scene files; video thumbnails on the Recordings tab.
+- **Opening files from outside the app.** Drop a scene file on the window to open it, or 3D objects and sounds on an open scene to import them. A scene file given on the command line opens at start (file associations). Android opens scene files sent from other apps.
+- **Store material** in `store/`: an offline-first privacy policy, age rating answers, the store listing and screenshot sizes.
+- The iOS plugin's source (`platform/ios`: AVAssetWriter encoder, share sheet, Photos), not built yet.
+- Tests: the phone encoder path with a stand-in plugin (segments, finish later, carry on, join with sound), opening files from the command line, sharing; padded sound loops.
+
+### Changed
+- On phones, **Share** replaces "Open folder" after a take, and "Export file" becomes **Share file** (the scene file goes to the share sheet). After a take on desktop, **Open folder** highlights the video.
+- **Phones: the home screen is upright and scenes are landscape** (either way round); tablets turn freely on the home screen. The home screen and the studio keep clear of the status bar, notch and gesture bar.
+- **Phone home screen:** a smaller title, two scenes to a row, and "Your work" set apart from the four styles. The "⋯" menu on a scene or recording opens a full-width sheet along the bottom with big rows (desktop keeps the small menu).
+- **Scrolling on touch screens starts anywhere**, also on cards and buttons (it used to work only on the gaps between them); a flick keeps it gliding, and the card under the finger doesn't open.
+- **Phone speed.** Weak phone GPUs (older and entry-level Adreno, Mali and PowerVR) start on Battery saver. On phones the 3D view renders at a lower resolution (Battery saver half size, Balanced two thirds), shadows use one cascade on Battery saver and are capped at 2048 with no MSAA, grass is thinner and stops sooner, and the ground and tree crowns use cheaper shading (no ground normal maps, fewer, bigger leaf cards). On an Adreno 610: blocky 20 → 27 fps, low-poly 21 → 28, anime 2 → 10. `-- --perf [styles]` prints frame times per style and setting (also on a phone, through `adb logcat`).
+- Toggle switches are drawn at the interface scale, as tall as their text, and long toggle labels wrap instead of widening the panel.
+- **Twin-stick touch controls**: walk with the left thumb and look around with the right at the same time (a second finger used to cancel the walk and start a pinch). Two fingers away from the joystick still pinch to zoom.
+- **An attack button** (sword) beside Jump on touch screens, doing what a left click does. The touch buttons show only in a scene, hide while a panel is open, and Jump is left out in the 2D top view (nothing to jump onto).
+- The settings button closes settings when tapped again, like the dock's buttons.
+- Narrow screens (phones held upright): the studio dock's buttons shrink to fit and the record button sits above the dock.
+- FSR upscaling is only used with the Forward+ renderer; phones upscale bilinearly.
+- `--smoke` and `--perf` delete the scenes they make when they finish.
+
+### Fixed
+- **The touch Jump button did nothing while moving**: only the first finger works buttons in Godot, so with a thumb on the joystick the jump finger was ignored. The touch buttons now take any finger.
+- **High (and Cinematic) quality crashed an Adreno 610 phone's GPU driver**; phones now cap the shadow map size and turn off MSAA.
+- An error ("Lambda capture was freed") when the home screen was rebuilt before a recording's thumbnail was ready.
+- **The app crashed on Android a few seconds into a scene with music playing**: the engine reads a little past the end of a looping sound when it wraps, and on Android (whose memory allocator puts a guard page right after large buffers) that killed the audio thread. Looping sounds, built-in and imported WAVs, now keep a copy of their start after the loop end.
 
 ## [0.18.0] - 2026-11-11
 

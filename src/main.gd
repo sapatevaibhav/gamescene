@@ -1,7 +1,9 @@
 extends Node
 ## App entry: builds the theme, the 3D studio, the home screen and the HUD,
 ## routes scene input (mouse, keyboard, touch gestures) and handles app
-## lifecycle (autosave on close or when a phone backgrounds the app).
+## lifecycle (autosave on close or when a phone backgrounds the app), and
+## opens files handed to the app: on the command line (file associations),
+## dropped on the window, or sent by another app on a phone.
 ##
 ## `godot --path . -- --smoke` runs an end-to-end self test with rendering
 ## and writes screenshots to user://smoke/ (see tests/README.md).
@@ -21,6 +23,8 @@ var _gesture := {}
 var _mouse_drag := {}
 var _keys_move := Vector2.ZERO
 var _last_tap := 0
+## Drag-to-scroll that also starts on buttons and cards (touch screens).
+var scroller := TouchScroll.new()
 
 
 func _ready() -> void:
@@ -70,10 +74,76 @@ func _ready() -> void:
 	root.add_child(busy)
 
 	hud.set_home_mode(true)
+	_orient(true)
 	App.settings_changed.connect(func(): studio.atmo.apply_quality())
 
+	scroller.modal = hud.modal
+	add_child(scroller)
+	get_window().files_dropped.connect(open_files)
+	Native.on_file_opened(func(path: String): open_files(PackedStringArray([path])))
 	if "--smoke" in OS.get_cmdline_user_args():
 		_smoke.call_deferred()
+	elif "--perf" in OS.get_cmdline_user_args():
+		_perf.call_deferred()
+	else:
+		var start := launch_files(OS.get_cmdline_args())
+		var sent := Native.take_opened_file()
+		if sent != "":
+			start.append(sent)
+		if not start.is_empty():
+			open_files.call_deferred(start)
+
+
+## Project files named on the command line ("GameSceneStudio scene.json",
+## which is how desktops open a file with the app).
+static func launch_files(args: PackedStringArray) -> PackedStringArray:
+	var out := PackedStringArray()
+	for a in args:
+		if not a.begins_with("-") and a.get_extension().to_lower() == "json" and FileAccess.file_exists(a):
+			out.append(a)
+	return out
+
+
+## Files handed to the app: a project file opens as a scene; inside a scene,
+## 3D objects join the object library and sounds the sound library.
+func open_files(paths: PackedStringArray) -> void:
+	var props := PackedStringArray()
+	var sounds := 0
+	var other := 0
+	var project := ""
+	for p in paths:
+		match p.get_extension().to_lower():
+			"json":
+				project = p
+			"glb", "gltf", "fbx":
+				props.append(p)
+			"ogg", "mp3", "wav":
+				if studio.in_studio and AudioFiles.import_file(p) != "":
+					sounds += 1
+				else:
+					other += 1
+			_:
+				other += 1
+	if project != "":
+		var id := ProjectStore.import_from(project)
+		if id.begins_with("!"):
+			App.toast(id.substr(1))
+			return
+		if studio.in_studio:
+			await _go_home()
+		home.refresh()
+		await _open_project(id)
+		return
+	if not studio.in_studio:
+		if not props.is_empty() or other > 0 or sounds > 0:
+			App.toast("Open a scene first, then drop objects or sounds on it.")
+		return
+	if not props.is_empty():
+		hud.sheets.import_props(props)
+	elif sounds > 0:
+		App.toast("Added %d sound%s to the library (Sound panel)." % [sounds, "" if sounds == 1 else "s"])
+	elif other > 0:
+		App.toast("GameScene opens scene files (.json), 3D objects (.glb, .gltf, .fbx) and sounds (.ogg, .mp3, .wav).")
 
 
 func _hide_busy() -> void:
@@ -136,7 +206,22 @@ func _open_project(id: String) -> void:
 	_enter_studio()
 
 
+## Phones: the home screen is upright, scenes are landscape (either way
+## round). Tablets turn freely on the home screen.
+static func _orient(home: bool) -> void:
+	if not App.is_mobile:
+		return
+	var short := minf(DisplayServer.screen_get_size().x, DisplayServer.screen_get_size().y) / maxf(1.0, DisplayServer.screen_get_scale())
+	var dp := short * 160.0 / maxf(1.0, DisplayServer.screen_get_dpi())
+	var tablet := dp >= 600.0
+	if home:
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR if tablet else DisplayServer.SCREEN_PORTRAIT)
+	else:
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+
+
 func _enter_studio() -> void:
+	_orient(false)
 	_hide_busy()
 	home.visible = false
 	studio.in_studio = true
@@ -170,6 +255,7 @@ func _go_home() -> void:
 	if studio.project_id != "":
 		await studio.save_now(true)
 	studio.in_studio = false
+	_orient(true)
 	hud.set_home_mode(true)
 	home.refresh()
 	home.visible = true
@@ -345,6 +431,16 @@ func _tap(pos: Vector2, button: int, touch := false) -> void:
 		studio.player.attack()
 
 
+## Touches, before the interface sees them: the jump / climb buttons take any
+## finger, and a drag over a list scrolls it even when it starts on a card.
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch and hud.touch_hold(event):
+		get_viewport().set_input_as_handled()
+		return
+	if scroller.handle(event):
+		get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not studio.in_studio:
 		return
@@ -445,12 +541,34 @@ func _mouse_motion(e: InputEventMouseMotion) -> void:
 	_look(e.relative.x, e.relative.y, 0.0045)
 
 
+func _start_joy(p: Dictionary, at: Vector2) -> void:
+	p["role"] = "joy"
+	hud.joy.center = at
+	hud.joy.knob = Vector2.ZERO
+	hud.joy.visible = true
+	hud.joy.queue_redraw()
+
+
 func _touch(e: InputEvent) -> void:
 	var vs := get_viewport().get_visible_rect().size
 	if e is InputEventScreenTouch:
 		var t := e as InputEventScreenTouch
 		if t.pressed:
 			var p := {"role": "look", "start": t.position, "pos": t.position, "t0": Time.get_ticks_msec(), "moved": 0.0}
+			# Twin-stick: one thumb walks on the left, the other looks on the
+			# right, at the same time. Two fingers that aren't walking pinch.
+			var walking := false
+			for k in _ptrs:
+				if _ptrs[k]["role"] == "joy":
+					walking = true
+			var can_walk := studio.camera.mode != "cine" and not studio.tools.paints()
+			if _ptrs.size() == 1 and walking:
+				_ptrs[t.index] = p
+				return
+			if _ptrs.size() == 1 and can_walk and t.position.x < vs.x * 0.42 and (_ptrs.values()[0] as Dictionary)["role"] == "look":
+				_ptrs[t.index] = p
+				_start_joy(p, t.position)
+				return
 			_ptrs[t.index] = p
 			if _ptrs.size() >= 2:
 				for k in _ptrs:
@@ -466,11 +584,7 @@ func _touch(e: InputEvent) -> void:
 				p["role"] = "paint"
 				studio.tools.begin_paint(t.position)
 			elif t.position.x < vs.x * 0.42 and not hud.joy.visible and studio.camera.mode != "cine":
-				p["role"] = "joy"
-				hud.joy.center = t.position
-				hud.joy.knob = Vector2.ZERO
-				hud.joy.visible = true
-				hud.joy.queue_redraw()
+				_start_joy(p, t.position)
 		else:
 			if not _ptrs.has(t.index):
 				return
@@ -541,6 +655,79 @@ func _double_tap() -> void:
 
 # ---------------------------------------------------------------- self test
 
+## `-- --perf`: frame times for every style at each quality level, printed
+## as "perf:" lines (on a phone: adb logcat). For finding what makes slow
+## devices lag.
+## Scenes made by --smoke / --perf, deleted when the run ends so test runs
+## don't fill the home screen (on a phone, the real one).
+var _made: Array = []
+
+
+func _drop_made() -> void:
+	for id in _made:
+		ProjectStore.delete(str(id))
+	_made.clear()
+
+
+func _perf() -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	var rid := get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	print("perf: %s, %s, %s, %d cores, ui scale %.2f" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_current_rendering_method(),
+		OS.get_model_name(), OS.get_processor_count(), UIK.scale])
+	var keep: String = App.device["quality"]
+	# `-- --perf anime blocky` measures just those styles.
+	var only := Array(OS.get_cmdline_user_args()).filter(func(x): return Styles.STYLES.has(x))
+	for style in (only if not only.is_empty() else Styles.STYLE_ORDER):
+		for q in (["low"] if not only.is_empty() else ["low", "balanced", "high"]):
+			# Grass and other details are decided when the world is built.
+			App.device["quality"] = q
+			await _new_scene(style)
+			_made.append(studio.project_id)
+			for i in 30:
+				await get_tree().process_frame
+			await _perf_line(style, q, rid)
+			if q != "low":
+				await _go_home()
+				continue
+			# What the time goes on, at the lowest level.
+			var env: Environment = studio.atmo.env
+			var tests := [
+				["no shadows", func(on): studio.atmo.sun.shadow_enabled = not on],
+				["flat sky", func(on): env.background_mode = Environment.BG_COLOR if on else Environment.BG_SKY],
+				["no world", func(on): studio.world.visible = not on],
+			]
+			# And each part of the world on its own.
+			for c in studio.world.get_children():
+				if c is Node3D and (c as Node3D).visible:
+					var n3 := c as Node3D
+					tests.append(["- " + str(n3.name).left(9), func(on): n3.visible = not on])
+			for tst in tests:
+				(tst[1] as Callable).call(true)
+				await _perf_line(style, tst[0], rid)
+				(tst[1] as Callable).call(false)
+			await _go_home()
+	App.device["quality"] = keep
+	_drop_made()
+	print("PERF DONE")
+	get_tree().quit()
+
+
+func _perf_line(style: String, what: String, rid: RID) -> void:
+	for i in 20:
+		await get_tree().process_frame
+	var t0 := Time.get_ticks_usec()
+	var gpu := 0.0
+	var n := 60
+	for i in n:
+		await get_tree().process_frame
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+	var fps := n / ((Time.get_ticks_usec() - t0) / 1e6)
+	print("perf: %-8s %-11s %5.1f fps  gpu %5.1f ms  draws %d  prims %dk  view %s" % [style, what, fps, gpu / n,
+		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000),
+		str(get_viewport().get_visible_rect().size)])
+
+
 func _smoke() -> void:
 	var dir := "user://smoke/"
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -548,43 +735,53 @@ func _smoke() -> void:
 	for i in 40:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(dir + "00-home.png")
+	print("smoke: saved ", dir + "00-home.png")
 	for style in Styles.STYLE_ORDER:
 		var t0 := Time.get_ticks_msec()
 		await _new_scene(style)
+		_made.append(studio.project_id)
 		log.append("%s: built in %d ms, %d actors" % [style, Time.get_ticks_msec() - t0, studio.actors.size()])
+		print("smoke: ", log[-1])
 		for i in 90:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(dir + "%s-1-third.png" % style)
+		print("smoke: saved ", dir + "%s-1-third.png" % style)
 		studio.camera.set_mode("cine")
 		studio.camera.cine["shot"] = "orbit"
 		studio.camera.cine_reset()
 		for i in 60:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(dir + "%s-2-cine.png" % style)
+		print("smoke: saved ", dir + "%s-2-cine.png" % style)
 		studio.atmo.apply_mood("sunset")
 		for i in 20:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(dir + "%s-3-sunset.png" % style)
+		print("smoke: saved ", dir + "%s-3-sunset.png" % style)
 		studio.atmo.apply_mood("horror")
 		for i in 20:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(dir + "%s-4-night.png" % style)
+		print("smoke: saved ", dir + "%s-4-night.png" % style)
 		studio.atmo.apply_mood("storm" if style != "blocky" else "snow")
 		for i in 30:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(dir + "%s-5-weather.png" % style)
+		print("smoke: saved ", dir + "%s-5-weather.png" % style)
 		studio.atmo.apply_mood("day")
 		hud.open_sheet("add")
 		hud.push_view("addChar")
 		for i in 30:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(dir + "%s-6-sheet.png" % style)
+		print("smoke: saved ", dir + "%s-6-sheet.png" % style)
 		hud.close_sheet()
 		# Save / load round trip.
 		var d := studio.serialize()
 		var json := JSON.stringify(d)
 		var err := studio.load_data(JSON.parse_string(json))
 		log.append("%s: reload %s, json %d bytes, actors %d" % [style, "ok" if err == "" else err, json.length(), studio.actors.size()])
+		print("smoke: ", log[-1])
 		# A short film export (two shots).
 		studio.shots = [{"name": "A", "mode": "cine", "shot": "crane", "dur": 1.0, "dist": 8.0, "height": 3.0, "title": "Smoke test", "fade_in": true},
 			{"name": "B", "mode": "third", "dur": 1.0}]
@@ -595,6 +792,7 @@ func _smoke() -> void:
 				await get_tree().process_frame
 			await get_tree().create_timer(1.0).timeout
 			log.append("%s: film %s (%d frames)" % [style, studio.recorder.out_path, studio.recorder.frames])
+			print("smoke: ", log[-1])
 		App.settings["frame"] = "full"
 		await _go_home()
 		for i in 10:
@@ -602,8 +800,10 @@ func _smoke() -> void:
 	for i in 30:
 		await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(dir + "99-home.png")
+	print("smoke: saved ", dir + "99-home.png")
 	var f := FileAccess.open(dir + "log.txt", FileAccess.WRITE)
 	f.store_string("\n".join(PackedStringArray(log)))
 	f.close()
+	_drop_made()
 	print("SMOKE OK\n" + "\n".join(PackedStringArray(log)))
 	get_tree().quit()

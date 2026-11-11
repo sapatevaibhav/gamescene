@@ -1,0 +1,18 @@
+[config]
+
+name="GameSceneNative"
+binary="GameSceneNative.xcframework"
+
+initialization="gamescene_native_init"
+deinitialization="gamescene_native_deinit"
+
+[dependencies]
+
+linked=[]
+embedded=[]
+system=["AVFoundation.framework", "CoreMedia.framework", "CoreVideo.framework", "Photos.framework", "UIKit.framework"]
+capabilities=[]
+files=[]
+linker_flags=[]
+
+[plist]

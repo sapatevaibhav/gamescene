@@ -12,12 +12,23 @@ godot -e --path .         # open in the Godot editor
 
 Video export writes H.264 MP4 with AAC sound through `ffmpeg` when it is installed, and Motion-JPEG AVI with PCM sound otherwise. Transparent exports are ProRes 4444 MOV (ffmpeg) or a PNG sequence. Unfinished film exports are kept in a hidden `.gamescene-work` folder next to the videos until they're carried on or started again. Videos go to `~/Videos/GameScene Studio/` and screenshots to `~/Pictures/GameScene Studio/`. Scenes are saved in Godot's user folder (`~/.local/share/godot/app_userdata/GameScene Studio/projects/` on Linux).
 
+## Build for other platforms
+
+```sh
+platform/export.sh                  # Linux, Windows and an Android APK into build/
+platform/export.sh android          # just the APK
+adb install -r build/android/GameSceneStudio.apk
+```
+
+Needs the Godot 4.7.2 export templates; Android also needs the Android SDK and JDK 17 set in the editor settings. Phones export MP4 through the Android plugin in `platform/android` (gallery, share sheet and opening scene files too). See [platform/README.md](platform/README.md) for signing, macOS, iOS and the plugin, and `store/` for the privacy policy, age rating and store listing.
+
 ## Test
 
 ```sh
 tests/run.sh                                                   # every headless suite
 godot --headless --path . res://tests/runner.tscn -- test_core # one suite
 godot --path . -- --smoke                                      # rendered end-to-end run
+godot --path . -- --perf anime                                 # frame times per quality setting (needs a window)
 ```
 
 | Suite | Covers |
@@ -36,7 +47,7 @@ godot --path . -- --smoke                                      # rendered end-to
 | `test_swim` | Swimming in every world (float line, head above water, swim pose, climbing out) and pets starting beside the player |
 | `test_sleep` | Sleepers lie down and close their eyes in every style (eye pieces, blocky eyelids), the name tag and z's sit at the head, awake characters blink |
 | `test_audio` | Every built-in sound, ambience and tune is made, audible and identical each run; footsteps by surface in every style; ambience follows the weather; timeline sound clips; the recording's sound log, mix and AVI sound stream; audio imports; saving sound settings |
-| `test_export` | Resumed film exports match an uninterrupted one frame for frame and sound for sound, pausing, a crash keeps finished parts, carry on and finish later, segments joined with sound (ffmpeg), PNG sequences, green/blue/transparent backgrounds, cooling down, live takes |
+| `test_export` | Resumed film exports match an uninterrupted one frame for frame and sound for sound, pausing, a crash keeps finished parts, carry on and finish later, segments joined with sound (ffmpeg, and the phone encoder through a stand-in plugin), PNG sequences, green/blue/transparent backgrounds, cooling down, live takes |
 | `test_anim` | Animation library (a clip fitted to a differently built rig: other names, A-pose, rolled axes, Z-up), spring bones (trail, settle, replay exactly), feelings on faces, clips saved and exported. Uses models made in code (`tests/fixtures.gd`) |
 | `test_styles` | Per-style import rules, the low-poly triangle cap, scene names |
 | `look_perf` | Needs a window: fps, GPU time and draw calls for one style (`-- look_perf anime`) |
@@ -49,6 +60,7 @@ The smoke run builds each style and saves screenshots (third person, cinematic, 
 
 ```
 project.godot        engine config (Forward+ on desktop, Mobile renderer on phones)
+export_presets.cfg   Linux, Windows, macOS, Android, Android (Play Store), iOS
 src/main.gd          entry: theme, home ↔ studio, input (mouse, keys, touch gestures)
 src/studio.gd        the scene: world, cast, script cues, shots, undo, simulation loop
 src/editor_tools.gd  build tools (blocks, prefabs, objects, ground, move actor)
@@ -59,7 +71,10 @@ src/cam/             CameraRig: follow, first person, free, cinematic shots and 
 src/fx/              Atmosphere: sky, sun/moon, fog, post effects, weather, day/night
 src/rec/             Recorder (off-screen, fixed-timestep video export, sound mixed in) and AviWriter
 src/audio/           Synth (every built-in sound and tune, made in code), SoundDirector (live sound + recording log), AudioMixer, Sounds
-src/io/              ProjectStore: versioned JSON saves, import/export, web-save migration; AudioFiles (imported sounds)
+src/io/              ProjectStore: versioned JSON saves, import/export, web-save migration; AudioFiles (imported sounds); Native (the phone plugin)
+addons/              gamescene_native: adds the Android plugin (bin/*.aar) to Android exports
+platform/            export.sh, the Android plugin (Kotlin) and the iOS plugin source
+store/               privacy policy, age rating answers, store listing
 src/ui/              Home, Hud, Sheets (panels), UIK (widgets), Icons, IconStudio (thumbnails)
 src/shaders/         sky, toon, outline, flat, terrain, water, grass, bubble
 legacy/              the original single-file web build, kept for reference

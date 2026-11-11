@@ -34,8 +34,18 @@ static func label(key: String) -> String:
 
 ## Length in seconds (0 when the sound is missing).
 static func length(key: String) -> float:
-	var s := stream(key)
-	return s.get_length() if s else 0.0
+	return duration(stream(key))
+
+
+## A stream's length in seconds, without the copy a looped WAV keeps after
+## its end (Synth.pad_loop).
+static func duration(s: AudioStream) -> float:
+	if s == null:
+		return 0.0
+	if s is AudioStreamWAV and s.has_meta("loop_pad"):
+		var w := s as AudioStreamWAV
+		return float(w.loop_end) / w.mix_rate
+	return s.get_length()
 
 
 static func exists(key: String) -> bool:

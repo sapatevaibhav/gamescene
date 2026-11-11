@@ -163,15 +163,23 @@ func apply_quality() -> void:
 	env.ssil_enabled = qd["ssil"]
 	env.glow_enabled = qd["glow"]
 	env.volumetric_fog_enabled = qd["vfog"]
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if qd["shadow"] >= 4096 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 90.0
+	match int(qd.get("splits", 2)):
+		1:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		4:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		_:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = float(qd.get("shadow_far", 90.0))
 	RenderingServer.directional_shadow_atlas_set_size(qd["shadow"], true)
 	rain.amount = 2600 if qd["shadow"] >= 4096 else 1200
 	snow.amount = 2200 if qd["shadow"] >= 4096 else 1000
 	var vp := get_viewport()
 	if vp:
 		vp.scaling_3d_scale = qd["scale"]
-		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if qd["scale"] < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
+		# FSR needs Forward+; phones use the Mobile renderer and upscale bilinearly.
+		var fsr: bool = qd["scale"] < 1.0 and RenderingServer.get_current_rendering_method() == "forward_plus"
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if fsr else Viewport.SCALING_3D_MODE_BILINEAR
 		vp.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_4X][qd["msaa"]]
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if qd["fxaa"] else Viewport.SCREEN_SPACE_AA_DISABLED
 	if style in ["pixel", "pixeltop"]:

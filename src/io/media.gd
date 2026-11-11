@@ -113,7 +113,9 @@ static func _make_thumb(item: Dictionary) -> Image:
 	if not FileAccess.file_exists(cache):
 		var ff := Recorder.ffmpeg_path()
 		if ff == "":
-			return null
+			# Phones: the platform's own video decoder.
+			Native.video_thumbnail(src, cache, 480)
+			return Image.load_from_file(cache) if FileAccess.file_exists(cache) else null
 		OS.execute(ff, ["-hide_banner", "-loglevel", "error", "-y", "-ss", "0.5", "-i", src, "-frames:v", "1", "-vf", "scale=480:-2", cache], [], false)
 	return Image.load_from_file(cache) if FileAccess.file_exists(cache) else null
 
@@ -163,23 +165,23 @@ static func reveal(paths: Array) -> int:
 	return 1
 
 
-## The name of the share plugin a phone build can include: a singleton with
-## share(paths: PackedStringArray, title: String) that opens the system share
-## sheet (Android intent, iOS UIActivityViewController). Set up with the
-## phone packaging.
-const SHARE_PLUGIN := "GameSceneShare"
-
-
-## Shares files through the system share sheet when the build has the share
-## plugin; otherwise opens the first file in the phone's viewer, whose own
-## share button is one tap away.
+## Shares files through the system share sheet (Native: the phone plugin);
+## without it, opens the first file in the phone's viewer, whose own share
+## button is one tap away. A PNG sequence folder shares its frames.
 static func share(paths: Array) -> void:
-	if paths.is_empty():
+	var files := []
+	for p in paths:
+		var ps := str(p)
+		if DirAccess.dir_exists_absolute(ps):
+			for f in DirAccess.get_files_at(ps):
+				files.append(ps.path_join(f))
+		else:
+			files.append(ps)
+	if files.is_empty():
 		return
-	if Engine.has_singleton(SHARE_PLUGIN):
-		Engine.get_singleton(SHARE_PLUGIN).call("share", PackedStringArray(paths.map(func(p): return str(p))), "GameScene Studio")
+	if Native.share(files):
 		return
-	OS.shell_open(str(paths[0]))
+	OS.shell_open(str(files[0]))
 
 
 static func remove(item: Dictionary) -> void:

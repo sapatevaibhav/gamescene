@@ -86,17 +86,34 @@ func _synth() -> void:
 	sorted.sort()
 	var med: float = sorted[sorted.size() / 2]
 	ok(sorted[-1] / med < 4.0, "crickets never build into a buzz (loudest moment %.1fx the usual)" % (sorted[-1] / med))
+	# Phones: the mixer reads past a loop's end when it wraps, so every loop
+	# keeps a copy of its start after the end (a read past the data crashed
+	# the audio thread on Android).
+	var lw := Synth.ambience("day")
+	var pad := int(lw.get_meta("loop_pad", 0))
+	ok(pad == Synth.LOOP_PAD and lw.data.size() == (lw.loop_end + pad) * 2 and lw.data.slice(lw.loop_end * 2) == lw.data.slice(0, pad * 2),
+		"loops keep a copy of their start after the loop end")
+	var imp := AudioStreamWAV.new()
+	imp.format = AudioStreamWAV.FORMAT_16_BITS
+	imp.stereo = true
+	var raw := PackedByteArray()
+	raw.resize(4000 * 4)
+	imp.data = raw
+	SoundDirector._set_loop(imp, true)
+	SoundDirector._set_loop(imp, true)
+	ok(imp.loop_end == 4000 and imp.data.size() == (4000 + Synth.LOOP_PAD) * 4 and absf(Sounds.duration(imp) - 4000.0 / imp.mix_rate) < 1e-6,
+		"an imported WAV looped twice is padded once and keeps its length")
 	for a in ["day", "night", "rain", "wind", "water"]:
 		var w := Synth.ambience(a)
-		ok(absf(w.get_length() - 8.0) < 0.01 and w.loop_mode == AudioStreamWAV.LOOP_FORWARD and _peak(w) > 0.02, "ambience '%s' is an audible 8 s loop" % a)
+		ok(absf(Sounds.duration(w) - 8.0) < 0.01 and w.loop_mode == AudioStreamWAV.LOOP_FORWARD and _peak(w) > 0.02, "ambience '%s' is an audible 8 s loop" % a)
 	# Two tunes cover both kinds (calm, and with drums); every tune shares
 	# the same code, and building all eleven took most of this suite's time.
 	for t in ["meadow", "adventure"]:
 		var t0 := Time.get_ticks_msec()
 		var w := Synth.tune(t)
 		var ms := Time.get_ticks_msec() - t0
-		ok(w.get_length() > 12.0 and w.get_length() < 45.0 and w.loop_mode == AudioStreamWAV.LOOP_FORWARD and _peak(w) > 0.2,
-			"tune '%s': %.1f s loop, made in %d ms" % [t, w.get_length(), ms])
+		ok(Sounds.duration(w) > 12.0 and Sounds.duration(w) < 45.0 and w.loop_mode == AudioStreamWAV.LOOP_FORWARD and _peak(w) > 0.2,
+			"tune '%s': %.1f s loop, made in %d ms" % [t, Sounds.duration(w), ms])
 	var first := Synth.tune("meadow").data
 	Synth._cache.clear()
 	ok(Synth.tune("meadow").data == first, "sounds are the same every time (fixed seeds)")

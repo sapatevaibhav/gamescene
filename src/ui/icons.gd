@@ -62,6 +62,7 @@ const PATHS := {
 	"download": '<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>',
 	"duplicate": '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
 	"edit": '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+	"attack": '<path d="M20 4L9.5 14.5M20 4v4.5M20 4h-4.5M6.5 12l5.5 5.5M8.5 15.5L4 20"/>',
 	"paint": '<path d="M19 3l2 2-9 9-3 1 1-3z"/><path d="M7 15c-2 0-3 1.5-3 3s-1 2-2 2c2 1 6 1 7-2"/>',
 }
 

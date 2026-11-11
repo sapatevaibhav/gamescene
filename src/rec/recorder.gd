@@ -8,8 +8,9 @@ extends Node
 ## Two modes: a live "take" (you direct while it records) and "film" export,
 ## which replays the scene from its start and cuts between the shot list.
 ##
-## Output (see choose_kind): H.264 MP4 through ffmpeg, Motion-JPEG AVI without
-## it; with a transparent background, ProRes 4444 MOV through ffmpeg or a PNG
+## Output (see choose_kind): H.264 MP4 through ffmpeg, or on phones through
+## the phone's own encoder (Native: MediaCodec segments joined with
+## MediaMuxer), Motion-JPEG AVI without either; with a transparent background, ProRes 4444 MOV through ffmpeg or a PNG
 ## sequence without it. Green and blue screen replace the world and sky with a
 ## flat colour behind the characters.
 ##
@@ -70,7 +71,11 @@ var dry := false
 var sound_t := 0.0
 var sound_events: Array = []
 
+## The segment being written: {stdio, pid, path} for ffmpeg, {native: id,
+## path} for the phone encoder.
 var _ff := {}
+## "ffmpeg" or "native": what encodes MP4 segments.
+var _enc := "ffmpeg"
 var _avi: AviWriter
 var _sub_t := 0.0
 var _shot_i := -1
@@ -153,27 +158,64 @@ static func ffmpeg_path() -> String:
 	return _ffmpeg
 
 
+static var _dirs := {}
+
+
+## Where videos ("video") and screenshots ("image") go: the system Videos /
+## Pictures folder (on Android that is the gallery's Movies and Pictures
+## folders, written through the media store), else the app's own storage.
 static func output_dir(what := "video") -> String:
 	if DIR_OVERRIDE != "":
 		DirAccess.make_dir_recursive_absolute(DIR_OVERRIDE)
 		return ProjectSettings.globalize_path(DIR_OVERRIDE)
+	if _dirs.has(what):
+		return _dirs[what]
 	var base := OS.get_system_dir(OS.SYSTEM_DIR_MOVIES if what == "video" else OS.SYSTEM_DIR_PICTURES)
-	var dir := (base + "/GameScene Studio") if base != "" else ProjectSettings.globalize_path("user://exports")
-	if DirAccess.make_dir_recursive_absolute(dir) != OK:
+	var dir := (base + "/GameScene Studio") if base != "" else ""
+	if dir == "" or not _writable(dir):
 		dir = ProjectSettings.globalize_path("user://exports")
 		DirAccess.make_dir_recursive_absolute(dir)
+	_dirs[what] = dir
 	return dir
 
 
+## Phones can refuse files in shared folders even when the folder exists.
+static func _writable(dir: String) -> bool:
+	if DirAccess.make_dir_recursive_absolute(dir) != OK:
+		return false
+	var probe := dir.path_join(".gamescene-probe")
+	var f := FileAccess.open(probe, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_8(1)
+	f.close()
+	DirAccess.remove_absolute(probe)
+	return true
+
+
+## True when exports land in the app's own storage rather than a folder the
+## gallery / file manager sees (then finished files are copied to the gallery).
+static func private_output(what := "video") -> bool:
+	return output_dir(what).begins_with(ProjectSettings.globalize_path("user://"))
+
+
 ## The file type for a background ("scene", "green", "blue", "alpha").
-static func choose_kind(bg: String, has_ffmpeg: bool) -> String:
+## `has_native`: the phone's H.264 encoder (MP4 only, no transparency).
+static func choose_kind(bg: String, has_ffmpeg: bool, has_native := false) -> String:
 	if bg == "alpha":
 		return "mov" if has_ffmpeg else "png"
-	return "mp4" if has_ffmpeg else "avi"
+	return "mp4" if has_ffmpeg or has_native else "avi"
+
+
+## The file type this device makes for a background.
+static func kind_for(bg: String) -> String:
+	return choose_kind(bg, ffmpeg_path() != "", Native.can_encode())
 
 
 ## What the Film panel says the export will be.
 static func kind_label(k: String) -> String:
+	if k == "mp4" and ffmpeg_path() == "" and Native.can_encode():
+		return "H.264 MP4 (this phone’s encoder)"
 	return {"mp4": "H.264 MP4 (ffmpeg)", "avi": "Motion-JPEG AVI (install ffmpeg for MP4)",
 		"mov": "ProRes 4444 MOV with transparency (ffmpeg)", "png": "PNG image sequence with transparency, plus sound.wav (install ffmpeg for a MOV)"}.get(k, k)
 
@@ -329,7 +371,7 @@ static func find_job(st: Node, rate: int) -> Dictionary:
 			if not FileAccess.file_exists(str(s)):
 				ok = false
 	if ok and jd.get("kind", "") in ["mp4", "mov"]:
-		ok = ffmpeg_path() != ""
+		ok = Native.can_encode() if jd.get("enc", "ffmpeg") == "native" else ffmpeg_path() != ""
 	return jd if ok else {}
 
 
@@ -395,7 +437,8 @@ func start(size: Vector2i, rate: int, shots: Array = [], resume: Dictionary = {}
 	_last_ms = 0
 	_frame_ms = []
 	_baseline = 0.0
-	kind = "dry" if dry else choose_kind(_bg, ffmpeg_path() != "")
+	kind = "dry" if dry else kind_for(_bg)
+	_enc = "ffmpeg" if kind != "mp4" or ffmpeg_path() != "" else "native"
 	var dir := output_dir()
 	var name := U.slug(str(studio.project_name)) + "-" + Time.get_datetime_string_from_system().replace(":", "").replace("T", "-")
 	var skip := 0
@@ -403,7 +446,7 @@ func start(size: Vector2i, rate: int, shots: Array = [], resume: Dictionary = {}
 	if not film:
 		_seg_frames = 1 << 30
 	job = {}
-	if not resume.is_empty() and film and resume.get("kind", "") == kind:
+	if not resume.is_empty() and film and resume.get("kind", "") == kind and resume.get("enc", "ffmpeg") == _enc:
 		job = resume.duplicate(true)
 		skip = int(job["done"])
 		out_path = str(job["out"])
@@ -423,10 +466,13 @@ func start(size: Vector2i, rate: int, shots: Array = [], resume: Dictionary = {}
 			_:
 				out_path = ""
 		_work = (dir + "/.gamescene-work/" + name) if kind in ["mp4", "mov"] else ""
+		if _enc == "native":
+			# Keep the parts in the app's own storage, out of the gallery.
+			_work = ProjectSettings.globalize_path("user://exports/work/" + name)
 		if _work != "":
 			DirAccess.make_dir_recursive_absolute(_work)
 		if film and kind in ["mp4", "mov", "png"]:
-			job = {"id": str(studio.project_id), "hash": scene_hash(studio, rate), "kind": kind, "out": out_path, "work": _work,
+			job = {"id": str(studio.project_id), "hash": scene_hash(studio, rate), "kind": kind, "enc": _enc, "out": out_path, "work": _work,
 				"total": total_frames, "done": 0, "segments": [], "fps": fps, "w": size.x, "h": size.y, "name": str(studio.project_name)}
 	if kind == "png":
 		DirAccess.make_dir_recursive_absolute(out_path)
@@ -551,6 +597,7 @@ func stop() -> void:
 	if not job.is_empty():
 		DirAccess.remove_absolute(_job_path(str(job.get("id", ""))))
 	job = {}
+	publish(out_path)
 	finished.emit(out_path, secs)
 
 
@@ -590,6 +637,13 @@ func _write(img: Image) -> void:
 			if _ff.is_empty():
 				_open_segment()
 			if _ff.is_empty():
+				return
+			if _ff.has("native"):
+				if not Native.enc_frame(int(_ff["native"]), img):
+					App.toast("The video encoder stopped unexpectedly.")
+					cancel()
+					return
+				_seg_count += 1
 				return
 			var want := Image.FORMAT_RGBA8 if kind == "mov" else Image.FORMAT_RGB8
 			if img.get_format() != want:
@@ -631,8 +685,17 @@ func _frame_done(rendered: bool) -> void:
 
 func _open_segment() -> void:
 	var ff := ffmpeg_path()
-	var i: int = (job.get("segments", []) as Array).size() + _pending.size() if not job.is_empty() else _pending.size()
+	var i: int = (job.get("segments", []) as Array).size() + _pending.size() if not job.is_empty() else _pending.size() + _loose_segments.size()
 	var path := _work + "/seg%03d.%s" % [i, kind]
+	_seg_count = 0
+	if _enc == "native":
+		var id := Native.enc_open(path, _size, fps)
+		if id < 0:
+			App.toast("The video encoder couldn’t start.")
+			_ff = {}
+		else:
+			_ff = {"native": id, "path": path}
+		return
 	var args := ["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba" if kind == "mov" else "rgb24",
 		"-s", "%dx%d" % [_size.x, _size.y], "-r", str(fps), "-i", "-"]
 	if kind == "mov":
@@ -650,6 +713,15 @@ func _open_segment() -> void:
 func _close_segment() -> void:
 	if _ff.is_empty():
 		return
+	if _ff.has("native"):
+		# The phone encoder finishes the file right away.
+		if Native.enc_close(int(_ff["native"])):
+			_pending.append({"pid": -1, "path": str(_ff["path"]), "frames": _seg_count})
+		else:
+			App.toast("A part of the video couldn’t be saved; it will be made again.")
+		_ff = {}
+		_seg_count = 0
+		return
 	(_ff["stdio"] as FileAccess).close()
 	_pending.append({"pid": int(_ff["pid"]), "path": str(_ff["path"]), "frames": _seg_count})
 	_ff = {}
@@ -660,7 +732,7 @@ func _close_segment() -> void:
 func _poll_pending() -> void:
 	while not _pending.is_empty():
 		var p: Dictionary = _pending[0]
-		if OS.is_process_running(int(p["pid"])):
+		if int(p["pid"]) > 0 and OS.is_process_running(int(p["pid"])):
 			return
 		_pending.pop_front()
 		if not job.is_empty():
@@ -677,6 +749,9 @@ func _finish_segments(secs: float) -> void:
 	_loose_segments = []
 	if segs.is_empty():
 		_rm_dir(_work)
+		return
+	if _enc == "native":
+		await _join_native(segs, secs)
 		return
 	var list := _work + "/segments.txt"
 	var f := FileAccess.open(list, FileAccess.WRITE)
@@ -701,6 +776,26 @@ func _finish_segments(secs: float) -> void:
 		await get_tree().create_timer(0.1).timeout
 	var out := FileAccess.open(out_path, FileAccess.READ)
 	if out == null or out.get_length() == 0:
+		App.toast("Joining the video failed; the parts are in " + _work)
+		return
+	out.close()
+	_rm_dir(_work)
+
+
+## The phone encoder's join: segments in order plus the soundtrack (AAC).
+func _join_native(segs: Array, secs: float) -> void:
+	var wav := _work + "/sound.wav"
+	if sound_events.is_empty() or not AudioMixer.save_wav(wav, _mix(secs)):
+		wav = ""
+	if not Native.mux_start(segs, wav, out_path, fps):
+		App.toast("Joining the video failed; the parts are in " + _work)
+		return
+	var t0 := Time.get_ticks_msec()
+	while Native.mux_state() == "running" and Time.get_ticks_msec() - t0 < 300000:
+		await get_tree().create_timer(0.1).timeout
+	var state := Native.mux_state()
+	var out := FileAccess.open(out_path, FileAccess.READ)
+	if state != "ok" or out == null or out.get_length() == 0:
 		App.toast("Joining the video failed; the parts are in " + _work)
 		return
 	out.close()
@@ -929,7 +1024,15 @@ func screenshot(size: Vector2i) -> String:
 		return ""
 	var path := output_dir("image") + "/" + U.slug(str(studio.project_name)) + "-" + Time.get_datetime_string_from_system().replace(":", "").replace("T", "-") + ".png"
 	img.save_png(path)
+	publish(path, "image")
 	return path
+
+
+## Phones: a finished file kept in the app's own storage is also copied into
+## the gallery, so it shows up in Photos / Gallery.
+static func publish(path: String, what := "video") -> void:
+	if App.is_mobile and DIR_OVERRIDE == "" and private_output(what) and FileAccess.file_exists(path):
+		Native.save_to_gallery(path)
 
 
 ## Small thumbnail for the home screen.

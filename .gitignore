@@ -8,3 +8,5 @@ graphify-out/
 .claude/
 .graphifyignore
 CLAUDE.md
+/build/
+/android/

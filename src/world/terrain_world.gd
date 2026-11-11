@@ -22,6 +22,8 @@ var water := 2.2
 var props: Array = []
 ## Grass/flower count multiplier; lower it on weak devices, then rebuild_grass().
 var grass_density := 1.0
+## How far grass is drawn (quality "far" x GRASS_FAR).
+var grass_far := 42.0
 
 var _terrain_mi: MeshInstance3D
 var _water_mi: MeshInstance3D
@@ -466,6 +468,7 @@ func _terrain_material() -> ShaderMaterial:
 			m.set_shader_parameter(t + "_nrm", load("res://assets/textures/%s_normal.jpg" % t))
 		# Anime keeps its painted palette and borrows only surface detail.
 		m.set_shader_parameter("tex_mode", 1)
+	m.set_shader_parameter("lite", App.lite_shading())
 	return m
 
 
@@ -769,13 +772,13 @@ func _anime_grass() -> void:
 	var gm := ShaderMaterial.new()
 	gm.shader = SH_GRASS_ANIME
 	gm.set_shader_parameter("grass_tex", AnimeNature.grass_texture())
-	gm.set_shader_parameter("fade_end", GRASS_FAR)
+	gm.set_shader_parameter("fade_end", grass_far)
 	var card := _grass_card_mesh(1.05, 0.62)
 	card.surface_set_material(0, gm)
 	var fm := ShaderMaterial.new()
 	fm.shader = SH_GRASS_ANIME
 	fm.set_shader_parameter("grass_tex", AnimeNature.flower_texture())
-	fm.set_shader_parameter("fade_end", GRASS_FAR * 0.7)
+	fm.set_shader_parameter("fade_end", grass_far * 0.7)
 	fm.set_shader_parameter("tint_strength", 0.0)
 	var fcard := _grass_card_mesh(0.28, 0.3)
 	fcard.surface_set_material(0, fm)
@@ -845,7 +848,7 @@ func _grass_chunk(card: Mesh, fcard: Mesh, cx: float, cz: float, density: float)
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.visibility_range_end = GRASS_FAR + GRASS_CHUNK
+		mmi.visibility_range_end = grass_far + GRASS_CHUNK
 		mmi.visibility_range_end_margin = 6.0
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 		_grass_root.add_child(mmi)

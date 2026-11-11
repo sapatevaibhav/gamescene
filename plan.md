@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (9 Nov 2026, v0.15.0)
+## Where it stands today (11 Nov 2026, v0.19.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -19,6 +19,7 @@
 - **Director mode:** pause on any moment and move characters or change their action from there.
 - **Shot mode and export:** an off-screen fixed-timestep renderer at 720p to 4K, in 16:9, 9:16 or 1:1, at 24, 30 or 60 fps. Shot list with cuts, fades and title cards, burned-in subtitles, MP4 through ffmpeg and an AVI fallback.
 - **Projects:** versioned JSON with migration from web saves, undo/redo, autosave, import and export.
+- **Packaging (0.19):** export presets for every platform, an Android plugin (MP4 encoding, gallery, share sheet, opened files) tested on an Android 16 phone, and store material.
 - **Tests:** headless suites plus rendered visual checks (see README).
 
 ## Architecture (decided)
@@ -46,8 +47,8 @@
 | 0.16 | Audio and dialogue (Phase D): sounds made in code, footsteps by surface, ambience, music and imported audio on a timeline Sound row, sound in exported videos, subtitle styles, talking mouths | Done |
 | 0.17 | Export reliability (progress, pause, finish later, resume after a crash, cooling down), green/blue screen and transparent export, mood music, single-render recording | Done |
 | 0.18 | Spring bones (hair, skirts, coats), blinking and feelings on imported faces, and the animation library (Mixamo-style clips fitted to any humanoid) | Done |
-| **0.19** | **Packaging for Android, iOS and desktop (Phase I)** | **Next** |
-| 0.20 | Templates, onboarding, credits and licence (Phases J and K) | |
+| 0.19 | Packaging for Android, iOS and desktop (Phase I): export presets, Android plugin (MP4 encoder, gallery, share sheet, opened files), store material | Done |
+| **0.20** | **Templates, onboarding, credits and licence (Phases J and K)** | **Next** |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)
@@ -76,7 +77,7 @@
 - [x] Burned-in subtitles and screenshots.
 - [x] Export reliability: progress, cancel and resume. Pause when the device gets hot (0.17; resume works with ffmpeg segments and PNG sequences, and the cool-down watches for frames slowing down, since there is no temperature reading).
 - [x] Green-screen background and transparent export where the codec allows it (0.17: green, blue, ProRes 4444 MOV or PNG sequence).
-- [ ] Encoding on phones, either through bundled ffmpeg or the platform's native encoder (moved to packaging, 0.19; phones use the built-in AVI writer until then).
+- [x] Encoding on phones through the platform's native encoder (0.19: MediaCodec on Android, resumable; the iOS AVAssetWriter plugin is written but not built yet).
 
 ## Phase D: Audio and dialogue
 
@@ -123,10 +124,11 @@
 
 ## Phase I: Packaging and distribution
 
-- [ ] Export presets for Android, iOS, Windows, macOS and Linux.
-- [ ] On phones: save videos to the gallery, use the share sheet and open project files directly.
-- [ ] On desktop: native file dialogs.
-- [ ] Store requirements: icons, screenshots, an age rating and an offline-first privacy policy.
+- [x] Export presets for Android, iOS, Windows, macOS and Linux (0.19; `platform/export.sh`).
+- [x] On phones: save videos to the gallery, use the share sheet and open project files directly (0.19, Android plugin; iOS plugin written, needs building on a Mac).
+- [x] On desktop: native file dialogs, plus opening scene files by drag and drop or from the command line (0.19).
+- [ ] Store requirements: icons, an age rating and an offline-first privacy policy are done (0.19, `store/`); screenshots still need capturing, and the policy needs a contact address.
+- [ ] Build and test the iOS plugin on a Mac.
 
 ## Phase J: Business, legal and trust (runs alongside the others)
 

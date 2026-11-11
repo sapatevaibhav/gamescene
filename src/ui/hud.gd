@@ -88,7 +88,7 @@ func _ready() -> void:
 	top_right.add_theme_constant_override("separation", UIK.px(8))
 	top_right.add_child(UIK.icon_btn("image", screenshot, "Screenshot (P)"))
 	top_right.add_child(UIK.icon_btn("eyeview", func(): set_clean(true), "Clean view (H)"))
-	top_right.add_child(UIK.icon_btn("gear", func(): open_sheet("settings"), "Settings"))
+	top_right.add_child(UIK.icon_btn("gear", func(): _on_tab("settings"), "Settings"))
 	add_child(top_right)
 	fps_label.add_theme_font_size_override("font_size", UIK.px(12))
 	fps_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
@@ -201,6 +201,10 @@ func _ready() -> void:
 	pad.add_theme_constant_override("separation", UIK.px(10))
 	pad.add_child(_hold_btn("up", func(v): up_held = v, 60))
 	pad.add_child(_hold_btn("down", func(v): down_held = v, 60))
+	# Attack (what a left click does): one swing per press.
+	pad.add_child(_hold_btn("attack", func(v):
+		if v and studio.player:
+			studio.player.attack(), 70))
 	pad.add_child(_hold_btn("up", func(v): jump_held = v, 70))
 	pad.visible = App.is_touch
 	add_child(pad)
@@ -261,6 +265,18 @@ func _on_cast_changed() -> void:
 		render_sheet()
 	if timeline_panel.visible:
 		timeline_panel.rebuild_bar()
+
+
+## Narrows a bar's buttons (down to 44 px) so the bar fits `avail` wide.
+func _fit_bar(row: HBoxContainer, avail: float) -> void:
+	var n := row.get_child_count()
+	if n == 0:
+		return
+	var pad := float(UIK.px(16)) + row.get_theme_constant("separation") * (n - 1)
+	var each := clampf((avail - pad) / n, UIK.px(44), UIK.px(64))
+	for b in row.get_children():
+		if b is Control:
+			(b as Control).custom_minimum_size.x = each
 
 
 func _dock_button(tab: String, icon: String, text: String) -> Button:
@@ -341,14 +357,44 @@ func _bar_mode(b: Button, mode: String) -> void:
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 
+## A round touch button held down for an action.
 func _hold_btn(icon: String, set_fn: Callable, size: int) -> Button:
 	var b := UIK.icon_btn(icon, func(): pass, "", size)
 	var r := UIK.glass(size / 2)
 	b.add_theme_stylebox_override("normal", r)
+	b.add_theme_stylebox_override("hover", r)
+	var down := UIK.glass(size / 2)
+	down.bg_color = Color(UIK.PRIMARY_500, 0.6)
+	b.add_theme_stylebox_override("pressed", down)
 	b.button_down.connect(func(): set_fn.call(true))
 	b.button_up.connect(func(): set_fn.call(false))
+	b.set_meta("hold", set_fn)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	return b
+
+
+var _holds := {}
+
+
+## Touch controls (jump, climb) held by any finger: Godot only turns the
+## first finger into button presses, so with a thumb on the joystick the
+## buttons never heard a second finger. Called for every screen touch before
+## the interface sees it; true when it was one of these buttons.
+func touch_hold(t: InputEventScreenTouch) -> bool:
+	if t.pressed:
+		if not pad.is_visible_in_tree():
+			return false
+		for b in pad.get_children():
+			if b is Control and (b as Control).is_visible_in_tree() and (b as Control).get_global_rect().grow(UIK.px(6)).has_point(t.position):
+				_holds[t.index] = b
+				(b.get_meta("hold") as Callable).call(true)
+				return true
+		return false
+	if _holds.has(t.index):
+		(_holds[t.index].get_meta("hold") as Callable).call(false)
+		_holds.erase(t.index)
+		return true
+	return false
 
 
 func _on_tab(tab: String) -> void:
@@ -367,47 +413,62 @@ func wide() -> bool:
 func layout() -> void:
 	var vs := get_viewport_rect().size
 	var m := float(UIK.px(12))
-	top_left.position = Vector2(m, m)
+	# Phones: keep clear of the status bar, notch and gesture bar.
+	var ins := App.safe_insets()
+	var l := ins.position.x
+	var t := ins.position.y
+	var r := ins.size.x
+	var bt := ins.size.y
+	top_left.position = Vector2(m + l, m + t)
 	top_left.size = top_left.get_combined_minimum_size()
 	top_right.size = top_right.get_combined_minimum_size()
-	top_right.position = Vector2(vs.x - top_right.size.x - m, m)
-	fps_label.position = Vector2(m + top_left.size.x + 12, m + 14)
+	top_right.position = Vector2(vs.x - top_right.size.x - m - r, m + t)
+	fps_label.position = Vector2(m + l + top_left.size.x + 12, m + t + 14)
+	_fit_bar(dock_row, vs.x - m * 2.0 - l - r)
+	_fit_bar(toolbar_row, vs.x - m * 2.0 - l - r)
 	dock.size = dock.get_combined_minimum_size()
-	dock.position = Vector2(m, vs.y - dock.size.y - m)
+	dock.position = Vector2(m + l, vs.y - dock.size.y - m - bt)
 	slate.size = slate.custom_minimum_size
-	slate.position = Vector2(vs.x - slate.size.x - m, vs.y - slate.size.y - m)
+	slate.position = Vector2(vs.x - slate.size.x - m - r, vs.y - slate.size.y - m - bt)
+	# Narrow screens (phones held upright): the record button sits above the
+	# dock instead of beside it.
+	var stacked := dock.size.x + slate.size.x + m * 3.0 > vs.x - l - r
+	if stacked:
+		slate.position.y = dock.position.y - slate.size.y - m
 	toolbar.size = toolbar.get_combined_minimum_size()
-	toolbar.position = Vector2(m, vs.y - toolbar.size.y - m)
+	toolbar.position = Vector2(m + l, vs.y - toolbar.size.y - m - bt)
 	tool_hint.size = tool_hint.get_combined_minimum_size()
-	tool_hint.position = Vector2((vs.x - tool_hint.size.x) / 2, vs.y - toolbar.size.y - tool_hint.size.y - m * 2.5)
+	tool_hint.position = Vector2((vs.x - tool_hint.size.x) / 2, toolbar.position.y - tool_hint.size.y - m * 1.5)
 	play_bar.size = play_bar.get_combined_minimum_size()
-	play_bar.position = Vector2((vs.x - play_bar.size.x) / 2, m)
+	play_bar.position = Vector2((vs.x - play_bar.size.x) / 2, m + t)
 	pad.size = pad.get_combined_minimum_size()
-	pad.position = Vector2(vs.x - pad.size.x - m - 2, vs.y - slate.size.y - pad.size.y - m * 3)
+	pad.position = Vector2(vs.x - pad.size.x - m - 2 - r, slate.position.y - pad.size.y - m * 2)
 	restore_btn.size = restore_btn.get_combined_minimum_size()
-	restore_btn.position = Vector2(m, vs.y - restore_btn.size.y - m)
+	restore_btn.position = Vector2(m + l, vs.y - restore_btn.size.y - m - bt)
 	if _pv_bar and _pv_bar.visible:
 		_pv_bar.size = _pv_bar.get_combined_minimum_size()
-		_pv_bar.position = Vector2((vs.x - _pv_bar.size.x) / 2, m + (play_bar.size.y + m if play_bar.visible else 0.0))
+		_pv_bar.position = Vector2((vs.x - _pv_bar.size.x) / 2, m + t + (play_bar.size.y + m if play_bar.visible else 0.0))
 	if wide():
 		var w := float(UIK.px(400))
-		sheet.position = Vector2(vs.x - w - 16, top_right.size.y + m * 2)
-		sheet.size = Vector2(w, vs.y - sheet.position.y - slate.size.y - m * 3)
+		sheet.position = Vector2(vs.x - w - 16 - r, top_right.position.y + top_right.size.y + m)
+		sheet.size = Vector2(w, slate.position.y - m * 2 - sheet.position.y)
 	else:
 		var h := vs.y * 0.6
-		sheet.position = Vector2(8, vs.y - h - dock.size.y - m * 2)
-		sheet.size = Vector2(vs.x - 16, h)
+		var above := dock.size.y + m * 2 + bt + (slate.size.y + m if stacked else 0.0)
+		h = minf(h, vs.y - above - top_right.position.y - top_right.size.y - m)
+		sheet.position = Vector2(8 + l, vs.y - h - above)
+		sheet.size = Vector2(vs.x - 16 - l - r, h)
 	if timeline_panel.visible:
 		# Docked above the dock; leaves room for the side panel on wide screens.
-		var right := vs.x - m
+		var right := vs.x - m - r
 		if sheet.visible and wide():
 			right = sheet.position.x - m
-		var tw_ := maxf(UIK.px(320), right - m)
+		var tw_ := maxf(UIK.px(320), right - m - l)
 		timeline_panel.size = Vector2(tw_, 0)
 		var want := timeline_panel.get_combined_minimum_size().y - timeline_panel.view.custom_minimum_size.y + timeline_panel.view.wanted_height()
 		var th := minf(want, vs.y * 0.45)
 		timeline_panel.size = Vector2(tw_, th)
-		timeline_panel.position = Vector2(m, vs.y - dock.size.y - th - m * 2)
+		timeline_panel.position = Vector2(m + l, dock.position.y - th - m)
 	var tw := minf(vs.x * 0.92, UIK.px(460))
 	var font := toast_label.get_theme_font("font")
 	var fs := toast_label.get_theme_font_size("font_size")
@@ -417,10 +478,10 @@ func layout() -> void:
 	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if text_w > tw else TextServer.AUTOWRAP_OFF
 	toast_panel.size = Vector2(tw, 0)
 	toast_panel.size = toast_panel.get_combined_minimum_size()
-	toast_panel.position = Vector2((vs.x - toast_panel.size.x) / 2, UIK.px(72))
+	toast_panel.position = Vector2((vs.x - toast_panel.size.x) / 2, UIK.px(72) + t)
 	frame_guide.queue_redraw()
 	for c in modal.get_children():
-		if c is Control:
+		if c is Control and not c.has_meta("placed"):
 			_center(c)
 
 
@@ -474,8 +535,10 @@ func _process(delta: float) -> void:
 	var kids := pad.get_children()
 	(kids[0] as Control).visible = free
 	(kids[1] as Control).visible = free
-	(kids[2] as Control).visible = not free
-	pad.visible = App.is_touch and not clean and not rec.active
+	(kids[2] as Control).visible = not free and studio.player != null
+	# Nothing to jump onto in the 2D top view.
+	(kids[3] as Control).visible = not free and not studio.is_top()
+	pad.visible = App.is_touch and studio.in_studio and not clean and not rec.active and not sheet.visible
 	crosshair.visible = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not clean and not rec.active
 
 
@@ -796,10 +859,13 @@ func _on_take_done(path: String, secs: float) -> void:
 	var v: VBoxContainer = card.get_child(0)
 	v.add_child(UIK.label("Saved", 22, UIK.INK, true))
 	v.add_child(UIK.para("%s long · %s" % [U.fmt_time(secs), path.get_file()], 14))
-	v.add_child(UIK.para(path.get_base_dir(), 12))
+	v.add_child(UIK.para("In your gallery" if App.is_mobile else path.get_base_dir(), 12))
 	var row := UIK.hbox()
 	row.alignment = BoxContainer.ALIGNMENT_END
-	row.add_child(UIK.btn("Open folder", func(): OS.shell_open(path.get_base_dir())))
+	if Media.can_reveal():
+		row.add_child(UIK.btn("Open folder", func(): Media.reveal([path])))
+	else:
+		row.add_child(UIK.btn("Share", func(): Media.share([path]), false, "upload"))
 	row.add_child(UIK.btn("Play", func(): OS.shell_open(path)))
 	row.add_child(UIK.btn("Done", func(): UIK.clear(modal), true))
 	v.add_child(row)
@@ -937,6 +1003,61 @@ func _start_film(resume: bool, j: Dictionary) -> void:
 	close_sheet()
 	if studio.export_film(j):
 		show_progress("Carrying on the export" if resume else "Exporting film")
+
+
+## A list of actions for one thing (a scene, a recording): a sheet along the
+## bottom of the screen with big rows on touch screens, a centred card with a
+## mouse. `items`: [[label, icon, danger]]; `cb(index)`. Tapping outside or
+## Cancel closes it.
+func choose(title: String, items: Array, cb: Callable) -> void:
+	UIK.clear(modal)
+	var vs := get_viewport_rect().size
+	var away := Button.new()
+	away.flat = true
+	away.focus_mode = Control.FOCUS_NONE
+	away.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	away.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	away.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+	away.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+	away.pressed.connect(func(): UIK.clear(modal))
+	away.set_meta("placed", true)
+	modal.add_child(away)
+	var card := _card()
+	var v: VBoxContainer = card.get_child(0)
+	v.add_theme_constant_override("separation", UIK.px(6))
+	var tl := UIK.label(title, 17, UIK.MUTED, true)
+	tl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tl.clip_text = true
+	tl.custom_minimum_size.x = 1
+	v.add_child(tl)
+	for i in items.size():
+		var it: Array = items[i]
+		var b := UIK.btn(str(it[0]), func():
+			UIK.clear(modal)
+			cb.call(i), false, str(it[1]) if it.size() > 1 else "")
+		if it.size() > 2 and it[2]:
+			UIK.style_button(b, "danger")
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size.y = UIK.px(54)
+		b.add_theme_font_size_override("font_size", UIK.px(16))
+		v.add_child(b)
+	var cancel := UIK.btn("Cancel", func(): UIK.clear(modal))
+	cancel.custom_minimum_size.y = UIK.px(54)
+	cancel.add_theme_font_size_override("font_size", UIK.px(16))
+	v.add_child(cancel)
+	modal.add_child(card)
+	if App.is_touch:
+		# Full width along the bottom, inside the safe area.
+		var ins := App.safe_insets()
+		var m := float(UIK.px(10))
+		card.custom_minimum_size.x = minf(vs.x - m * 2 - ins.position.x - ins.size.x, UIK.px(560))
+		card.size = Vector2(card.custom_minimum_size.x, 0)
+		card.size = card.get_combined_minimum_size()
+		card.position = Vector2((vs.x - card.size.x) / 2, vs.y - card.size.y - m - ins.size.y)
+		card.set_meta("placed", true)
+	else:
+		card.custom_minimum_size.x = minf(UIK.px(360), vs.x - 32)
+		_center(card)
 
 
 func ask(msg: String, yes: String, cb: Callable) -> void:
@@ -1115,6 +1236,27 @@ func _redo() -> void:
 func _dialog_cb(ok: bool, paths: PackedStringArray, _f: int, cb: Callable) -> void:
 	if ok and paths.size() > 0:
 		cb.call(paths[0])
+
+
+## Saves a scene as a portable project file: a save dialog on desktop; on
+## phones with the share sheet, the file is made in the cache and shared (to
+## Drive, a chat, Files...).
+func export_project(id: String, scene_name: String) -> void:
+	var fname := U.slug(scene_name) + ".gamescene.json"
+	if App.is_mobile and Native.available():
+		var dir := ProjectSettings.globalize_path("user://cache/share")
+		DirAccess.make_dir_recursive_absolute(dir)
+		var path := dir.path_join(fname)
+		if ProjectStore.export_to(id, path):
+			Media.share([path])
+		else:
+			toast("Couldn’t make the scene file.")
+		return
+	save_file(fname, PackedStringArray(["*.json ; GameScene project"]), func(path: String):
+		if ProjectStore.export_to(id, path):
+			toast("Exported " + path.get_file())
+		else:
+			toast("Couldn’t write that file."))
 
 
 ## Opens a file picker; `cb` gets the chosen path.

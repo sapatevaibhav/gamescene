@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android 7 to 9 need this to put videos in the gallery; newer versions don't. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application>
+        <meta-data
+            android:name="org.godotengine.plugin.v2.GameSceneNative"
+            android:value="com.gamescene.studio.GameSceneNative" />
+
+        <!-- Hands files to other apps for the share sheet. -->
+        <provider
+            android:name="com.gamescene.studio.GameSceneFileProvider"
+            android:authorities="${applicationId}.gamescene.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/gamescene_paths" />
+        </provider>
+
+        <!-- "Open with GameScene Studio" for project files (.json). -->
+        <activity-alias
+            android:name="com.godot.game.GameSceneOpenFile"
+            android:targetActivity="com.godot.game.GodotApp"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+        </activity-alias>
+    </application>
+</manifest>

@@ -341,7 +341,7 @@ func _advance(name: String, dt: float, vol: float) -> void:
 	if v.is_empty():
 		return
 	var p: AudioStreamPlayer = v["player"]
-	var ln: float = p.stream.get_length() if p.stream else 0.0
+	var ln: float = Sounds.duration(p.stream)
 	v["pos"] = float(v["pos"]) + dt
 	if ln > 0.0 and v["loop"]:
 		v["pos"] = fmod(float(v["pos"]), ln)
@@ -382,8 +382,8 @@ func _clip_by_name(name: String) -> Dictionary:
 static func _set_loop(st: AudioStream, loop: bool) -> void:
 	if st is AudioStreamWAV:
 		var w := st as AudioStreamWAV
-		if loop and w.loop_mode == AudioStreamWAV.LOOP_DISABLED:
-			w.loop_end = w.data.size() / (2 if w.format == AudioStreamWAV.FORMAT_16_BITS else 1) / (2 if w.stereo else 1)
+		if loop:
+			Synth.pad_loop(w)
 		w.loop_mode = AudioStreamWAV.LOOP_FORWARD if loop else AudioStreamWAV.LOOP_DISABLED
 	elif st is AudioStreamOggVorbis:
 		(st as AudioStreamOggVorbis).loop = loop

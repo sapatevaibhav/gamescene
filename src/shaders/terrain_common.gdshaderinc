@@ -18,6 +18,8 @@ uniform sampler2D floor_nrm : hint_normal, filter_linear_mipmap_anisotropic, rep
 uniform sampler2D rock_nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float tex_scale = 0.32;
 uniform float normal_strength = 0.6;
+// Phones: one texture sample per layer, no normal maps, two noise octaves.
+uniform bool lite = false;
 
 varying vec3 w_pos;
 varying vec3 w_nrm;
@@ -37,6 +39,9 @@ float t_noise(vec2 p) {
 
 // Two scales blended by noise breaks up visible repetition.
 vec4 tri_sample(sampler2D t, vec2 uv, float n) {
+	if (lite) {
+		return texture(t, uv);
+	}
 	return mix(texture(t, uv), texture(t, uv * 0.37 + vec2(0.31, 0.77)), 0.35 + 0.3 * n);
 }
 
@@ -47,7 +52,12 @@ void vertex() {
 
 void fragment() {
 	vec3 c = COLOR.rgb;
-	float n = t_noise(w_pos.xz * 0.35) * 0.45 + t_noise(w_pos.xz * 1.7) * 0.3 + t_noise(w_pos.xz * 7.3) * 0.15 + t_noise(w_pos.xz * 29.0) * 0.1;
+	float n = t_noise(w_pos.xz * 0.35) * 0.45 + t_noise(w_pos.xz * 1.7) * 0.3;
+	if (lite) {
+		n += 0.125;
+	} else {
+		n += t_noise(w_pos.xz * 7.3) * 0.15 + t_noise(w_pos.xz * 29.0) * 0.1;
+	}
 	float slope = 1.0 - clamp(w_nrm.y, 0.0, 1.0);
 	float rk = smoothstep(0.22, 0.42, slope + (n - 0.5) * 0.12) * rock_mix;
 	float pw = smoothstep(0.15, 0.75, UV2.x + (n - 0.5) * 0.5);
@@ -63,9 +73,11 @@ void fragment() {
 		float fw = smoothstep(0.55, 0.8, t_noise(w_pos.xz * 0.06 + 17.0)) * (1.0 - pw);
 		vec3 tex = mix(mix(mix(g, f, fw), d, pw), f, sw * 0.6);
 		tex = mix(tex, r, rk);
-		vec3 nt = mix(mix(tri_sample(grass_nrm, uv, big).rgb, tri_sample(dirt_nrm, uv * 1.3, big).rgb, pw), tri_sample(rock_nrm, vec2(w_pos.x + w_pos.z, w_pos.y) * tex_scale * 0.6, big).rgb, rk);
-		NORMAL_MAP = nt;
-		NORMAL_MAP_DEPTH = normal_strength;
+		if (!lite) {
+			vec3 nt = mix(mix(tri_sample(grass_nrm, uv, big).rgb, tri_sample(dirt_nrm, uv * 1.3, big).rgb, pw), tri_sample(rock_nrm, vec2(w_pos.x + w_pos.z, w_pos.y) * tex_scale * 0.6, big).rgb, rk);
+			NORMAL_MAP = nt;
+			NORMAL_MAP_DEPTH = normal_strength;
+		}
 		// Keep the palette; use the texture's light and shade only.
 		float lum = dot(tex, vec3(0.299, 0.587, 0.114));
 		c *= mix(0.72, 1.32, smoothstep(0.08, 0.55, lum));

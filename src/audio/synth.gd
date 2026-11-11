@@ -587,6 +587,14 @@ static func _loopify(raw: PackedFloat32Array, n: int, fade: int) -> PackedFloat3
 
 # ---------------------------------------------------------------- output
 
+## Samples kept after a loop's end: a copy of its start. The engine's
+## resampler reads a little past the loop end when it wraps; on phones (whose
+## allocator puts a guard page right after big buffers) reading past the
+## data crashed the audio thread. With the copy, those reads stay inside the
+## buffer and hear exactly what follows the wrap.
+const LOOP_PAD := 2048
+
+
 static func _wav(s: PackedFloat32Array, loop := false) -> AudioStreamWAV:
 	var d := PackedByteArray()
 	d.resize(s.size() * 2)
@@ -597,7 +605,24 @@ static func _wav(s: PackedFloat32Array, loop := false) -> AudioStreamWAV:
 	w.mix_rate = RATE
 	w.data = d
 	if loop:
+		pad_loop(w)
 		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		w.loop_begin = 0
-		w.loop_end = s.size()
 	return w
+
+
+## Makes a PCM WAV safe to loop over its whole length: loop_end is set to the
+## end of the sound and LOOP_PAD frames copied from its start go after it
+## (once; the stream is marked). Compressed WAVs are left alone. Use
+## Sounds.duration() for the length: get_length() includes the pad.
+static func pad_loop(w: AudioStreamWAV) -> void:
+	if w.has_meta("loop_pad") or not w.format in [AudioStreamWAV.FORMAT_8_BITS, AudioStreamWAV.FORMAT_16_BITS]:
+		return
+	var fb := (2 if w.format == AudioStreamWAV.FORMAT_16_BITS else 1) * (2 if w.stereo else 1)
+	var d := w.data
+	var frames := d.size() / fb
+	var pad := mini(LOOP_PAD, frames)
+	d.append_array(d.slice(0, pad * fb))
+	w.data = d
+	w.loop_begin = 0
+	w.loop_end = frames
+	w.set_meta("loop_pad", pad)

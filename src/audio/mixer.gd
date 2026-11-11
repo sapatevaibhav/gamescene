@@ -63,7 +63,7 @@ static func decode(s: AudioStream) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	if s == null:
 		return out
-	var ln := s.get_length()
+	var ln := Sounds.duration(s)
 	if ln <= 0.0:
 		return out
 	var frames := int(ceil(ln * RATE))

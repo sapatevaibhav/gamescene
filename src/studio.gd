@@ -116,6 +116,7 @@ func _make_world(key: String) -> void:
 	else:
 		var tw := TerrainWorld.new()
 		tw.grass_density = App.q()["grass"]
+		tw.grass_far = TerrainWorld.GRASS_FAR * float(App.q().get("far", 1.0))
 		tw.set_style(key)
 		world = tw
 	world.name = "World"

@@ -30,18 +30,26 @@ func _ready() -> void:
 	add_child(bg)
 	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Touch screens scroll by dragging; a scroll bar that comes and goes as
+	# the page is rebuilt (Select, switching tabs) made the page jump sideways.
+	if App.is_touch:
+		_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	add_child(_scroll)
 	var center := MarginContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(center)
 	_col.add_theme_constant_override("separation", UIK.px(12))
-	_col.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	center.add_child(_col)
 	_bar = PanelContainer.new()
 	_bar.add_theme_stylebox_override("panel", UIK.box(Color(UIK.SURFACE, 0.97), 18, UIK.LINE))
 	_bar.visible = false
 	add_child(_bar)
-	get_viewport().size_changed.connect(_layout)
+	get_viewport().size_changed.connect(func():
+		if _narrow() != _was_narrow and visible:
+			refresh()
+		else:
+			_layout())
 	refresh()
 
 
@@ -50,10 +58,14 @@ func _layout() -> void:
 	# Full width with comfortable side gutters.
 	var gutter := float(UIK.px(40 if w >= UIK.px(900) else 16))
 	var inner := w - gutter * 2.0
-	_col.custom_minimum_size.x = inner
 	var m: MarginContainer = _scroll.get_child(0)
-	m.add_theme_constant_override("margin_top", UIK.px(22))
-	m.add_theme_constant_override("margin_bottom", UIK.px(36))
+	# Fixed side margins (not centring), so the page never shifts sideways.
+	m.add_theme_constant_override("margin_left", int(gutter))
+	m.add_theme_constant_override("margin_right", int(gutter))
+	# Phones: clear the status bar / notch and the gesture bar.
+	var ins := App.safe_insets()
+	m.add_theme_constant_override("margin_top", UIK.px(22) + int(ins.position.y))
+	m.add_theme_constant_override("margin_bottom", UIK.px(36) + int(ins.size.y))
 	if _cards == null or _recent == null:
 		return
 	_cards.columns = 4 if w >= UIK.px(900) else 2
@@ -62,10 +74,24 @@ func _layout() -> void:
 	if _bar.visible:
 		var vs := get_viewport_rect().size
 		_bar.size = _bar.get_combined_minimum_size()
-		_bar.position = Vector2((vs.x - _bar.size.x) / 2.0, vs.y - _bar.size.y - UIK.px(18))
+		_bar.position = Vector2((vs.x - _bar.size.x) / 2.0, vs.y - _bar.size.y - UIK.px(18) - ins.size.y)
+
+
+## A phone held upright (or any narrow window).
+func _narrow() -> bool:
+	return get_viewport_rect().size.x < UIK.px(600)
+
+
+## Scene / recording tiles: two to a row even on a phone held upright.
+func _tile_size() -> Vector2:
+	return Vector2(UIK.px(140), UIK.px(168)) if _narrow() else Vector2(UIK.px(200), UIK.px(204))
+
+
+var _was_narrow := false
 
 
 func refresh() -> void:
+	_was_narrow = _narrow()
 	UIK.clear(_col)
 	var top := UIK.hbox(10)
 	var mark := TextureRect.new()
@@ -82,7 +108,8 @@ func refresh() -> void:
 	top.add_child(UIK.label("· v " + str(ProjectSettings.get_setting("application/config/version")), 13, UIK.MUTED))
 	_col.add_child(top)
 	_col.add_child(UIK.spacer(18))
-	var h1 := UIK.label("What are you making?", 52, UIK.INK, true)
+	# On a phone, no bigger than the "GameScene Studio" header above it.
+	var h1 := UIK.label("What are you making?", 18 if _narrow() else 52, UIK.INK, true)
 	h1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_col.add_child(h1)
 	_col.add_child(UIK.spacer(6))
@@ -90,13 +117,22 @@ func refresh() -> void:
 	for k in Styles.HOME_ORDER:
 		_cards.add_child(_style_card(k))
 	_col.add_child(_cards)
-	_col.add_child(UIK.spacer(18))
+	# Your own work sits clearly apart from the four ways to start.
+	_col.add_child(UIK.spacer(40 if _narrow() else 30))
+	var rule := ColorRect.new()
+	rule.color = UIK.LINE
+	rule.custom_minimum_size.y = maxf(1.0, UIK.px(1))
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_col.add_child(rule)
+	_col.add_child(UIK.spacer(14))
+	_col.add_child(UIK.label("Your work", 22 if _narrow() else 24, UIK.INK, true))
 	var idx := ProjectStore.index()
 	var recs := Media.recordings()
 	var shots := Media.screenshots()
-	# Tabs on the left, the tab's actions on the right. The row keeps its
-	# height in every state, so nothing below it moves.
-	var rh := UIK.hbox(8)
+	# Tabs on the left, the tab's actions on the right (below them on a
+	# narrow phone screen). The row keeps its height in every state, so
+	# nothing below it moves.
+	var rh := UIK.flow(8)
 	var tabs := UIK.hbox(6)
 	for tb in [["scenes", "Scenes", idx.size()], ["recordings", "Recordings", recs.size()], ["screenshots", "Screenshots", shots.size()]]:
 		tabs.add_child(UIK.chip("%s  %d" % [tb[1], tb[2]], _tab == tb[0], func():
@@ -168,6 +204,8 @@ func _update_bar(items: Array) -> void:
 	var l := UIK.label("Tap %s to select them" % what if _selected.is_empty() else "%d selected" % _selected.size(), 15, UIK.INK, true)
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.custom_minimum_size.x = UIK.px(240)
+	# Narrow screens: no room for the label; "Delete (n)" shows the count.
+	l.visible = get_viewport_rect().size.x >= UIK.px(640)
 	h.add_child(l)
 	h.add_child(UIK.btn("All" if _selected.size() < items.size() else "None", func(): _select_all(items)))
 	if _tab != "scenes":
@@ -191,7 +229,7 @@ func _media_tile(it: Dictionary) -> Control:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.custom_minimum_size = Vector2(UIK.px(200), UIK.px(204))
+	b.custom_minimum_size = _tile_size()
 	b.clip_contents = true
 	UIK._card_states(b, false, 16)
 	var v := UIK.vbox(0)
@@ -218,10 +256,14 @@ func _media_tile(it: Dictionary) -> Control:
 	else:
 		tr.texture = Icons.tex(icon, 48, UIK.GRAY_400)
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		# A weak reference: the page may be rebuilt before the thumbnail is
+		# ready, and a lambda holding a freed node errors when called.
+		var wr: WeakRef = weakref(tr)
 		Media.thumb_async(it, func(tex: Texture2D):
-			if tex and is_instance_valid(tr):
-				tr.texture = tex
-				tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED)
+			var t: TextureRect = wr.get_ref()
+			if tex and t:
+				t.texture = tex
+				t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED)
 	frame.add_child(tr)
 	if it["kind"] != "image":
 		# A play badge so videos read as videos.
@@ -258,21 +300,8 @@ func _media_tile(it: Dictionary) -> Control:
 	cap.add_child(cv)
 	v.add_child(cap)
 	b.add_child(v)
-	var more := MenuButton.new()
-	more.icon = Icons.tex("more", UIK.px(20), Color.WHITE)
-	more.flat = false
-	more.add_theme_stylebox_override("normal", UIK.glass(10))
-	more.add_theme_stylebox_override("hover", UIK.box(Color(UIK.GRAY_700, 0.95), 10, UIK.GRAY_400))
-	more.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	more.offset_left = -UIK.px(48)
-	more.offset_right = -UIK.px(12)
-	more.offset_top = UIK.px(12)
-	more.offset_bottom = UIK.px(44)
-	var pm := more.get_popup()
-	pm.add_item("Open", 0)
-	pm.add_item("Show in folder" if Media.can_reveal() else "Share", 1)
-	pm.add_item("Delete", 2)
-	pm.id_pressed.connect(_media_action.bind(it))
+	var more := _more(str(it["name"]), [["Open", "playtri"], ["Show in folder" if Media.can_reveal() else "Share", "folder" if Media.can_reveal() else "upload"],
+		["Delete", "trash", true]], _media_action.bind(it))
 	if _selecting:
 		more.visible = false
 		var on := _selected.has(it["path"])
@@ -350,7 +379,7 @@ func _recent_tile(p: Dictionary) -> Control:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.custom_minimum_size = Vector2(UIK.px(200), UIK.px(204))
+	b.custom_minimum_size = _tile_size()
 	b.clip_contents = true
 	UIK._card_states(b, false, 16)
 	var v := UIK.vbox(0)
@@ -400,22 +429,9 @@ func _recent_tile(p: Dictionary) -> Control:
 	cap.add_child(cv)
 	v.add_child(cap)
 	b.add_child(v)
-	var more := MenuButton.new()
-	more.icon = Icons.tex("more", UIK.px(20), Color.WHITE)
-	more.flat = false
-	more.add_theme_stylebox_override("normal", UIK.glass(10))
-	more.add_theme_stylebox_override("hover", UIK.box(Color(UIK.GRAY_700, 0.95), 10, UIK.GRAY_400))
-	more.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	more.offset_left = -UIK.px(48)
-	more.offset_right = -UIK.px(12)
-	more.offset_top = UIK.px(12)
-	more.offset_bottom = UIK.px(44)
-	var pm := more.get_popup()
-	pm.add_item("Rename", 0)
-	pm.add_item("Duplicate", 1)
-	pm.add_item("Export file", 2)
-	pm.add_item("Delete", 3)
-	pm.id_pressed.connect(func(item: int): _tile_action(id, p, item))
+	var more := _more(str(p.get("name", "Scene")), [["Rename", "edit"], ["Duplicate", "duplicate"],
+		["Share file" if App.is_mobile and Native.available() else "Export file", "upload" if App.is_mobile else "download"], ["Delete", "trash", true]],
+		func(item: int): _tile_action(id, p, item))
 	if _selecting:
 		more.visible = false
 		var on := _selected.has(id)
@@ -424,6 +440,38 @@ func _recent_tile(p: Dictionary) -> Control:
 	b.add_child(more)
 	b.pressed.connect(func(): _tile_pressed(id))
 	return b
+
+
+## The "⋯" button on a tile. With a mouse it drops a small menu; on touch
+## screens it opens a full-width action sheet with big rows (Hud.choose).
+## `items`: [[label, icon, danger]]; `cb(index)`.
+func _more(title: String, items: Array, cb: Callable) -> Button:
+	var more: Button
+	if App.is_touch:
+		more = Button.new()
+		more.pressed.connect(func(): (get_parent().get_node("Hud") as Hud).choose(title, items, cb))
+	else:
+		var mb := MenuButton.new()
+		var pm := mb.get_popup()
+		for i in items.size():
+			pm.add_item(str(items[i][0]), i)
+		pm.id_pressed.connect(cb)
+		more = mb
+	more.focus_mode = Control.FOCUS_NONE
+	more.icon = Icons.tex("more", UIK.px(20), Color.WHITE)
+	more.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	more.flat = false
+	more.add_theme_stylebox_override("normal", UIK.glass(10))
+	more.add_theme_stylebox_override("hover", UIK.box(Color(UIK.GRAY_700, 0.95), 10, UIK.GRAY_400))
+	more.add_theme_stylebox_override("pressed", UIK.box(Color(UIK.GRAY_700, 0.95), 10, UIK.GRAY_400))
+	more.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	# A bigger target on touch screens.
+	var s := 44 if App.is_touch else 36
+	more.offset_left = -UIK.px(12 + s)
+	more.offset_right = -UIK.px(12)
+	more.offset_top = UIK.px(12)
+	more.offset_bottom = UIK.px(12 + s * 32 / 36)
+	return more
 
 
 func _media_action(item: int, it: Dictionary) -> void:
@@ -551,11 +599,7 @@ func _tile_action(id: String, p: Dictionary, item: int) -> void:
 			ProjectStore.duplicate_project(id)
 			refresh()
 		2:
-			hud.save_file(U.slug(p.get("name", "scene")) + ".gamescene.json", PackedStringArray(["*.json ; GameScene project"]), func(path: String):
-				if ProjectStore.export_to(id, path):
-					App.toast("Exported " + path.get_file())
-				else:
-					App.toast("Couldn’t write that file."))
+			hud.export_project(id, str(p.get("name", "scene")))
 		3:
 			hud.ask("Delete “%s”? This can’t be undone." % p.get("name", "Scene"), "Delete", func():
 				ProjectStore.delete(id)

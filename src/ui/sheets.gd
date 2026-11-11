@@ -525,26 +525,32 @@ func v_objects(_a, b: VBoxContainer) -> String:
 
 
 func _import_props() -> void:
-	hud.pick_files(PackedStringArray(["*.glb, *.GLB, *.gltf, *.GLTF, *.fbx, *.FBX ; 3D objects", "* ; All files"]), func(paths: PackedStringArray):
-		var ok := 0
-		var too_big := 0
-		var before := AssetLib.list()
-		for pth in paths:
-			var pid := AssetLib.import_file(pth)
-			if pid == "":
-				continue
-			if AssetTags.check_import(studio.style_key, "props", AssetLib.DIR + pid) != "":
-				too_big += 1
-				if not before.has(pid):
-					AssetLib.remove(pid)
-				continue
-			AssetTags.tag("props", pid, studio.style_key)
-			ok += 1
-		var msg := "Imported %d of %d object%s." % [ok, paths.size(), "" if paths.size() == 1 else "s"]
-		if too_big > 0:
-			msg += " %d %s too detailed for a low-poly world (over %s triangles)." % [too_big, "was" if too_big == 1 else "were", AssetTags._k(AssetTags.max_tris(studio.style_key, "props"))]
-		hud.toast(msg)
-		_rerender(), "Import 3D objects")
+	hud.pick_files(PackedStringArray(["*.glb, *.GLB, *.gltf, *.GLTF, *.fbx, *.FBX ; 3D objects", "* ; All files"]), import_props, "Import 3D objects")
+
+
+## Adds 3D object files to this style's object library (also used for files
+## dropped on the window).
+func import_props(paths: PackedStringArray) -> void:
+	var ok := 0
+	var too_big := 0
+	var before := AssetLib.list()
+	for pth in paths:
+		var pid := AssetLib.import_file(pth)
+		if pid == "":
+			continue
+		if AssetTags.check_import(studio.style_key, "props", AssetLib.DIR + pid) != "":
+			too_big += 1
+			if not before.has(pid):
+				AssetLib.remove(pid)
+			continue
+		AssetTags.tag("props", pid, studio.style_key)
+		ok += 1
+	var msg := "Imported %d of %d object%s." % [ok, paths.size(), "" if paths.size() == 1 else "s"]
+	if too_big > 0:
+		msg += " %d %s too detailed for a low-poly world (over %s triangles)." % [too_big, "was" if too_big == 1 else "were", AssetTags._k(AssetTags.max_tris(studio.style_key, "props"))]
+	hud.toast(msg)
+	if hud.sheet.visible:
+		_rerender()
 
 
 # ---------------------------------------------------------------- cast
@@ -1024,7 +1030,7 @@ func v_film(_a, b: VBoxContainer) -> String:
 		b.add_child(UIK.para("Only the characters, on a transparent background, to lay over other footage.", 12))
 	var vs := hud.get_viewport_rect().size
 	var sz := App.export_size(vs.x / vs.y)
-	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, Recorder.kind_label(Recorder.choose_kind(bgk, Recorder.ffmpeg_path() != ""))], 12))
+	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, Recorder.kind_label(Recorder.kind_for(bgk))], 12))
 	b.add_child(UIK.toggle("Burn in subtitles for dialogue", App.settings["subtitles"], func(on): App.settings["subtitles"] = on; studio.mark_dirty(); _rerender()))
 	if App.settings["subtitles"]:
 		_subtitle_options(b)
@@ -1033,7 +1039,8 @@ func v_film(_a, b: VBoxContainer) -> String:
 	for n in [0, 3, 5]:
 		cd.add_child(UIK.chip("No countdown" if n == 0 else "%ds countdown" % n, int(App.settings["countdown"]) == n, func(): App.settings["countdown"] = n; _rerender()))
 	b.add_child(cd)
-	b.add_child(UIK.btn("Open videos folder", func(): OS.shell_open(Recorder.output_dir()), false, "folder"))
+	if Media.can_reveal():
+		b.add_child(UIK.btn("Open videos folder", func(): OS.shell_open(Recorder.output_dir()), false, "folder"))
 	return "Film"
 
 
@@ -1137,13 +1144,9 @@ func v_settings(_a, b: VBoxContainer) -> String:
 	b.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
 	_section(b, "This scene")
 	var r := UIK.flow()
-	r.add_child(UIK.btn("Export scene file", func():
+	r.add_child(UIK.btn("Share scene file" if App.is_mobile and Native.available() else "Export scene file", func():
 		await studio.save_now()
-		hud.save_file(U.slug(studio.project_name) + ".gamescene.json", PackedStringArray(["*.json ; GameScene project"]), func(p: String):
-			if ProjectStore.export_to(studio.project_id, p):
-				hud.toast("Exported " + p.get_file())
-			else:
-				hud.toast("Couldn’t write that file.")), false, "download"))
+		hud.export_project(studio.project_id, studio.project_name), false, "download"))
 	b.add_child(r)
 	_section(b, "Keys")
 	b.add_child(UIK.para("WASD move · Space jump · Shift sprint · Ctrl crouch · left click attack · right click a character for their menu · drag to look · wheel zoom · C camera · B build · T timeline · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))

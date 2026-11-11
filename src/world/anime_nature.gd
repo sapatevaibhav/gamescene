@@ -345,9 +345,12 @@ static func _mi(mesh: Mesh, mat: Material, pos := Vector3.ZERO) -> MeshInstance3
 
 
 static func _canopy(g: Node3D, pal: String, pos: Vector3, radii: Vector3, density: float, r: U.Rng, tex := "leaf") -> void:
-	var cards := int(clampf(radii.x * radii.y * radii.z * 17.0 * density, 30, 240))
+	# Phones: fewer, slightly bigger leaf cards (the cut-out leaves are drawn
+	# over each other many times, which slow phone GPUs pay for per pixel).
+	var lite := App.lite_shading()
+	var cards := int(clampf(radii.x * radii.y * radii.z * 17.0 * density * (0.35 if lite else 1.0), 14 if lite else 30, 240))
 	var variant := int(r.next() * 4)
-	var m := _mi(canopy_mesh(radii, cards, 0.85 if tex == "leaf" else 0.7, variant * 97 + int(radii.x * 10)), foliage_mat(pal, tex), pos)
+	var m := _mi(canopy_mesh(radii, cards, (0.85 if tex == "leaf" else 0.7) * (1.25 if lite else 1.0), variant * 97 + int(radii.x * 10)), foliage_mat(pal, tex), pos)
 	# Only tree crowns cast shadows; low undergrowth isn't worth the cost.
 	if radii.y < 1.0:
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
