@@ -18,6 +18,11 @@ var fps_label := Label.new()
 var dock := PanelContainer.new()
 var dock_row := HBoxContainer.new()
 var dock_btns := {}
+## Compact dock (phones, a global setting): one Menu button that opens the
+## row of buttons, and a narrow button at its end to fold it away again.
+var dock_menu: Button
+var dock_collapse: Button
+var dock_open := false
 var slate := Button.new()
 var slate_label := Label.new()
 var slate_dot := Panel.new()
@@ -98,16 +103,30 @@ func _ready() -> void:
 	# Dock.
 	dock.add_theme_stylebox_override("panel", _bar_panel())
 	dock_row.add_theme_constant_override("separation", UIK.px(2))
+	dock_menu = _bar_button("lines", "Menu")
+	dock_menu.pressed.connect(func(): set_dock_open(true))
+	dock_row.add_child(dock_menu)
 	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Script"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["sound", "speaker", "Sound"], ["film", "film", "Film"]]:
 		var b := _dock_button(tab[0], tab[1], tab[2])
 		dock_btns[tab[0]] = b
 		dock_row.add_child(b)
+	dock_collapse = _bar_button("back", "")
+	dock_collapse.tooltip_text = "Collapse"
+	dock_collapse.set_meta("narrow", true)
+	# No label, so the arrow sits in the middle of the bar.
+	(dock_collapse.get_meta("label") as Label).visible = false
+	dock_collapse.custom_minimum_size.x = UIK.px(24)
+	dock_collapse.pressed.connect(func(): set_dock_open(false))
+	dock_row.add_child(dock_collapse)
 	dock.add_child(dock_row)
 	add_child(dock)
+	App.settings_changed.connect(apply_dock)
+	apply_dock.call_deferred()
 
 	# Record button: a pill with a red dot; turns red while recording.
 	slate.focus_mode = Control.FOCUS_NONE
-	slate.custom_minimum_size = Vector2(UIK.px(128), UIK.px(54))
+	# Smaller on touch screens, where it was easy to hit while exploring.
+	slate.custom_minimum_size = Vector2(UIK.px(98), UIK.px(42)) if App.is_touch else Vector2(UIK.px(128), UIK.px(54))
 	slate.tooltip_text = "Record a take (R)"
 	_style_record(false)
 	var sh := UIK.hbox(10)
@@ -126,7 +145,7 @@ func _ready() -> void:
 	sh.add_child(slate_dot)
 	slate_label.text = "Record"
 	slate_label.add_theme_font_override("font", UIK.font_bold)
-	slate_label.add_theme_font_size_override("font_size", UIK.px(16))
+	slate_label.add_theme_font_size_override("font_size", UIK.px(14 if App.is_touch else 16))
 	slate_label.add_theme_color_override("font_color", Color.WHITE)
 	slate_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sh.add_child(slate_label)
@@ -268,15 +287,38 @@ func _on_cast_changed() -> void:
 
 
 ## Narrows a bar's buttons (down to 44 px) so the bar fits `avail` wide.
+## Narrow buttons (the compact dock's fold button) keep their width.
 func _fit_bar(row: HBoxContainer, avail: float) -> void:
-	var n := row.get_child_count()
-	if n == 0:
+	var shown := row.get_children().filter(func(c): return c is Control and (c as Control).visible)
+	var wide_ones := shown.filter(func(c): return not c.has_meta("narrow"))
+	if wide_ones.is_empty():
 		return
-	var pad := float(UIK.px(16)) + row.get_theme_constant("separation") * (n - 1)
-	var each := clampf((avail - pad) / n, UIK.px(44), UIK.px(64))
-	for b in row.get_children():
-		if b is Control:
-			(b as Control).custom_minimum_size.x = each
+	var fixed := 0.0
+	for c in shown:
+		if c.has_meta("narrow"):
+			fixed += (c as Control).custom_minimum_size.x
+	var pad := float(UIK.px(16)) + row.get_theme_constant("separation") * (shown.size() - 1) + fixed
+	var each := clampf((avail - pad) / wide_ones.size(), UIK.px(44), UIK.px(64))
+	for b in wide_ones:
+		(b as Control).custom_minimum_size.x = each
+
+
+## Shows the dock as the global setting asks: every button ("full"), or
+## folded behind a Menu button ("compact").
+func apply_dock() -> void:
+	var compact: bool = App.device.get("dock", "full") == "compact"
+	if dock_menu == null:
+		return
+	dock_menu.visible = compact and not dock_open
+	dock_collapse.visible = compact and dock_open
+	for k in dock_btns:
+		(dock_btns[k] as Control).visible = not compact or dock_open
+	layout()
+
+
+func set_dock_open(on: bool) -> void:
+	dock_open = on
+	apply_dock()
 
 
 func _dock_button(tab: String, icon: String, text: String) -> Button:
@@ -466,8 +508,12 @@ func layout() -> void:
 		var tw_ := maxf(UIK.px(320), right - m - l)
 		timeline_panel.size = Vector2(tw_, 0)
 		var want := timeline_panel.get_combined_minimum_size().y - timeline_panel.view.custom_minimum_size.y + timeline_panel.view.wanted_height()
-		var th := minf(want, vs.y * 0.45)
+		# Short phone screens: up to the space between the top buttons and
+		# the dock (the header alone can be taller than 45% of the screen).
+		var room := dock.position.y - m - (top_left.position.y + top_left.size.y + m)
+		var th := minf(want, maxf(vs.y * 0.45, minf(room, timeline_panel.get_combined_minimum_size().y + UIK.px(90))))
 		timeline_panel.size = Vector2(tw_, th)
+		th = timeline_panel.size.y
 		timeline_panel.position = Vector2(m + l, dock.position.y - th - m)
 	var tw := minf(vs.x * 0.92, UIK.px(460))
 	var font := toast_label.get_theme_font("font")
@@ -1029,6 +1075,7 @@ func choose(title: String, items: Array, cb: Callable) -> void:
 	tl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	tl.clip_text = true
 	tl.custom_minimum_size.x = 1
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tl)
 	for i in items.size():
 		var it: Array = items[i]
@@ -1037,9 +1084,26 @@ func choose(title: String, items: Array, cb: Callable) -> void:
 			cb.call(i), false, str(it[1]) if it.size() > 1 else "")
 		if it.size() > 2 and it[2]:
 			UIK.style_button(b, "danger")
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.custom_minimum_size.y = UIK.px(54)
-		b.add_theme_font_size_override("font_size", UIK.px(16))
+		# Icon and label centred together, with room between them.
+		var danger: bool = it.size() > 2 and it[2]
+		var ink := UIK.DANGER if danger else UIK.INK
+		var row := UIK.hbox(10)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if b.icon:
+			var ic := TextureRect.new()
+			ic.texture = Icons.tex(str(it[1]), UIK.px(20), ink)
+			ic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+			ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(ic)
+		var lb := UIK.label(b.text, 16, ink, true)
+		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(lb)
+		b.text = ""
+		b.icon = null
+		b.add_child(row)
 		v.add_child(b)
 	var cancel := UIK.btn("Cancel", func(): UIK.clear(modal))
 	cancel.custom_minimum_size.y = UIK.px(54)

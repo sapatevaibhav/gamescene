@@ -33,7 +33,14 @@ func _init(h: Hud) -> void:
 	var v := UIK.vbox(6)
 	bar.add_theme_constant_override("h_separation", UIK.px(6))
 	bar.add_theme_constant_override("v_separation", UIK.px(6))
-	v.add_child(bar)
+	# The buttons wrap; close stays in the top-right corner.
+	var top := UIK.hbox(6)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(bar)
+	var close := UIK.icon_btn("close", func(): hud.toggle_timeline(), "Close timeline", 38, false)
+	close.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	top.add_child(close)
+	v.add_child(top)
 	view.panel = self
 	view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(view)
@@ -247,7 +254,6 @@ func rebuild_bar() -> void:
 			bar.add_child(UIK.btn("Edit", func(): hud.open_sheet("clip"), false, "speaker"))
 			del_btn = UIK.icon_btn("trash", delete_clip, "Remove sound", 38, false)
 			bar.add_child(del_btn)
-		bar.add_child(UIK.icon_btn("close", hud.toggle_timeline, "Close timeline", 38, false))
 		tick()
 		hud.layout()
 		return
@@ -270,7 +276,6 @@ func rebuild_bar() -> void:
 			cam_preview = not cam_preview
 			_sync_camera()
 			rebuild_bar()))
-	bar.add_child(UIK.icon_btn("close", hud.toggle_timeline, "Close timeline", 38, false))
 	tick()
 	hud.layout()
 
@@ -284,8 +289,17 @@ class TimelineView:
 	var sel_key := -1
 	## Seconds visible across the lanes; fixed while dragging.
 	var span := 15.0
-	var scroll := 0
-	var _drag := ""  # "", "scrub", "key", "cue", "cue_end"
+	## How far the rows are scrolled, in pixels.
+	var scroll := 0.0
+	var _drag := ""  # "", "scrub", "key", "cue", "cue_end", "rows"
+	## Touch: where the finger landed, and the row scroll then, so dragging
+	## up or down moves through the characters.
+	var _press_p := Vector2.ZERO
+	var _press_scroll := 0.0
+	var _press_track := ""
+	var _press_time := 0.0
+	var _press_sel := ""
+	var _press_key := -1
 	var _drag_cue: Dictionary = {}
 	var _drag_off := 0.0
 	var _pending_seek := -1.0
@@ -328,12 +342,12 @@ class TimelineView:
 		return clampf((x - _name_w()) / _lane_w() * span, 0.0, span)
 
 	func _row_y(i: int) -> float:
-		return _ruler_h() + (i - scroll) * _row_h()
+		return _ruler_h() + i * _row_h() - scroll
 
 	func _row_at(y: float) -> int:
 		if y < _ruler_h():
 			return -1
-		return int((y - _ruler_h()) / _row_h()) + scroll
+		return int((y - _ruler_h() + scroll) / _row_h())
 
 	func _process(_dt: float) -> void:
 		if _pending_seek >= 0.0:
@@ -364,7 +378,6 @@ class TimelineView:
 		while t <= span + 1e-3:
 			var x := t_to_x(t)
 			draw_line(Vector2(x, _ruler_h() - UIK.px(6)), Vector2(x, size.y), Color(UIK.GRAY_600, 0.5))
-			draw_string(font, Vector2(x + 3, _ruler_h() - UIK.px(8)), "%ds" % int(t), HORIZONTAL_ALIGNMENT_LEFT, -1, UIK.px(11), UIK.MUTED)
 			t += step
 		# Rows.
 		for i in rr.size():
@@ -384,7 +397,22 @@ class TimelineView:
 			if tn != Timeline.CAM:
 				_draw_cues(tn, y, font)
 			_draw_keys(tn, y, on)
+		# The ruler on top, over a row scrolled half under it.
+		draw_rect(Rect2(0, 0, size.x, _ruler_h()), UIK.GRAY_900)
+		t = 0.0
+		while t <= span + 1e-3:
+			var x := t_to_x(t)
+			draw_line(Vector2(x, _ruler_h() - UIK.px(6)), Vector2(x, _ruler_h()), Color(UIK.GRAY_600, 0.5))
+			draw_string(font, Vector2(x + 3, _ruler_h() - UIK.px(8)), "%ds" % int(t), HORIZONTAL_ALIGNMENT_LEFT, -1, UIK.px(11), UIK.MUTED)
+			t += step
 		draw_line(Vector2(nw, 0), Vector2(nw, size.y), UIK.LINE)
+		# More rows than fit: a thin bar by the names shows where you are.
+		var ms := _max_scroll()
+		if ms > 0.0:
+			var track_h := size.y - _ruler_h() - 4.0
+			var bh := maxf(UIK.px(16), track_h * track_h / (track_h + ms))
+			var by := _ruler_h() + 2.0 + (track_h - bh) * scroll / ms
+			draw_rect(Rect2(nw - UIK.px(4), by, UIK.px(3), bh), Color(UIK.GRAY_300, 0.6))
 		# Playhead.
 		var px := t_to_x(st.play_t)
 		draw_line(Vector2(px, 0), Vector2(px, size.y), UIK.REC, 2.0)
@@ -478,9 +506,7 @@ class TimelineView:
 		var mb := e as InputEventMouseButton
 		if mb:
 			if mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and mb.pressed:
-				var vis := int((size.y - _ruler_h()) / _row_h())
-				var mx := maxi(0, rows().size() - vis)
-				scroll = clampi(scroll + (1 if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1), 0, mx)
+				scroll = clampf(scroll + (1.0 if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1.0) * _row_h(), 0.0, _max_scroll())
 				queue_redraw()
 				accept_event()
 				return
@@ -488,8 +514,17 @@ class TimelineView:
 				return
 			accept_event()
 			if mb.pressed:
+				_press_p = mb.position
+				_press_scroll = scroll
+				_press_time = panel.studio.play_t
+				_press_sel = sel_track
+				_press_key = sel_key
 				_press(mb.position)
 			else:
+				if _drag == "rows" and _press_track != "" and mb.position.distance_to(_press_p) < UIK.px(10):
+					# A tap on a name (not a drag) selects that row.
+					panel.select(_press_track, -1)
+					queue_redraw()
 				if _drag in ["key", "cue", "cue_end"]:
 					panel.studio.mark_dirty()
 					panel.key_edited()
@@ -498,6 +533,15 @@ class TimelineView:
 		var mm := e as InputEventMouseMotion
 		if mm and _drag != "":
 			accept_event()
+			# Scrubbing that turns into a mostly up-and-down drag scrolls the
+			# rows instead (phones have no wheel).
+			var dv := mm.position - _press_p
+			if _drag == "scrub" and absf(dv.y) > UIK.px(16) and absf(dv.y) > absf(dv.x) * 1.5 and _max_scroll() > 0:
+				_drag = "rows"
+				_press_track = ""
+				# It was a scroll, not a scrub: undo the seek and selection.
+				_pending_seek = _press_time
+				panel.select(_press_sel, _press_key)
 			_motion(mm.position)
 
 	func _press(p: Vector2) -> void:
@@ -506,8 +550,9 @@ class TimelineView:
 		if ri >= 0 and ri < rr.size():
 			var tn: String = rr[ri]
 			if p.x < _name_w():
-				panel.select(tn, -1)
-				queue_redraw()
+				# Names: drag to scroll through the rows, tap to select.
+				_drag = "rows"
+				_press_track = tn
 				return
 			if tn == SOUND:
 				var hcl := _hit_clip(p.x)
@@ -541,9 +586,14 @@ class TimelineView:
 		_pending_seek = x_to_t(p.x)
 		queue_redraw()
 
+	func _max_scroll() -> float:
+		return maxf(0.0, rows().size() * _row_h() + UIK.px(4) - (size.y - _ruler_h()))
+
 	func _motion(p: Vector2) -> void:
 		var t := x_to_t(p.x)
 		match _drag:
+			"rows":
+				scroll = clampf(_press_scroll - (p.y - _press_p.y), 0.0, _max_scroll())
 			"scrub":
 				_pending_seek = t
 			"key":

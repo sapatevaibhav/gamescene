@@ -500,7 +500,14 @@ static func slider(title: String, value: float, lo: float, hi: float, step: floa
 	var show := func(x: float) -> void:
 		val.text = fmt.call(x) if fmt.is_valid() else (str(int(x)) if step >= 1 else "%.1f" % x)
 	show.call(value)
+	# The value before the latest change, and when it changed: a touch makes
+	# the slider jump before anything else hears of it, and TouchScroll puts
+	# it back when that touch turns out to be a scroll.
+	s.set_meta("now", value)
 	s.value_changed.connect(func(x: float) -> void:
+		s.set_meta("before", s.get_meta("now", x))
+		s.set_meta("now", x)
+		s.set_meta("at", Time.get_ticks_msec())
 		show.call(x)
 		cb.call(x))
 	v.add_child(s)

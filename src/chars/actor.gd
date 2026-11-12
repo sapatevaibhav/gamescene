@@ -18,6 +18,9 @@ var look := {}
 var behavior := "idle"
 ## Behaviour from the scene setup; cues override `behavior` temporarily.
 var base_behavior := "idle"
+## Woken from sleep by a hit: stays awake until the scene restarts or is
+## told to sleep again.
+var woken := false
 var notice := true
 var lines: Array = []
 var pos := Vector3.ZERO
@@ -432,6 +435,14 @@ func refresh_tag() -> void:
 	root().add_child(tag)
 
 
+## A line said on the character's own (chatting, noticing the player): shown
+## only when the scene's "chatter" setting is on. The line is still picked
+## either way, so turning it off doesn't change the rest of the take.
+func chat(text: String, dur := 2.8) -> void:
+	if App.settings.get("chatter", true):
+		say(text, dur)
+
+
 func say(text: String, dur := 2.8) -> void:
 	if rig.is_empty() or text.is_empty():
 		return
@@ -506,6 +517,7 @@ func set_behavior(b: String, permanent := true) -> void:
 	behavior = b
 	if permanent:
 		base_behavior = b
+		woken = false
 		home = pos
 	target = {}
 	wait = 0.5
@@ -717,7 +729,7 @@ func update_npc(dt: float) -> void:
 	if flee_t > 0.0:
 		flee_t -= dt
 		if flee_t <= 0.0:
-			set_behavior(base_behavior, false)
+			set_behavior(_settled(), false)
 	vel.x = 0
 	vel.z = 0
 	var look_at: Actor = null
@@ -793,7 +805,7 @@ func update_npc(dt: float) -> void:
 					next_line -= dt
 					if next_line <= 0:
 						next_line = 4.0 + App.sim_randf() * 3.0
-						say(line(), 1.8)
+						chat(line(), 1.8)
 		"flee":
 			var threat: Actor = studio.nearest_threat(self)
 			if threat:
@@ -855,20 +867,20 @@ func update_npc(dt: float) -> void:
 							turn_t = 2.6 + App.sim_randf() * 1.4
 							flip = not flip
 							var s := self if flip else p
-							s.say(s.line(), 2.4)
+							s.chat(s.line(), 2.4)
 			elif player and player != self and pd < 6:
 				face_to(player.pos.x, player.pos.z, dt)
 				look_at = player
 				next_line -= dt
 				if next_line <= 0:
 					next_line = 5.0 + App.sim_randf() * 4.0
-					say(line())
+					chat(line())
 	if chat_busy and not behavior in ["talk", "chase", "flee", "sleep"]:
 		# "Chat while doing a task": a line every few seconds, whatever they do.
 		next_line -= dt
 		if next_line <= 0:
 			next_line = 6.0 + App.sim_randf() * 4.0
-			say(line(), 2.4)
+			chat(line(), 2.4)
 	if look_at == null and notice and player and player != self and pd < 7 and not behavior in ["dance", "flee", "sleep", "cry"]:
 		look_at = player
 	move_body(dt)
@@ -1146,8 +1158,27 @@ func attack() -> void:
 			b.on_hit(self)
 
 
+## What a character goes back to after fleeing: its own behaviour, except
+## that someone woken from sleep stays up.
+func _settled() -> String:
+	return "idle" if woken and base_behavior == "sleep" else base_behavior
+
+
 func on_hit(from: Actor) -> void:
 	hurt_t = 0.35
+	if behavior == "sleep":
+		# A knock wakes a sleeper for good (this take).
+		woken = true
+		set_behavior("idle", false)
+		if studio.player != self:
+			var wl: String = ["Huh?! Who's there?", "I'm up, I'm up!", "Hey, I was sleeping!"][int(App.sim_randf() * 3.0) % 3]
+			if App.settings.get("hit_lines", true):
+				say(wl, 1.8)
+		var p0 := pos - from.pos
+		p0.y = 0
+		if p0.length() > 0.01:
+			yaw = atan2(-p0.x, -p0.z)
+		return
 	var push := pos - from.pos
 	push.y = 0
 	if push.length() > 0.01:
@@ -1156,7 +1187,9 @@ func on_hit(from: Actor) -> void:
 	knock_t = 0.25
 	if studio.player != self:
 		# The scene's random stream keeps fights the same on every take.
-		say(["Ow!", "Hey!", "Ouch!", "What was that for?!"][int(App.sim_randf() * 4.0) % 4], 1.6)
+		var hl: String = ["Ow!", "Hey!", "Ouch!", "What was that for?!"][int(App.sim_randf() * 4.0) % 4]
+		if App.settings.get("hit_lines", true):
+			say(hl, 1.6)
 		if base_behavior in ["idle", "wander", "talk", "sit", "dance", "wave", "gather"] and App.sim_randf() < 0.5:
 			set_behavior("flee", false)
 			flee_t = 4.0

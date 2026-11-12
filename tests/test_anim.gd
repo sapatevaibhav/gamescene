@@ -200,6 +200,8 @@ func _dances_and_chat(st: Studio) -> void:
 	ok(absf(arm.rotation.z) > 0.5, "a built-in character does jumping jacks (arm out %.2f)" % arm.rotation.z)
 	# Chat while doing a task: off by default, lines while dancing when on.
 	ok(not b.chat_busy, "chatting while busy is off by default")
+	# New scenes keep chatter off; this checks the per-character option.
+	App.settings["chatter"] = true
 	b.lines = ["La la la!"]
 	var said := func(on: bool) -> int:
 		b.chat_busy = on

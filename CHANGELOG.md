@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.19.0)
+## What's supported (as of 0.20.0)
 
 ### Platforms and engine
 
@@ -123,6 +123,48 @@ Opening files: drop a scene file (`.json`) on the window to open it; inside a sc
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-12
+
+Phone polish, from testing on an Adreno 610 phone (Android 16) and a 120 Hz OnePlus.
+
+### Added
+- **Settings on the home screen** (gear in the header): how new scenes start (sound, characters chatting on their own, speaking up when hit; all quiet by default except speaking up), the studio buttons (Full, or Compact: one Menu button that opens the row, with a narrow ‹ to fold it), quality, frame rate, interface size and other device options, and an ekaai.tech footer. On a desktop the page is a centred column, not stretched across the window.
+- **Twin-stick touch controls**: walk with the left thumb and look around with the right at the same time (a second finger used to cancel the walk and start a pinch). Two fingers away from the joystick still pinch to zoom.
+- **An attack button** (sword) beside Jump on touch screens, doing what a left click does. The touch buttons show only in a scene, hide while a panel is open, and Jump is left out in the 2D top view (nothing to jump onto).
+- **Frame rate**: a setting (30, 60 or Highest). Highest asks the phone for its top refresh rate (Android shows apps at 60 Hz unless asked; on a 120 Hz OnePlus the app now runs at 120 fps). Weak phone GPUs default to 60.
+- **Rename recordings and screenshots** from their ⋯ menu (on phones, the gallery copy keeps its name).
+- **Each scene can turn chatter and hit reactions off** (Settings → This scene). Scripted lines still show. Scenes saved before this keep chatting as before.
+- **Pixel 2D dances follow the chosen style** (they all looked the same): frame speed and order, hops, and spinning round differ per style, and Mix changes style every few seconds.
+- **The timeline scrolls smoothly by touch**, with the close button in its top-right corner: drag the names (or drag up and down over the lanes) to move through the characters; a thin bar shows where you are. Tapping a name still selects it.
+
+### Changed
+- **Phones: the home screen is upright and scenes are landscape** (either way round); tablets turn freely on the home screen. The home screen and the studio keep clear of the status bar, notch and gesture bar.
+- **Phone home screen:** a smaller title, two scenes to a row, and "Your work" set apart from the four styles. The "⋯" menu on a scene or recording opens a full-width sheet along the bottom with big rows (desktop keeps the small menu).
+- **Scrolling on touch screens starts anywhere**, also on cards and buttons (it used to work only on the gaps between them); a flick keeps it gliding, and the card under the finger doesn't open.
+- **Phone speed.** Weak phone GPUs (older and entry-level Adreno, Mali and PowerVR) start on Battery saver. On phones the 3D view renders at a lower resolution (Battery saver half size, Balanced two thirds), shadows use one cascade on Battery saver and are capped at 2048 with no MSAA, grass is thinner and stops sooner, and the ground and tree crowns use cheaper shading (no ground normal maps, fewer, bigger leaf cards). On an Adreno 610: blocky 20 → 27 fps, low-poly 21 → 28, anime 2 → 10. `-- --perf [styles]` prints frame times per style and setting (also on a phone, through `adb logcat`).
+- **Smaller app**: the ground textures are GPU-compressed with mipmaps (1024 px colour, 512 px normal maps) instead of uncompressed 2048 px, and phone builds leave out the Windows and iOS icons. The release APK went from 97.7 to 83.7 MB (installed: 102 → 86 MB), and the ground needs far less GPU memory and draws faster.
+- **Faster saving after a recording.** The soundtrack is mixed while the recording runs (a third of a second at a time) instead of all at the end, x264 uses the veryfast preset (CRF 18) so it keeps up with rendering instead of catching up after Stop, and on Android the copy into the gallery happens in the background.
+- **New scenes start quiet**: no music and no sound effects, with ambience on Auto; the countdown beeps are off by default too. Saved scenes keep their own sound settings.
+- **Subtitles only for nearby speakers**: lines are burned in when the main character or someone within 6 m (6 tiles) of them says them.
+- **Home screen style cards** are all the same shape (the description always takes two lines' room), with a ground shade under the character and a 3D / 2D tag.
+- Toggle switches are drawn at the interface scale, as tall as their text, and long toggle labels wrap instead of widening the panel.
+- The settings button closes settings when tapped again, like the dock's buttons.
+- The ⋯ action sheet centres every row, with room between each icon and its text.
+- The attack button has a proper sword icon (filled blade, guard and pommel).
+- The record button is smaller on touch screens; the selection bar has its own colour (blue with an amber edge); Show in folder only appears for a single selected file; the move icon is four separate arrows.
+- `--smoke` and `--perf` delete the scenes they make when they finish.
+
+### Fixed
+- **A sleeper woke for a moment when hit, then fell straight back asleep.** A hit now wakes them for the rest of the take (they turn to whoever hit them and say so); the scene's start or a later cue can put them back to sleep.
+- **In the 2D top view an attacker turned to face the camera**: attacks and flinches keep the character's real facing, and fighters face their opponent.
+- **Dragging over a volume slider while scrolling set it to 0** (or changed it): an up-and-down drag now scrolls and puts the slider back; only a clearly sideways drag moves the slider.
+- **Back closed the whole app on Android** (Godot quits on Back by default). Back now closes the open panel or settings, folds the compact dock, leaves a scene for the home screen, and on the home screen sends the app to the background.
+- **The touch Jump button did nothing while moving**: only the first finger works buttons in Godot, so with a thumb on the joystick the jump finger was ignored. The touch buttons now take any finger.
+- **High (and Cinematic) quality crashed an Adreno 610 phone's GPU driver**; phones now cap the shadow map size and turn off MSAA.
+- The subtitle preview in the Film panel showed one letter per line.
+- The timeline could overlap the dock on short phone screens.
+- An error ("Lambda capture was freed") when the home screen was rebuilt before a recording's thumbnail was ready.
+
 ## [0.19.0] - 2026-11-11
 
 ### Added
@@ -135,22 +177,10 @@ Opening files: drop a scene file (`.json`) on the window to open it; inside a sc
 
 ### Changed
 - On phones, **Share** replaces "Open folder" after a take, and "Export file" becomes **Share file** (the scene file goes to the share sheet). After a take on desktop, **Open folder** highlights the video.
-- **Phones: the home screen is upright and scenes are landscape** (either way round); tablets turn freely on the home screen. The home screen and the studio keep clear of the status bar, notch and gesture bar.
-- **Phone home screen:** a smaller title, two scenes to a row, and "Your work" set apart from the four styles. The "⋯" menu on a scene or recording opens a full-width sheet along the bottom with big rows (desktop keeps the small menu).
-- **Scrolling on touch screens starts anywhere**, also on cards and buttons (it used to work only on the gaps between them); a flick keeps it gliding, and the card under the finger doesn't open.
-- **Phone speed.** Weak phone GPUs (older and entry-level Adreno, Mali and PowerVR) start on Battery saver. On phones the 3D view renders at a lower resolution (Battery saver half size, Balanced two thirds), shadows use one cascade on Battery saver and are capped at 2048 with no MSAA, grass is thinner and stops sooner, and the ground and tree crowns use cheaper shading (no ground normal maps, fewer, bigger leaf cards). On an Adreno 610: blocky 20 → 27 fps, low-poly 21 → 28, anime 2 → 10. `-- --perf [styles]` prints frame times per style and setting (also on a phone, through `adb logcat`).
-- Toggle switches are drawn at the interface scale, as tall as their text, and long toggle labels wrap instead of widening the panel.
-- **Twin-stick touch controls**: walk with the left thumb and look around with the right at the same time (a second finger used to cancel the walk and start a pinch). Two fingers away from the joystick still pinch to zoom.
-- **An attack button** (sword) beside Jump on touch screens, doing what a left click does. The touch buttons show only in a scene, hide while a panel is open, and Jump is left out in the 2D top view (nothing to jump onto).
-- The settings button closes settings when tapped again, like the dock's buttons.
 - Narrow screens (phones held upright): the studio dock's buttons shrink to fit and the record button sits above the dock.
 - FSR upscaling is only used with the Forward+ renderer; phones upscale bilinearly.
-- `--smoke` and `--perf` delete the scenes they make when they finish.
 
 ### Fixed
-- **The touch Jump button did nothing while moving**: only the first finger works buttons in Godot, so with a thumb on the joystick the jump finger was ignored. The touch buttons now take any finger.
-- **High (and Cinematic) quality crashed an Adreno 610 phone's GPU driver**; phones now cap the shadow map size and turn off MSAA.
-- An error ("Lambda capture was freed") when the home screen was rebuilt before a recording's thumbnail was ready.
 - **The app crashed on Android a few seconds into a scene with music playing**: the engine reads a little past the end of a looping sound when it wraps, and on Android (whose memory allocator puts a guard page right after large buffers) that killed the audio thread. Looping sounds, built-in and imported WAVs, now keep a copy of their start after the loop end.
 
 ## [0.18.0] - 2026-11-11

@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (11 Nov 2026, v0.19.0)
+## Where it stands today (12 Nov 2026, v0.20.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -20,6 +20,7 @@
 - **Shot mode and export:** an off-screen fixed-timestep renderer at 720p to 4K, in 16:9, 9:16 or 1:1, at 24, 30 or 60 fps. Shot list with cuts, fades and title cards, burned-in subtitles, MP4 through ffmpeg and an AVI fallback.
 - **Projects:** versioned JSON with migration from web saves, undo/redo, autosave, import and export.
 - **Packaging (0.19):** export presets for every platform, an Android plugin (MP4 encoding, gallery, share sheet, opened files) tested on an Android 16 phone, and store material.
+- **Phone polish (0.20):** portrait home and landscape scenes, touch scrolling and twin-stick controls, faster phone rendering and a smaller app, global settings, a compact dock and high refresh rates (tested on an Adreno 610 phone and a 120 Hz OnePlus).
 - **Tests:** headless suites plus rendered visual checks (see README).
 
 ## Architecture (decided)
@@ -48,7 +49,8 @@
 | 0.17 | Export reliability (progress, pause, finish later, resume after a crash, cooling down), green/blue screen and transparent export, mood music, single-render recording | Done |
 | 0.18 | Spring bones (hair, skirts, coats), blinking and feelings on imported faces, and the animation library (Mixamo-style clips fitted to any humanoid) | Done |
 | 0.19 | Packaging for Android, iOS and desktop (Phase I): export presets, Android plugin (MP4 encoder, gallery, share sheet, opened files), store material | Done |
-| **0.20** | **Templates, onboarding, credits and licence (Phases J and K)** | **Next** |
+| 0.20 | Phone polish: portrait home and landscape scenes, touch scrolling, twin-stick controls, phone speed and app size, global settings, compact dock, frame rate | Done |
+| **0.21** | **Templates, onboarding, credits and licence (Phases J and K)** | **Next** |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)
@@ -129,6 +131,7 @@
 - [x] On desktop: native file dialogs, plus opening scene files by drag and drop or from the command line (0.19).
 - [ ] Store requirements: icons, an age rating and an offline-first privacy policy are done (0.19, `store/`); screenshots still need capturing, and the policy needs a contact address.
 - [ ] Build and test the iOS plugin on a Mac.
+- [ ] Before release: a slimmed engine build for Android (about 84 → 55 MB APK). Remove whole modules the app doesn't use (OpenXR, WebRTC, WebSocket, ENet, multiplayer, UPnP, Theora, CSG, GridMap, navigation, JSON-RPC, mobile VR), with `optimize=size` and `lto=full`. Keep the advanced text server (Hindi and emoji text) and glTF/FBX, noise, RegEx, SVG, WebP, Ogg and MP3. Don't use "Detect from Project" class stripping: everything is built in code, so it would strip classes the app needs. Needs SCons, NDK 29 and 1–2 hours of compiling.
 
 ## Phase J: Business, legal and trust (runs alongside the others)
 
@@ -155,11 +158,3 @@
 - Scene duplication and variations.
 - Long-press and double-tap gestures.
 - Local asset sharing, community templates and plugins (v2.0).
-
-## Release scope
-
-| Release | Includes |
-|---|---|
-| **v1.0** | Phases A–D, I, J and K, plus the core of E: VRM physics, blinking and the animation library |
-| **v1.x** | The rest of E, then F and G |
-| **v2.0** | H (desktop pro layout), local asset sharing, plugins and community templates |

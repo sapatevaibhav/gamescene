@@ -52,6 +52,47 @@ class GameSceneNative(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot
     fun sdk_int(): Int = Build.VERSION.SDK_INT
 
+    // ------------------------------------------------------------ back
+
+    /** Back on the home screen: hide the app like other apps do, without closing it. */
+    @UsedByGodot
+    fun go_background() {
+        val act = activity ?: return
+        act.runOnUiThread { act.moveTaskToBack(true) }
+    }
+
+    // ------------------------------------------------------------ refresh rate
+
+    /**
+     * Asks for the display's refresh rate closest to `hz` (0 = the highest it
+     * has). Android shows apps at 60 Hz unless they ask. Returns the rate
+     * chosen.
+     */
+    @UsedByGodot
+    fun set_refresh_rate(hz: Float): Float {
+        val act = activity ?: return 0f
+        val display = if (Build.VERSION.SDK_INT >= 30) act.display else @Suppress("DEPRECATION") act.windowManager.defaultDisplay
+        display ?: return 0f
+        val mode = display.mode
+        val rates = ArrayList<Float>()
+        rates.add(mode.refreshRate)
+        if (Build.VERSION.SDK_INT >= 31) rates.addAll(mode.alternativeRefreshRates.toList())
+        for (m in display.supportedModes) {
+            if (m.physicalWidth == mode.physicalWidth && m.physicalHeight == mode.physicalHeight) rates.add(m.refreshRate)
+        }
+        val best = if (hz <= 0f) rates.max() else rates.filter { it <= hz + 0.5f }.maxOrNull() ?: rates.min()
+        val modeId = display.supportedModes.firstOrNull {
+            it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight && kotlin.math.abs(it.refreshRate - best) < 0.5f
+        }?.modeId ?: 0
+        act.runOnUiThread {
+            val lp = act.window.attributes
+            lp.preferredRefreshRate = best
+            if (modeId != 0) lp.preferredDisplayModeId = modeId
+            act.window.attributes = lp
+        }
+        return best
+    }
+
     // ------------------------------------------------------------ share
 
     @UsedByGodot
@@ -86,9 +127,18 @@ class GameSceneNative(godot: Godot) : GodotPlugin(godot) {
 
     // ------------------------------------------------------------ gallery
 
-    /** Copies a video or picture into Movies/<album> or Pictures/<album>. Returns where it went, or "". */
+    /**
+     * Copies a video or picture into Movies/<album> or Pictures/<album>, in the
+     * background (a long video takes a moment). Returns "started", or "".
+     */
     @UsedByGodot
     fun save_to_gallery(path: String, album: String): String {
+        if (activity == null || !File(path).isFile) return ""
+        Thread { copyToGallery(path, album) }.start()
+        return "started"
+    }
+
+    private fun copyToGallery(path: String, album: String): String {
         val act = activity ?: return ""
         val f = File(path)
         if (!f.isFile) return ""

@@ -24,12 +24,16 @@ func _ready() -> void:
 	var studio := Studio.new()
 	add_child(studio)
 	await get_tree().process_frame
+	ok(App.SCENE_DEFAULTS["music"] == "" and not App.SCENE_DEFAULTS["sfx"] and App.SCENE_DEFAULTS["ambience"] == "auto",
+		"new scenes start quiet: no music or effects, ambience on auto")
 	for style in Styles.STYLE_ORDER:
 		await studio.new_scene(style)
 		studio.in_studio = true
+		_sound_on()
 		_steps(studio, style)
 	await studio.new_scene("anime")
 	studio.in_studio = true
+	_sound_on()
 	_loops(studio)
 	_clips(studio)
 	_record(studio)
@@ -227,9 +231,8 @@ func _loops(st: Studio) -> void:
 	_sim(st, 60)
 	ok(not st.sound._voices.has("amb"), "ambience can be turned off")
 	App.settings["ambience"] = "auto"
-	# New scenes follow the mood; a new mood crossfades to its tune.
-	App.reset_scene_defaults()
-	ok(App.settings["music"] == "mood", "new scenes play the mood's music")
+	# Music that follows the mood crossfades to the new mood's tune.
+	App.settings["music"] = "mood"
 	st.atmo.apply_mood("sunset")
 	_sim(st, 3)
 	ok(str(st.sound._voices.get("bg", {}).get("key", "")) == "tune:golden", "sunset plays Golden Hour")
@@ -342,5 +345,11 @@ func _save(st: Studio) -> void:
 	(old["settings"] as Dictionary).erase("music")
 	(old["settings"] as Dictionary).erase("sub_style")
 	st.load_data(old)
-	ok(st.audio.is_empty() and App.settings["music"] == "mood" and App.settings["sub_style"] == "box", "older scenes load with no clips and default sound settings (music follows the mood)")
+	ok(st.audio.is_empty() and App.settings["music"] == "" and App.settings["sub_style"] == "box", "older scenes load with no clips and default sound settings")
 	ok(Sounds.files_used({"settings": {"music": "file:a.ogg"}, "audio": [{"src": "file:b.mp3"}, {"src": "tune:x"}]}) == ["a.ogg", "b.mp3"], "imported sounds a scene uses are found for embedding")
+
+
+## Scenes start quiet; these checks need music and effects on.
+func _sound_on() -> void:
+	App.settings["music"] = "mood"
+	App.settings["sfx"] = true

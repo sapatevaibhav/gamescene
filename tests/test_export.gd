@@ -31,6 +31,9 @@ func _ready() -> void:
 	st.in_studio = true
 	st.project_id = "test-export"
 	App.settings["fps"] = FPS
+	# Scenes start quiet; the export checks need a soundtrack.
+	App.settings["music"] = "mood"
+	App.settings["sfx"] = true
 	var a: Actor = st.actors[1]
 	st.cues = [{"actor": a.name, "action": "say", "text": "Ready?", "start": 0.2, "dur": 1.0},
 		{"actor": a.name, "action": "walkto", "x": a.pos.x + 5.0, "z": a.pos.z, "start": 0.3, "dur": 1.5}]

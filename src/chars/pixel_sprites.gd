@@ -205,8 +205,9 @@ static func sheet_for(cfg: Dictionary, top := false) -> ImageTexture:
 
 # ---------------------------------------------------------------- animation
 
-## Actions shown facing the viewer in top view.
-const FACE_VIEWER := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point", "fight"]
+## Actions shown facing the viewer in top view. Fighting isn't one: a
+## fighter faces who they're fighting.
+const FACE_VIEWER := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point"]
 
 
 ## What the character is doing, as a frame name ("walk2", "dance0"...), plus
@@ -240,7 +241,9 @@ static func state_frame(a: Actor, sp: float) -> Array:
 	else:
 		match a.behavior:
 			"dance":
-				name = "dance%d" % (int(t * 4.0) % 4)
+				var dd := dance_frame(a.dance_style, t)
+				name = dd[0]
+				lift += float(dd[1])
 			"wave":
 				name = "wave0" if fmod(t, 0.5) < 0.25 else "wave1"
 			"sit":
@@ -263,6 +266,46 @@ static func state_frame(a: Actor, sp: float) -> Array:
 	return [name, lift]
 
 
+## A sprite dance for each style (sprites have four dance frames): frame
+## speed and order, hops, and turning round (see dance_flip). Mix changes
+## style every 4 s, like the 3D characters.
+static func dance_frame(style: String, t: float) -> Array:
+	if style == "mix" or not Actor.DANCES.any(func(d): return d[0] == style):
+		style = Actor.DANCES[1 + int(floor(t / 4.0)) % (Actor.DANCES.size() - 1)][0]
+	match style:
+		"hands_up":
+			return ["dance%d" % (int(t * 4.0) % 4), absf(sin(t * 8.0)) * 0.08]
+		"sway":
+			return ["dance%d" % [0, 1, 0, 3][int(t * 2.5) % 4], 0.0]
+		"spin":
+			return ["dance%d" % (int(t * 6.0) % 4), 0.0]
+		"robot":
+			return ["dance%d" % [0, 2][int(t * 2.0) % 2], 0.0]
+		"disco":
+			return ["dance%d" % [1, 3][int(t * 3.0) % 2], 0.0]
+		"jacks":
+			return ["dance%d" % [0, 2][int(t * 3.0) % 2], absf(sin(t * TAU * 1.5)) * 0.3]
+		"twist":
+			return ["dance%d" % (int(t * 5.0) % 4), 0.0]
+		"clap":
+			return ["cel%d" % (int(t * 4.0) % 2), absf(sin(t * TAU)) * 0.05]
+	return ["dance%d" % (int(t * 4.0) % 4), 0.0]
+
+
+## Spinning dances turn the sprite round: -1 = leave it, 0 / 1 = flipped.
+static func dance_flip(style: String, t: float) -> int:
+	if style == "mix" or not Actor.DANCES.any(func(d): return d[0] == style):
+		style = Actor.DANCES[1 + int(floor(t / 4.0)) % (Actor.DANCES.size() - 1)][0]
+	match style:
+		"spin":
+			return int(t * 4.0) % 2
+		"twist":
+			return int(t * 2.5) % 2
+		"disco":
+			return int(t * 0.75) % 2
+	return -1
+
+
 ## Which way the sprite faces: "side" (flipped when going left), "front"
 ## (towards the viewer, i.e. south) or "back". Side view is always "side".
 static func facing(a: Actor, sp: float) -> Array:
@@ -271,7 +314,7 @@ static func facing(a: Actor, sp: float) -> Array:
 	var d := Vector2(sin(a.yaw), cos(a.yaw))
 	if sp > 0.2:
 		d = Vector2(a.vel.x, a.vel.z).normalized()
-	elif a.behavior in FACE_VIEWER and a.speak_t <= 0.0:
+	elif a.behavior in FACE_VIEWER and a.speak_t <= 0.0 and a.attack_t <= 0.0 and a.hurt_t <= 0.0:
 		return ["front", false]
 	if absf(d.x) > absf(d.y) * 1.1:
 		return ["side", d.x < 0.0]
@@ -300,6 +343,10 @@ static func animate(a: Actor, _dt: float, sp: float) -> void:
 		mat.set_shader_parameter("flip", 1.0 if fc[1] != m.get("faces_left", false) else 0.0)
 	elif fc[0] != "side":
 		mat.set_shader_parameter("flip", 0.0)
+	if a.behavior == "dance" and (name.begins_with("dance") or name.begins_with("cel")):
+		var df := dance_flip(a.dance_style, a.t)
+		if df >= 0:
+			mat.set_shader_parameter("flip", float(df))
 	var w: Variant = a.studio.world
 	var tint := Color.WHITE
 	if w != null and w.get("tint") is Color:

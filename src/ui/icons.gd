@@ -25,7 +25,7 @@ const PATHS := {
 	"upload": '<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',
 	"rotate": '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
 	"size": '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
-	"move": '<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
+	"move": '<path d="M12 2.5v6M12 15.5v6M2.5 12h6M15.5 12h6M9.5 5L12 2.5 14.5 5M9.5 19L12 21.5 14.5 19M5 9.5L2.5 12 5 14.5M19 9.5L21.5 12 19 14.5"/><circle cx="12" cy="12" r="1.2" fill="CUR"/>',
 	"up": '<path d="M12 19V5M6 11l6-6 6 6"/>',
 	"down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
 	"smooth": '<path d="M3 15c3-4 6-4 9 0s6 4 9 0"/>',
@@ -62,7 +62,7 @@ const PATHS := {
 	"download": '<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>',
 	"duplicate": '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
 	"edit": '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
-	"attack": '<path d="M20 4L9.5 14.5M20 4v4.5M20 4h-4.5M6.5 12l5.5 5.5M8.5 15.5L4 20"/>',
+	"attack": '<path d="M8.6 13.4L18.35 3.95 21 3 20.05 5.65 10.6 15.4z" fill="CUR" stroke="none"/><path d="M6.4 12.4l5.2 5.2" stroke-width="2.6"/><path d="M8.6 15.4L6 18" stroke-width="2.2"/><circle cx="5.1" cy="18.9" r="1.8" fill="CUR" stroke="none"/>',
 	"paint": '<path d="M19 3l2 2-9 9-3 1 1-3z"/><path d="M7 15c-2 0-3 1.5-3 3s-1 2-2 2c2 1 6 1 7-2"/>',
 }
 
@@ -74,7 +74,8 @@ static func tex(name: String, px := 24, color := Color.WHITE) -> Texture2D:
 	var key := "%s|%d|%s" % [name, px, color.to_html()]
 	if _cache.has(key):
 		return _cache[key]
-	var body: String = PATHS.get(name, PATHS["plus"])
+	# "CUR" in a path is the icon colour (for filled shapes).
+	var body: String = str(PATHS.get(name, PATHS["plus"])).replace("CUR", "#" + color.to_html(false))
 	var svg := '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#%s" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">%s</svg>' % [color.to_html(false), body]
 	var img := Image.new()
 	img.load_svg_from_string(svg, px / 24.0)

@@ -69,6 +69,8 @@ var fake_frames := false
 var dry := false
 ## Seconds since recording started, on the simulation clock.
 var sound_t := 0.0
+## The soundtrack, mixed as the recording goes (AudioMixer.Live).
+var _live: AudioMixer.Live
 var sound_events: Array = []
 
 ## The segment being written: {stdio, pid, path} for ffmpeg, {native: id,
@@ -431,6 +433,7 @@ func start(size: Vector2i, rate: int, shots: Array = [], resume: Dictionary = {}
 	_show_preview(true)
 	sound_t = 0.0
 	sound_events = []
+	_live = AudioMixer.Live.new(_vols())
 	_pending = []
 	_rendered = 0
 	_render_ms = 0
@@ -701,7 +704,9 @@ func _open_segment() -> void:
 	if kind == "mov":
 		args += ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", path]
 	else:
-		args += ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", path]
+		# veryfast keeps up with rendering, so stopping doesn't wait for the
+		# encoder to catch up (medium fell behind); CRF 18 keeps the quality.
+		args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", path]
 	_ff = OS.execute_with_pipe(ff, args, true)
 	_seg_count = 0
 	if _ff.is_empty():
@@ -870,9 +875,14 @@ func end_sound(i: int, fo := 0.0) -> void:
 	e["fo"] = fo
 
 
+func _vols() -> Dictionary:
+	return {"music": float(App.settings.get("music_vol", 0.7)), "sfx": float(App.settings.get("sfx_vol", 0.8)), "amb": float(App.settings.get("amb_vol", 0.6))}
+
+
 func _mix(secs: float) -> PackedFloat32Array:
-	var vols := {"music": float(App.settings.get("music_vol", 0.7)), "sfx": float(App.settings.get("sfx_vol", 0.8)), "amb": float(App.settings.get("amb_vol", 0.6))}
-	return AudioMixer.render(sound_events, secs, vols)
+	if _live == null:
+		_live = AudioMixer.Live.new(_vols())
+	return _live.finish(sound_events, secs)
 
 
 # ---------------------------------------------------------------- per frame
@@ -882,6 +892,10 @@ func tick(dt: float) -> void:
 	if not active:
 		return
 	sound_t += dt
+	# Mix the soundtrack as we go (a third of a second at a time), so the
+	# end of a recording doesn't wait for the whole mix.
+	if _live and frames % 10 == 0:
+		_live.mix_to(sound_events, sound_t - 0.05)
 	sync_camera(studio.camera)
 	if _sub_t > 0:
 		_sub_t -= dt

@@ -272,10 +272,20 @@ func _notification(what: int) -> void:
 		if studio.in_studio and studio.dirty:
 			studio.save_now()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if hud.sheet.visible:
+		if not studio.in_studio and home._settings:
+			home._open_settings(false)
+		elif hud.sheet.visible:
 			hud.back_view()
+		elif studio.in_studio and hud.dock_open and App.device.get("dock", "full") == "compact":
+			hud.set_dock_open(false)
 		elif studio.in_studio:
 			_go_home()
+		elif home._selecting:
+			home._set_selecting(false)
+		else:
+			# The home screen: step out of the way like other apps (the app
+			# keeps running); Godot's own "quit on back" is off.
+			Native.go_background()
 
 
 # ---------------------------------------------------------------- input

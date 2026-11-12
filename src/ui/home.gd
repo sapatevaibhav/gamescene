@@ -42,7 +42,11 @@ func _ready() -> void:
 	_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	center.add_child(_col)
 	_bar = PanelContainer.new()
-	_bar.add_theme_stylebox_override("panel", UIK.box(Color(UIK.SURFACE, 0.97), 18, UIK.LINE))
+	# A colour of its own, so the selection actions stand out from the page.
+	var bsb := UIK.box(UIK.SECONDARY_700, 18, UIK.PRIMARY_500, 2)
+	bsb.shadow_color = Color(0, 0, 0, 0.45)
+	bsb.shadow_size = UIK.px(14)
+	_bar.add_theme_stylebox_override("panel", bsb)
 	_bar.visible = false
 	add_child(_bar)
 	get_viewport().size_changed.connect(func():
@@ -66,6 +70,8 @@ func _layout() -> void:
 	var ins := App.safe_insets()
 	m.add_theme_constant_override("margin_top", UIK.px(22) + int(ins.position.y))
 	m.add_theme_constant_override("margin_bottom", UIK.px(36) + int(ins.size.y))
+	if _settings and is_instance_valid(_page):
+		_page.custom_minimum_size.x = minf(inner, UIK.px(720))
 	if _cards == null or _recent == null:
 		return
 	_cards.columns = 4 if w >= UIK.px(900) else 2
@@ -90,8 +96,15 @@ func _tile_size() -> Vector2:
 var _was_narrow := false
 
 
+## The home screen's settings page instead of the scenes (gear in the header).
+var _settings := false
+
+
 func refresh() -> void:
 	_was_narrow = _narrow()
+	if _settings:
+		_build_settings()
+		return
 	UIK.clear(_col)
 	var top := UIK.hbox(10)
 	var mark := TextureRect.new()
@@ -105,7 +118,7 @@ func refresh() -> void:
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(sp)
-	top.add_child(UIK.label("· v " + str(ProjectSettings.get_setting("application/config/version")), 13, UIK.MUTED))
+	top.add_child(UIK.icon_btn("gear", func(): _open_settings(true), "Settings", 40, false))
 	_col.add_child(top)
 	_col.add_child(UIK.spacer(18))
 	# On a phone, no bigger than the "GameScene Studio" header above it.
@@ -211,11 +224,14 @@ func _update_bar(items: Array) -> void:
 	if _tab != "scenes":
 		var show: Button
 		if Media.can_reveal():
-			show = UIK.btn("Show in folder", func(): _reveal_selected(), false, "folder")
+			# One file at a time: several opened a file manager window each.
+			if _selected.size() <= 1:
+				show = UIK.btn("Show in folder", func(): _reveal_selected(), false, "folder")
 		else:
 			show = UIK.btn("Share", func(): Media.share(_selected.keys()), false, "upload")
-		show.disabled = _selected.is_empty()
-		h.add_child(show)
+		if show:
+			show.disabled = _selected.is_empty()
+			h.add_child(show)
 	var del := UIK.danger("Delete (%d)" % _selected.size(), func(): _delete_selected())
 	del.disabled = _selected.is_empty()
 	h.add_child(del)
@@ -300,7 +316,7 @@ func _media_tile(it: Dictionary) -> Control:
 	cap.add_child(cv)
 	v.add_child(cap)
 	b.add_child(v)
-	var more := _more(str(it["name"]), [["Open", "playtri"], ["Show in folder" if Media.can_reveal() else "Share", "folder" if Media.can_reveal() else "upload"],
+	var more := _more(str(it["name"]), [["Open", "playtri"], ["Rename", "edit"], ["Show in folder" if Media.can_reveal() else "Share", "folder" if Media.can_reveal() else "upload"],
 		["Delete", "trash", true]], _media_action.bind(it))
 	if _selecting:
 		more.visible = false
@@ -321,10 +337,10 @@ func _style_card(k: String) -> Control:
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.custom_minimum_size = Vector2(UIK.px(150), UIK.px(260))
+	b.custom_minimum_size = Vector2(UIK.px(150), UIK.px(232 if _narrow() else 260))
 	UIK._card_states(b, false, 20)
 	b.clip_contents = true
-	var v := UIK.vbox(2)
+	var v := UIK.vbox(0)
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ph := Panel.new()
@@ -341,6 +357,22 @@ func _style_card(k: String) -> Control:
 	gt.fill_to = Vector2(0.8, 1)
 	sb.texture = gt
 	ph.add_theme_stylebox_override("panel", sb)
+	# A soft shade towards the bottom, like ground under the character.
+	var shade := TextureRect.new()
+	var sg := GradientTexture2D.new()
+	var sgg := Gradient.new()
+	sgg.set_color(0, Color(0, 0, 0, 0))
+	sgg.set_color(1, Color(0, 0, 0, 0.3))
+	sgg.set_offset(0, 0.55)
+	sg.gradient = sgg
+	sg.fill_from = Vector2(0.5, 0)
+	sg.fill_to = Vector2(0.5, 1)
+	shade.texture = sg
+	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ph.add_child(shade)
 	var tr := TextureRect.new()
 	var cast: Array = Rigs.DEFAULT_CAST.get(k, [])
 	var preset: String = cast[0][0] if not cast.is_empty() else ""
@@ -353,6 +385,18 @@ func _style_card(k: String) -> Control:
 	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ph.add_child(tr)
+	# "3D" / "2D" tag.
+	var tag := PanelContainer.new()
+	var tsb := UIK.box(Color(UIK.GRAY_950, 0.55), 8)
+	tsb.content_margin_left = UIK.px(8)
+	tsb.content_margin_right = UIK.px(8)
+	tsb.content_margin_top = UIK.px(2)
+	tsb.content_margin_bottom = UIK.px(2)
+	tag.add_theme_stylebox_override("panel", tsb)
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_child(UIK.label("2D" if sty["world"] in ["pixel", "pixeltop"] else "3D", 11, Color.WHITE, true))
+	tag.position = Vector2(UIK.px(10), UIK.px(10))
+	ph.add_child(tag)
 	v.add_child(ph)
 	var cap := MarginContainer.new()
 	cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -360,12 +404,21 @@ func _style_card(k: String) -> Control:
 		cap.add_theme_constant_override("margin_" + side, UIK.px(12))
 	var cv := UIK.vbox(2)
 	cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var n := UIK.label(sty["name"], 17, UIK.INK, true)
+	var n := UIK.label(sty["name"], 16, UIK.INK, true)
 	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	n.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	n.clip_text = true
+	n.custom_minimum_size.x = 1
 	cv.add_child(n)
-	var bl := UIK.label(sty["blurb"], 13, UIK.MUTED)
+	var bl := UIK.label(sty["blurb"], 12, UIK.MUTED)
 	bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Always two lines tall, so every card is the same shape whether its
+	# description takes one line or two.
+	bl.max_lines_visible = 2
+	bl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	bl.custom_minimum_size = Vector2(1, UIK.px(32))
+	bl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	cv.add_child(bl)
 	cap.add_child(cv)
 	v.add_child(cap)
@@ -479,11 +532,18 @@ func _media_action(item: int, it: Dictionary) -> void:
 		0:
 			OS.shell_open(str(it["path"]))
 		1:
+			var hud: Hud = get_parent().get_node("Hud")
+			hud.prompt("Rename", str(it["name"]), "Name", "Save", func(n: String):
+				var err := Media.rename(it, n)
+				if err != "":
+					App.toast(err)
+				_refresh_keep_scroll())
+		2:
 			if Media.can_reveal():
 				Media.reveal([str(it["path"])])
 			else:
 				Media.share([str(it["path"])])
-		2:
+		3:
 			var hud: Hud = get_parent().get_node("Hud")
 			hud.ask("Delete “%s”? This can’t be undone." % it["name"], "Delete", func():
 				Media.remove(it)
@@ -622,3 +682,182 @@ func _open_file() -> void:
 			return
 		refresh()
 		open_project.emit(id), "Open a scene")
+
+
+# ---------------------------------------------------------------- settings
+
+func _open_settings(on: bool) -> void:
+	_settings = on
+	_selecting = false
+	_selected.clear()
+	refresh()
+	_scroll.scroll_vertical = 0
+
+
+## The settings page's column (inside _col).
+var _page: VBoxContainer
+
+
+func _heading(text: String) -> void:
+	_page.add_child(UIK.spacer(10))
+	_page.add_child(UIK.label(text, 13, UIK.MUTED, true))
+
+
+## Global settings: how new scenes start, the phone dock, this device, and
+## the footer.
+func _build_settings() -> void:
+	UIK.clear(_col)
+	_update_bar([])
+	# A readable column: full width on a phone, centred and at most about
+	# 720 px wide on a desktop.
+	var w := get_viewport_rect().size.x
+	var inner := w - float(UIK.px(40 if w >= UIK.px(900) else 16)) * 2.0
+	_page = UIK.vbox(12)
+	_page.custom_minimum_size.x = minf(inner, UIK.px(720))
+	_page.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_col.add_child(_page)
+	# Title on the left, a round close button on the right (as the studio's
+	# panels have).
+	var top := UIK.hbox(10)
+	var title := UIK.label("Settings", 22, UIK.INK, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	top.add_child(UIK.icon_btn("close", func(): _open_settings(false), "Close settings", 40))
+	_page.add_child(top)
+
+	_heading("New scenes")
+	_page.add_child(UIK.toggle("Sound on (music and sound effects)", App.device.get("new_sound", false), func(on: bool): App.set_device("new_sound", on)))
+	_page.add_child(UIK.toggle("Characters chat on their own (speech bubbles)", App.device.get("new_chatter", false), func(on: bool): App.set_device("new_chatter", on)))
+	_page.add_child(UIK.toggle("Characters speak up when hit", App.device.get("new_hit_lines", true), func(on: bool): App.set_device("new_hit_lines", on)))
+	_page.add_child(UIK.para("For scenes you make from now on. Each scene can still change these in its own settings; ambience always starts on Auto.", 12))
+
+	_heading("Studio buttons")
+	var g := UIK.grid(2, 12)
+	for opt in [["full", "Full", "Every button along the bottom."], ["compact", "Compact", "A Menu button that opens the row; ‹ folds it."]]:
+		g.add_child(_dock_option(opt[0], opt[1], opt[2]))
+	_page.add_child(g)
+
+	_heading("This device")
+	var q := UIK.flow()
+	for k in App.QUALITY:
+		q.add_child(UIK.chip(App.QUALITY[k]["label"], App.device["quality"] == k, func():
+			App.set_device("quality", k)
+			refresh()))
+	_page.add_child(q)
+	var fr := UIK.flow()
+	for c in [[30, "30 fps"], [60, "60 fps"], [0, "Highest frame rate"]]:
+		fr.add_child(UIK.chip(c[1], int(App.device.get("fps_cap", 0)) == c[0], func():
+			App.set_device("fps_cap", c[0])
+			App.apply_fps()
+			refresh()))
+	_page.add_child(fr)
+	_page.add_child(UIK.slider("Interface size", App.device["ui_scale"], 0.8, 1.6, 0.05, func(x): App.set_device("ui_scale", x), func(x): return "%d%%" % int(x * 100)))
+	_page.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
+	_page.add_child(UIK.toggle("Show name tags", App.device["names"], func(on): App.set_device("names", on)))
+	_page.add_child(UIK.toggle("Show frame rate", App.device["show_fps"], func(on): App.set_device("show_fps", on)))
+	_page.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", false), func(on): App.set_device("ui_sounds", on)))
+	_page.add_child(UIK.toggle("Pause exports to cool down when the device slows", App.device.get("cool_down", false), func(on): App.set_device("cool_down", on)))
+
+	# Footer.
+	_page.add_child(UIK.spacer(28))
+	var rule := ColorRect.new()
+	rule.color = UIK.LINE
+	rule.custom_minimum_size.y = maxf(1.0, UIK.px(1))
+	_page.add_child(rule)
+	var foot := UIK.vbox(4)
+	foot.alignment = BoxContainer.ALIGNMENT_CENTER
+	var ver := UIK.label("GameScene Studio · v " + str(ProjectSettings.get_setting("application/config/version")), 12, UIK.MUTED)
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	foot.add_child(ver)
+	var link := LinkButton.new()
+	link.text = "ekaai.tech"
+	link.uri = "https://ekaai.tech"
+	link.focus_mode = Control.FOCUS_NONE
+	link.add_theme_font_override("font", UIK.font_bold)
+	link.add_theme_font_size_override("font_size", UIK.px(14))
+	link.add_theme_color_override("font_color", UIK.PRIMARY_500)
+	link.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	foot.add_child(link)
+	_page.add_child(UIK.spacer(8))
+	_page.add_child(foot)
+	# Desktop: the same page, in bigger type.
+	if not _narrow():
+		for n in _page.find_children("*", "", true, false):
+			if n is Label or n is Button:
+				var c := n as Control
+				c.add_theme_font_size_override("font_size", int(round(c.get_theme_font_size("font_size") * 1.2)))
+	_layout()
+
+
+## One dock choice: a picture of it (built from the real icons) and a line
+## on how it works.
+func _dock_option(key: String, title: String, desc: String) -> Control:
+	var on: bool = App.device.get("dock", "full") == key
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(UIK.px(140), UIK.px(172 if _narrow() else 236))
+	UIK._card_states(b, on, 16)
+	b.pressed.connect(func():
+		App.set_device("dock", key)
+		refresh())
+	var v := UIK.vbox(8)
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = UIK.px(14)
+	v.offset_right = -UIK.px(14)
+	v.offset_top = UIK.px(14)
+	v.offset_bottom = -UIK.px(16)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Text on top, the picture of the dock below it (at the card's foot, so
+	# both cards' pictures line up).
+	var t := UIK.label(title + ("  ✓" if on else ""), 15, UIK.INK, true)
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(t)
+	var d := UIK.label(desc, 12, UIK.MUTED)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size.x = 1
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(d)
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(gap)
+	if key == "full":
+		v.add_child(_dock_picture(["plus", "cast", "script", "camera", "sun", "speaker", "film"], false))
+	else:
+		v.add_child(_dock_picture(["lines"], false))
+		v.add_child(_dock_picture(["plus", "cast", "script", "camera", "sun", "speaker", "film"], true))
+	b.add_child(v)
+	return b
+
+
+## A small dock: dark glass with the icons, plus the narrow fold tab.
+func _dock_picture(icons: Array, fold: bool) -> Control:
+	var p := PanelContainer.new()
+	var sb := UIK.glass(10)
+	for side in [SIDE_LEFT, SIDE_RIGHT, SIDE_TOP, SIDE_BOTTOM]:
+		sb.set_content_margin(side, UIK.px(4))
+	p.add_theme_stylebox_override("panel", sb)
+	p.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var h := UIK.hbox(2)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Bigger on a desktop, where the cards are wide.
+	var k := 1.0 if _narrow() else 2.5
+	var size := UIK.px((12 if icons.size() > 1 else 16) * k)
+	for ic in icons:
+		var tr := TextureRect.new()
+		tr.texture = Icons.tex(str(ic), size, Color.WHITE)
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		tr.custom_minimum_size = Vector2(size + UIK.px(4), size + UIK.px(8))
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(tr)
+	if fold:
+		var f := TextureRect.new()
+		f.texture = Icons.tex("back", UIK.px(10 * k), UIK.GRAY_300)
+		f.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		f.custom_minimum_size = Vector2(UIK.px(8 * k), size + UIK.px(8))
+		f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(f)
+	p.add_child(h)
+	return p

@@ -184,6 +184,32 @@ static func share(paths: Array) -> void:
 	OS.shell_open(str(files[0]))
 
 
+## Renames a recording or screenshot (a PNG sequence renames its folder).
+## Keeps the file type; characters that file systems reject are dropped.
+## Returns "" or what went wrong. (On phones the gallery copy keeps its name.)
+static func rename(item: Dictionary, new_name: String) -> String:
+	var p := str(item["path"])
+	var clean := ""
+	for ch in new_name.strip_edges():
+		if not ch in "/\\:*?\"<>|" and ch.unicode_at(0) >= 32:
+			clean += ch
+	clean = clean.strip_edges().trim_prefix(".").left(80)
+	if clean == "":
+		return "Give it a name."
+	var ext := "" if item["kind"] == "frames" else "." + p.get_extension()
+	var dir := p.get_base_dir()
+	var to := dir.path_join(clean + ext)
+	if to == p:
+		return ""
+	var n := 2
+	while FileAccess.file_exists(to) or DirAccess.dir_exists_absolute(to):
+		to = dir.path_join("%s (%d)%s" % [clean, n, ext])
+		n += 1
+	if DirAccess.rename_absolute(p, to) != OK:
+		return "Couldn’t rename that file."
+	return ""
+
+
 static func remove(item: Dictionary) -> void:
 	var p := str(item["path"])
 	if item["kind"] == "frames":

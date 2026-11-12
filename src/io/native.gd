@@ -53,8 +53,8 @@ static func share(paths: Array, title := "GameScene Studio") -> bool:
 	return bool(p.call("share", PackedStringArray(paths.map(func(x): return str(x))), title))
 
 
-## Copies a finished video or picture into the gallery. Returns where it went
-## ("" if it couldn't).
+## Copies a finished video or picture into the gallery, in the background.
+## Returns "" if it couldn't start.
 static func save_to_gallery(path: String) -> String:
 	var p := plugin()
 	if p == null:
@@ -117,3 +117,20 @@ static func video_thumbnail(path: String, out: String, width := 480) -> bool:
 	if p == null:
 		return false
 	return bool(p.call("video_thumbnail", path, out, width))
+
+
+## Phones: asks the display for `hz` (0 = its highest refresh rate); without
+## asking, Android shows apps at 60 Hz. Returns the rate it picked (0 = no
+## plugin).
+static func set_refresh_rate(hz: float) -> float:
+	var p := plugin()
+	if p == null or fake != null:
+		return 0.0
+	return float(p.call("set_refresh_rate", hz))
+
+
+## Phones: sends the app to the background (Back on the home screen).
+static func go_background() -> void:
+	var p := plugin()
+	if p != null and fake == null:
+		p.call("go_background")

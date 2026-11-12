@@ -198,6 +198,10 @@ func load_data(d: Dictionary) -> String:
 		_shift_legacy(d, off)
 	var st: Dictionary = d.get("settings", {})
 	App.reset_scene_defaults()
+	# Scenes saved before these settings existed keep their characters
+	# chatting and reacting as they used to.
+	App.settings["chatter"] = true
+	App.settings["hit_lines"] = true
 	for k in st:
 		if App.SCENE_KEYS.has(k):
 			App.settings[k] = st[k]
@@ -516,8 +520,15 @@ func nearest_threat(a: Actor) -> Actor:
 	return best
 
 
+## Lines are burned in as subtitles only when said by the main character or
+## someone within this distance of them (metres, = tiles in Pixel 2D);
+## chatter further off stays in its bubble.
+const SUBTITLE_RANGE := 6.0
+
+
 func on_line_spoken(a: Actor, text: String, dur: float) -> void:
-	recorder.show_subtitle(a.name, text, dur)
+	if player == null or a == player or Vector2(a.pos.x - player.pos.x, a.pos.z - player.pos.z).length() <= SUBTITLE_RANGE:
+		recorder.show_subtitle(a.name, text, dur)
 	sound.speech(a)
 
 

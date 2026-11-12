@@ -665,7 +665,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 				studio.mark_dirty()
 				_rerender()))
 		b.add_child(dg)
-		b.add_child(UIK.para("Mix changes style every few seconds; any other style loops." if a.rig.get("kind", "") != "sprite" else "Pixel 2D characters have one dance; the style is used by other characters.", 12))
+		b.add_child(UIK.para("Mix changes style every few seconds; any other style loops.", 12))
 	if a != studio.player:
 		b.add_child(UIK.toggle("Notice the player (turn to look)", a.notice, func(on: bool): a.notice = on; studio.mark_dirty()))
 		b.add_child(UIK.toggle("Chat while doing a task", a.chat_busy, func(on: bool): a.chat_busy = on; studio.mark_dirty()))
@@ -1139,10 +1139,25 @@ func v_settings(_a, b: VBoxContainer) -> String:
 	b.add_child(UIK.toggle("Lock the mouse to look around", App.device["mouse_look"] == "capture", func(on): App.set_device("mouse_look", "capture" if on else "drag")))
 	b.add_child(UIK.toggle("Show frame rate", App.device["show_fps"], func(on): App.set_device("show_fps", on)))
 	b.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", true), func(on): App.set_device("ui_sounds", on)))
+	var fr := UIK.flow()
+	for c in [[30, "30 fps"], [60, "60 fps"], [0, "Highest"]]:
+		fr.add_child(UIK.chip(c[1], int(App.device.get("fps_cap", 0)) == c[0], func():
+			App.set_device("fps_cap", c[0])
+			App.apply_fps()
+			_rerender()))
+	b.add_child(UIK.label("Frame rate", 13, UIK.MUTED, true))
+	b.add_child(fr)
+	b.add_child(UIK.para("Highest uses your screen's full refresh rate (up to 120 or 165 Hz on fast phones). Lower saves battery and heat.", 12))
 	b.add_child(UIK.toggle("Pause exports to cool down when the device slows", App.device.get("cool_down", false), func(on): App.set_device("cool_down", on)))
 	b.add_child(UIK.slider("Interface size", App.device["ui_scale"], 0.8, 1.6, 0.05, func(x): App.set_device("ui_scale", x), func(x): return "%d%%" % int(x * 100)))
 	b.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
 	_section(b, "This scene")
+	b.add_child(UIK.toggle("Characters chat on their own (speech bubbles)", App.settings.get("chatter", true), func(on: bool):
+		App.settings["chatter"] = on
+		studio.mark_dirty()))
+	b.add_child(UIK.toggle("Characters speak up when hit", App.settings.get("hit_lines", true), func(on: bool):
+		App.settings["hit_lines"] = on
+		studio.mark_dirty()))
 	var r := UIK.flow()
 	r.add_child(UIK.btn("Share scene file" if App.is_mobile and Native.available() else "Export scene file", func():
 		await studio.save_now()
@@ -1366,6 +1381,9 @@ func _subtitle_options(b: VBoxContainer) -> void:
 	var center := CenterContainer.new()
 	var sl := Label.new()
 	Recorder.style_subtitle(sl, UIK.px(300))
+	# A centring box gives a wrapping label no width (one letter per line):
+	# the short preview line doesn't need to wrap.
+	sl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sl.text = Recorder.subtitle_text("Vaibh", "Shall we go see the lake?")
 	center.add_child(sl)
 	box.add_child(center)
