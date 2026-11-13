@@ -14,7 +14,7 @@ const CLIP_PATTERNS := {
 	"attack": ["attack", "punch", "slash", "swing", "hit"], "fight": ["fight", "combat", "boxing", "guard"], "swim": ["swim", "paddle"],
 }
 ## Behaviours that play their own clip (or a built-in pose) while standing.
-const POSE_STATES := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point", "fight"]
+const POSE_STATES := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point", "fight", "pose"]
 ## Body-part bone names by rig convention, after normalisation (lower case,
 ## spaces removed, "." -> "_", numeric suffixes like "_059" dropped,
 ## "mixamorig:" stripped). Most specific names first: matching tries exact
@@ -540,10 +540,11 @@ static func _state(a: Actor, sp: float) -> String:
 		return "run"
 	if sp > 0.2:
 		return "walk"
-	if a.speak_t > 0 and a.behavior != "sleep":
+	var b := a.shown()
+	if a.speak_t > 0 and b != "sleep" and b != "pose":
 		return "talk"
-	if a.behavior in POSE_STATES:
-		return a.behavior
+	if b in POSE_STATES:
+		return b
 	return "idle"
 
 
@@ -720,6 +721,15 @@ static func _pose_angles(a: Actor, state: String, sp: float) -> Dictionary:
 			p["upperLegR"] = Vector2(-sin(st * 1.6) * 0.45, 0)
 			p["spine"] = Vector2(a._swim_lean, 0)
 			p["headPitch"] = -0.25 - a._swim_lean * 0.5
+		"pose":
+			var ps := a.shown_pose()
+			for slot in Poses.JOINTS:
+				if slot != "head" and ps.has(slot):
+					p[slot] = Poses.joint(ps, slot)
+			p["lift"] = float(ps.get("lift", 0.0))
+			var hd := Poses.joint(ps, "head")
+			p["headPitch"] = hd.y
+			p["headYaw"] = hd.x
 		"attack":
 			var k := 1.0 - a.attack_t / Actor.ATTACK_TIME
 			p["upperArmR"] = Vector2(-2.6 + smoothstep(0.15, 0.6, k) * 3.0, 0.2)
@@ -768,7 +778,7 @@ static func _pose(a: Actor, state: String, sp: float) -> void:
 	if bones.has("head"):
 		var hb: int = bones["head"]
 		var hr := sk.get_bone_rest(hb).basis.get_rotation_quaternion()
-		a.head_yaw = lerpf(a.head_yaw, a.hy, 0.15)
+		a.head_yaw = lerpf(a.head_yaw, float(p["headYaw"]) / 0.7 if p.has("headYaw") else a.hy, 0.15)
 		var haxis: Vector3 = (m.get("axes", {}) as Dictionary).get("head", Vector3.UP)
 		var pitch := float(p["headPitch"]) + a.hp * 0.5
 		var hq := Quaternion(haxis, a.head_yaw * 0.7)
@@ -776,3 +786,23 @@ static func _pose(a: Actor, state: String, sp: float) -> void:
 			var hg: Quaternion = m["grest"]["head"]
 			hq = hq * (hg.inverse() * Quaternion(side, pitch) * hg)
 		sk.set_bone_pose_rotation(hb, hr * hq)
+	if state == "sit" or state == "sleep":
+		_rest_on_ground(a, state, sk, bones)
+
+
+## Sitting and lying: puts the body itself on the ground. Rigs differ in leg
+## length, hip height and how deep the body is, so a fixed drop left long-
+## legged models sitting in mid-air and sleepers floating on their backs.
+## Measured from the trunk bones only (hair, skirts and tails hang lower and
+## would lift the body off the ground).
+static func _rest_on_ground(a: Actor, state: String, sk: Skeleton3D, bones: Dictionary) -> void:
+	var low := INF
+	for slot in (["hips"] if state == "sit" else ["hips", "spine", "head"]):
+		if bones.has(slot):
+			low = minf(low, (sk.global_transform * sk.get_bone_global_pose(int(bones[slot]))).origin.y)
+	if low == INF:
+		return
+	# The bones run through the middle of the body: rest it on its seat or
+	# back, about this far below them.
+	var r := a.root()
+	r.position.y += a.pos.y + a.height() * (0.065 if state == "sit" else 0.07) - low

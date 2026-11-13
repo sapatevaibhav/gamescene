@@ -10,7 +10,7 @@
 - **Environment import:** `.glb`, `.gltf` and `.fbx` objects with cel shading, leaf cut-outs, wind and inferred collision.
 - **Distinct styles:** each style keeps its own import library. Blocky takes skins only, VRM is anime-only, and low-poly caps imports at 15k triangles for characters and 20k for objects.
 - **Pixel 2D (replaces Tactical), in two views:** a side view (tile world, ladders, parallax backdrops) and a top view (a top-down village with objects that block walking). Both have sprite characters for every action, painting and building tools, and imports of `.png` sheets and Aseprite files.
-- **Behaviours:** idle, wander, chat, dance, wave, sit, follow, chase, flee, gather, patrol, sleep, celebrate, laugh, cry, point and fight, with chat bubbles.
+- **Behaviours:** idle, wander, chat, hang out in small circles, dance, wave, sit, follow, chase, flee, gather (round a campfire if there is one), patrol, sleep, celebrate, laugh, cry, point, fight and hold a pose, with chat bubbles. Characters react to what happens nearby, run from monsters, and have feelings about each other (friend, rival, scared).
 - **Controls:** sprint, crouch, jump and climb, attack with knockback, and a per-character menu.
 - **Cameras:** follow, first person, free, cinematic orbit, dolly, crane and push-in, user camera paths, and camera shake.
 - **Rendering:** real shadows, ambient occlusion, bloom, volumetric fog, a procedural sky, water and wind shaders, rain and snow with lightning, a day/night cycle with lamps, depth of field, cel shading and four quality tiers.
@@ -50,7 +50,8 @@
 | 0.18 | Spring bones (hair, skirts, coats), blinking and feelings on imported faces, and the animation library (Mixamo-style clips fitted to any humanoid) | Done |
 | 0.19 | Packaging for Android, iOS and desktop (Phase I): export presets, Android plugin (MP4 encoder, gallery, share sheet, opened files), store material | Done |
 | 0.20 | Phone polish: portrait home and landscape scenes, touch scrolling, twin-stick controls, phone speed and app size, global settings, compact dock, frame rate | Done |
-| **0.21** | **Templates, onboarding, credits and licence (Phases J and K)** | **Next** |
+| **0.21** | **Living scenes: hang-out circles, reactions, feelings, running from monsters, pose library, campfires and other effects (Phases E, F and G)** | **In progress** |
+| 0.22 | Templates, onboarding, credits and licence (Phases J and K) | Next |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)
@@ -97,25 +98,26 @@
 - [ ] MToon shading for VRM (the anime style's cel shading is used instead).
 - [x] Add sleep, fight, point, laugh, cry and celebrate (0.11).
 - [x] Animation library: retarget Mixamo-style clips onto any humanoid (0.18).
-- [ ] A pose library to save and reuse poses.
+- [x] A pose library to save and reuse poses (0.21: built-in poses, a pose editor, and saved poses for any character).
 - [ ] Attachment points for held weapons and props.
 - [ ] Characters saved as reusable presets, with a size setting per character.
 
 ## Phase F: Behaviour system
 
 - [x] Wander, chat, follow, chase, flee, gather and patrol.
-- [ ] Socialising in small groups, reacting to nearby events, and fleeing from monsters as well as the player.
+- [x] Socialising in small groups, reacting to nearby events, and fleeing from monsters as well as the player (0.21: Hang out circles, reactions to hits, panics and celebrations).
 - [ ] Triggers such as "when someone enters this area" or "when an object is touched".
-- [ ] Relationship settings (friendly, rival, scared) that change how characters react to each other.
+- [x] Relationship settings (friendly, rival, scared) that change how characters react to each other (0.21).
 
 ## Phase G: Environment and visual polish
 
 - [x] Bloom, depth of field, light shafts, rain, snow, falling leaves and wind, each tied to quality tiers.
 - [x] Camera collision for the cinematic camera.
-- [ ] Motion blur, fire, magic sparkles and dust.
+- [ ] Motion blur, fire, magic sparkles and dust. Fire, sparkles, smoke and dust are done (0.21, Add → Effects); motion blur isn't.
 - [ ] More starter templates: indoor rooms, forest, mountain pass and night city.
 - [ ] Terrain paint brushes, a water tool and a tree-scatter brush.
 - [ ] Chunked voxel worlds with level of detail.
+- [ ] More bigger world keeping performance same by unloading the world which is not in camera view or close to player similar to chunk loading in Minecraft.
 
 ## Phase H: Desktop pro layout
 

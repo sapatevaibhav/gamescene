@@ -90,7 +90,52 @@ var attack_t := 0.0
 var hurt_t := 0.0
 const ATTACK_TIME := 0.42
 var knock_t := 0.0
-var flee_t := 0.0
+## Seconds left of a reaction that changed what they do (running away,
+## standing up for a friend); then they go back to `resume`.
+var temp_t := 0.0
+var resume := ""
+## Feelings about others, by name: "friend", "rival" or "scared" (see
+## FEELINGS). Friends greet each other, stand together and stand up for each
+## other; rivals glare, won't hang out together and pick fights; the scared
+## one runs away when the other comes close.
+var rel := {}
+## Held pose for the "pose" behaviour (see Poses); base_pose is the one from
+## the scene setup (a timeline cue can show another for a while).
+var pose := {}
+var base_pose := {}
+## A short reaction shown over what they're doing: an action ("laugh",
+## "wave", "celebrate", "point") or "pose:<built-in key>", for react_t s.
+var react_act := ""
+var react_t := 0.0
+## Can't react to another event until this runs out.
+var react_cd := 0.0
+## Looking at someone for a moment.
+var look_who: Actor = null
+var look_t := 0.0
+## Who they fight or run from because of a reaction or a feeling.
+var foe: Actor = null
+var threat: Actor = null
+## The group they're hanging out with (shared with its members; see
+## Studio._update_groups), or {}.
+var circle := {}
+## When (actor clock) they last greeted or muttered at someone, by name.
+var _met := {}
+var _hot_t := 0.0
+var _stuck_t := 0.0
+## "people", "mobs" or "animals" (from the look's preset).
+var kind_group := "people"
+
+const FEELINGS := [["", "No feeling"], ["friend", "Friend"], ["rival", "Rival"], ["scared", "Scared of"]]
+## Behaviours calm enough to stop and react to what happens nearby.
+const CALM := ["idle", "wander", "talk", "group", "gather", "sit", "dance", "patrol", "wave", "celebrate", "laugh", "point", "cry", "follow"]
+const REACT_RANGE := 8.0
+const GREET := ["Hey, %s!", "Hi, %s!", "Good to see you, %s!", "%s! Over here!"]
+const RIVAL := ["Hmph.", "Not you again.", "What are you looking at?", "Keep walking."]
+const DEFEND := ["Leave %s alone!", "Hey! Back off!", "I've got you, %s!"]
+const GASP := ["Whoa!", "Hey, stop that!", "Did you see that?!", "Oh no!"]
+const GLOAT := ["Ha! Serves you right.", "Hah!", "Ha ha!"]
+const PANIC := ["Help!", "Run!", "Aaah!", "Monster!"]
+const HOT := ["Ouch, hot!", "Too hot!", "Whoa, careful!"]
 
 
 func _init(s: Node, o: Dictionary) -> void:
@@ -105,12 +150,38 @@ func _init(s: Node, o: Dictionary) -> void:
 	lines = (o.get("lines", []) as Array).duplicate()
 	dance_style = str(o.get("dance", "mix"))
 	chat_busy = o.get("chat", false) == true
+	rel = (o.get("rel", {}) as Dictionary).duplicate() if o.get("rel") is Dictionary else {}
+	pose = (o.get("pose", {}) as Dictionary).duplicate(true) if o.get("pose") is Dictionary else {}
+	base_pose = pose
 	pos = Vector3(float(o.get("x", 40)), float(o.get("y", 0)), float(o.get("z", 40)))
 	home = pos
 	yaw = float(o.get("yaw", 0))
 	t = App.sim_randf() * 100.0
 	wait = App.sim_randf() * 2.0
 	next_line = 3.0 + App.sim_randf() * 4.0
+
+
+## What the character shows: a reaction for a moment, else their behaviour.
+func shown() -> String:
+	if react_t > 0.0 and react_act != "":
+		return "pose" if react_act.begins_with("pose:") else react_act
+	return behavior
+
+
+## The pose shown for "pose" (a reaction's, else their own).
+func shown_pose() -> Dictionary:
+	if react_t > 0.0 and react_act.begins_with("pose:"):
+		return Poses.builtin(react_act.substr(5))
+	return pose
+
+
+## Their feeling about `b` ("" when none).
+func feeling(b: Actor) -> String:
+	return str(rel.get(b.name, "")) if b else ""
+
+
+func is_monster() -> bool:
+	return kind_group == "mobs"
 
 
 func k() -> float:
@@ -139,6 +210,9 @@ func set_look(new_look: Dictionary) -> void:
 	if not rig.is_empty():
 		_free_rig()
 	rig = r
+	kind_group = "people"
+	if look.has("preset"):
+		kind_group = str(Rigs.presets_for(studio.style_key).get(str(look["preset"]), {}).get("group", "people"))
 	_find_eyes()
 	var n := root()
 	n.set_meta("actor_id", id)
@@ -171,7 +245,7 @@ func _find_eyes() -> void:
 
 ## Shut while sleeping, and a quick blink every few seconds otherwise.
 func _update_eyes() -> void:
-	var closed := behavior == "sleep" or fmod(t + id * 1.7, 4.3) < 0.13
+	var closed := shown() == "sleep" or fmod(t + id * 1.7, 4.3) < 0.13
 	if closed == _eyes_closed:
 		return
 	_eyes_closed = closed
@@ -303,7 +377,8 @@ func _update_expr(dt: float) -> void:
 	if shapes.is_empty():
 		return
 	var want := ""
-	match behavior:
+	var b := shown()
+	match b:
 		"celebrate", "laugh", "dance", "wave":
 			want = "joy"
 		"cry":
@@ -312,9 +387,14 @@ func _update_expr(dt: float) -> void:
 			want = "angry"
 		"flee":
 			want = "surprised"
+		"pose":
+			if react_act in ["pose:surprised", "pose:scared"] and react_t > 0.0:
+				want = "surprised"
+	if look_t > 0.0 and look_who and feeling(look_who) == "rival":
+		want = "angry"
 	var rate := 1.0 - exp(-dt * 6.0)
 	for kind in shapes:
-		var target := (0.6 if behavior == "wave" else 1.0) if kind == want else 0.0
+		var target := (0.6 if b == "wave" else 1.0) if kind == want else 0.0
 		var cur := float(_expr.get(kind, 0.0))
 		var nv := lerpf(cur, target, rate)
 		if absf(nv - target) < 0.002:
@@ -418,9 +498,19 @@ func dispose() -> void:
 	if partner:
 		partner.partner = null
 		partner = null
+	unlink()
 	if not rig.is_empty():
 		_free_rig()
 	rig = {}
+
+
+## Drops references to other characters (actors are reference counted, so
+## two pointing at each other would never be freed).
+func unlink() -> void:
+	circle = {}
+	foe = null
+	threat = null
+	look_who = null
 
 
 func refresh_tag() -> void:
@@ -501,6 +591,21 @@ func reset_sim(p: Vector3, y: float, b: String) -> void:
 	_clip_state = ""
 	_clip_t = 0.0
 	_expr = {}
+	temp_t = 0.0
+	resume = ""
+	react_act = ""
+	react_t = 0.0
+	react_cd = 0.0
+	look_who = null
+	look_t = 0.0
+	foe = null
+	threat = null
+	circle = {}
+	_met = {}
+	_hot_t = 0.0
+	_stuck_t = 0.0
+	knock_t = 0.0
+	pose = base_pose
 	var springs: SpringRig = rig.get("springs")
 	if springs:
 		springs.reset()
@@ -515,10 +620,15 @@ func set_behavior(b: String, permanent := true) -> void:
 		partner.partner = null
 		partner = null
 	behavior = b
+	if b != "fight":
+		foe = null
+	if b != "flee":
+		threat = null
 	if permanent:
 		base_behavior = b
 		woken = false
 		home = pos
+		temp_t = 0.0
 	target = {}
 	wait = 0.5
 
@@ -720,16 +830,27 @@ func face_to(x: float, z: float, dt: float, rate := 5.0) -> void:
 # ---------------------------------------------------------------- behaviour
 
 func update_npc(dt: float) -> void:
+	if react_t > 0.0:
+		react_t -= dt
+	if react_cd > 0.0:
+		react_cd -= dt
+	if _hot_t > 0.0:
+		_hot_t -= dt
+	if look_t > 0.0:
+		look_t -= dt
+		if look_t <= 0.0:
+			look_who = null
 	if knock_t > 0.0:
 		knock_t -= dt
 		move_body(dt)
 		vel.x *= 0.85
 		vel.z *= 0.85
 		return
-	if flee_t > 0.0:
-		flee_t -= dt
-		if flee_t <= 0.0:
-			set_behavior(_settled(), false)
+	if temp_t > 0.0:
+		temp_t -= dt
+		if temp_t <= 0.0:
+			set_behavior(resume if resume != "" else _settled(), false)
+			resume = ""
 	vel.x = 0
 	vel.z = 0
 	var look_at: Actor = null
@@ -745,6 +866,7 @@ func update_npc(dt: float) -> void:
 		move_body(dt)
 		_head_idle()
 		return
+	_feelings()
 	match behavior:
 		"wander":
 			if target.is_empty():
@@ -755,7 +877,7 @@ func update_npc(dt: float) -> void:
 						var dd := 2.0 + App.sim_randf() * 6.0
 						var x := clampf(pos.x + cos(ang) * dd, 1.5, size - 1.5)
 						var z := clampf(pos.z + sin(ang) * dd, 1.5, size - 1.5)
-						if studio.world.walkable(x, z):
+						if studio.world.walkable(x, z) and not studio.fx.blocks(x, z):
 							target = {"x": x, "z": z, "t": 8.0}
 							break
 					wait = 1.0
@@ -778,9 +900,11 @@ func update_npc(dt: float) -> void:
 					wait = float(int(target["i"]) + 1)
 					target = {}
 		"gather":
-			var gp: Vector3 = studio.gather_point()
+			# Round the nearest campfire, else round the player.
+			var fire: Variant = studio.fx.nearest("fire", pos, 15.0)
+			var gp: Vector3 = fire if fire is Vector3 else studio.gather_point()
 			var d := Vector2(gp.x - pos.x, gp.z - pos.z).length()
-			var ring: float = 1.2 + 0.25 * studio.count_behavior("gather")
+			var ring: float = (1.5 if fire is Vector3 else 1.2) + 0.25 * studio.count_behavior("gather")
 			if d > ring:
 				steer(gp.x, gp.z, 2.2, dt)
 			else:
@@ -816,26 +940,45 @@ func update_npc(dt: float) -> void:
 			else:
 				hy = 0
 		"fight":
-			# Square up to the nearest character and swing every so often.
-			var foe: Actor = null
+			# Square up to whoever they're fighting (someone who hurt a
+			# friend), else a rival nearby, else the nearest character, and
+			# swing every so often.
+			var opp: Actor = foe if foe and studio.actors.has(foe) else null
 			var fd := 6.0
-			for b in studio.actors:
-				if b == self:
-					continue
-				var dd := Vector2(b.pos.x - pos.x, b.pos.z - pos.z).length()
-				if dd < fd:
-					fd = dd
-					foe = b
-			if foe:
+			if opp:
+				fd = Vector2(opp.pos.x - pos.x, opp.pos.z - pos.z).length()
+				if fd > 15.0:
+					opp = null
+					foe = null
+					fd = 6.0
+			if opp == null:
+				var rd := 10.0
+				for b in studio.actors:
+					if b != self and feeling(b) == "rival":
+						var dd := Vector2(b.pos.x - pos.x, b.pos.z - pos.z).length()
+						if dd < rd:
+							rd = dd
+							opp = b
+				if opp:
+					fd = rd
+			if opp == null:
+				for b in studio.actors:
+					if b == self:
+						continue
+					var dd := Vector2(b.pos.x - pos.x, b.pos.z - pos.z).length()
+					if dd < fd:
+						fd = dd
+						opp = b
+			if opp:
 				if fd > 1.3:
-					steer(foe.pos.x, foe.pos.z, 2.6, dt)
+					steer(opp.pos.x, opp.pos.z, 2.6, dt)
 				else:
-					face_to(foe.pos.x, foe.pos.z, dt, 8)
+					face_to(opp.pos.x, opp.pos.z, dt, 8)
 					wait -= dt
 					if wait <= 0:
 						wait = 0.9 + App.sim_randf() * 0.8
 						attack()
-				look_at = foe
+				look_at = opp
 		"talk":
 			if partner == null or partner.behavior != "talk" or not studio.actors.has(partner):
 				partner = null
@@ -845,6 +988,8 @@ func update_npc(dt: float) -> void:
 					if b == self or b == player or b.behavior != "talk":
 						continue
 					if b.partner and b.partner != self:
+						continue
+					if feeling(b) == "rival" or b.feeling(self) == "rival":
 						continue
 					var dd := pos.distance_to(b.pos)
 					if dd < bd:
@@ -875,14 +1020,59 @@ func update_npc(dt: float) -> void:
 				if next_line <= 0:
 					next_line = 5.0 + App.sim_randf() * 4.0
 					chat(line())
-	if chat_busy and not behavior in ["talk", "chase", "flee", "sleep"]:
+		"group":
+			# Hanging out in a small circle: walk to their place in it, face
+			# the middle and watch whoever is talking (Studio._update_groups
+			# forms the circles and hands out turns to speak).
+			if circle.is_empty():
+				if player and player != self and pd < 6:
+					face_to(player.pos.x, player.pos.z, dt)
+					look_at = player
+			else:
+				var c: Vector3 = circle["c"]
+				var slot: Vector2 = (circle["slots"] as Dictionary).get(id, Vector2(pos.x, pos.z))
+				var d := Vector2(slot.x - pos.x, slot.y - pos.z).length()
+				if d > 0.3:
+					steer(slot.x, slot.y, 1.7, dt)
+					# Something in the way (a well, a wall): stay where they
+					# got to, if that's still near the circle.
+					_stuck_t = _stuck_t + dt if blocked and not steppy() else 0.0
+					if _stuck_t > 1.0 and Vector2(c.x - pos.x, c.z - pos.z).length() < 3.0:
+						(circle["slots"] as Dictionary)[id] = Vector2(pos.x, pos.z)
+						_stuck_t = 0.0
+				else:
+					face_to(c.x, c.z, dt, 4.0)
+				var sp: Actor = circle.get("speaker")
+				if sp and sp != self and studio.actors.has(sp):
+					look_at = sp
+				else:
+					# Not talking: glance round the circle.
+					var mem: Array = circle["m"]
+					var o: Actor = mem[(int(t / 2.7) + id) % mem.size()]
+					if o != self:
+						look_at = o
+		"pose":
+			# Holding a pose: stand still where they are.
+			pass
+	if chat_busy and not behavior in ["talk", "group", "chase", "flee", "sleep"]:
 		# "Chat while doing a task": a line every few seconds, whatever they do.
 		next_line -= dt
 		if next_line <= 0:
 			next_line = 6.0 + App.sim_randf() * 4.0
 			chat(line(), 2.4)
-	if look_at == null and notice and player and player != self and pd < 7 and not behavior in ["dance", "flee", "sleep", "cry"]:
+	if look_t > 0.0 and look_who and studio.actors.has(look_who) and not behavior in ["fight", "chase", "talk", "flee", "sleep", "pose"]:
+		look_at = look_who
+	if look_at == null and notice and player and player != self and pd < 7 and not behavior in ["dance", "flee", "sleep", "cry", "pose"]:
 		look_at = player
+	# Too close to a campfire: step back out of it.
+	var heat: Vector2 = studio.fx.heat_push(pos)
+	if heat != Vector2.ZERO and behavior != "sleep":
+		vel.x = heat.x * 2.6
+		vel.z = heat.y * 2.6
+		if _hot_t <= 0.0 and App.settings.get("reactions", true):
+			_hot_t = 6.0
+			react("pose:surprised", 0.9)
+			chat(HOT[int(App.sim_randf() * HOT.size()) % HOT.size()], 1.6)
 	move_body(dt)
 	if look_at:
 		var tx := look_at.pos.x - pos.x
@@ -939,6 +1129,9 @@ func animate(dt: float, is_player: bool) -> void:
 		r.rotation = Vector3(0, yaw, 0)
 		attack_t = maxf(attack_t - dt, 0.0)
 		hurt_t = maxf(hurt_t - dt, 0.0)
+		# Talking ends (it never did for imported characters: after their
+		# first line they kept the talking pose instead of their action).
+		speak_t = maxf(speak_t - dt, 0.0)
 		ModelRig.animate(self, dt, sp, is_player)
 		_tick_bubble(dt)
 		return
@@ -970,8 +1163,9 @@ func animate(dt: float, is_player: bool) -> void:
 		model.position.y = h2 * 0.35
 		upper.scale = Vector3(1 + (1 - h2) * amt * 0.12, 1 - (1 - h2) * amt * 0.15, 1 + (1 - h2) * amt * 0.12)
 	var still := sp < 0.2 and not is_player
-	if quad and still and not ["idle", "wander", "follow", "chase", "flee", "patrol", "gather", "fight"].has(behavior):
-		match behavior:
+	var act := shown()
+	if quad and still and not ["idle", "wander", "follow", "chase", "flee", "patrol", "gather", "fight", "group", "pose"].has(act):
+		match act:
 			"dance":
 				model.position.y = absf(sin(t * 8)) * 0.18
 				model.rotation.y = sin(t * 3) * 0.7
@@ -1011,7 +1205,7 @@ func animate(dt: float, is_player: bool) -> void:
 		hpitch += sin(t * 9) * 0.12
 	if still:
 		var hgt: float = m.get("height", 1.8)
-		match behavior:
+		match act:
 			"dance":
 				var dp := dance_pose(dance_style, t)
 				var al: Vector2 = dp.get("upperArmL", Vector2.ZERO)
@@ -1036,9 +1230,27 @@ func animate(dt: float, is_player: bool) -> void:
 				model.position.y = -float(m.get("sitDrop", 0.4))
 				arm_l.rotation = Vector3(-0.5, 0, 0)
 				arm_r.rotation = Vector3(-0.5, 0, 0)
-			"idle", "gather", "talk":
+			"idle", "gather", "talk", "group":
 				# Subtle breathing so nobody stands frozen.
 				upper.rotation.x = sin(t * 1.7) * 0.015
+			"pose":
+				# Held pose: upper arms and legs, body lean and drop, head
+				# (built-in characters have no elbows or knees).
+				var ps := shown_pose()
+				var al := Poses.joint(ps, "upperArmL")
+				var ar := Poses.joint(ps, "upperArmR")
+				arm_l.rotation = Vector3(al.x, 0, al.y)
+				arm_r.rotation = Vector3(ar.x, 0, -ar.y)
+				var ll := Poses.joint(ps, "upperLegL")
+				var lr := Poses.joint(ps, "upperLegR")
+				leg_l.rotation = Vector3(ll.x, 0, ll.y)
+				leg_r.rotation = Vector3(lr.x, 0, -lr.y)
+				var spn := Poses.joint(ps, "spine")
+				upper.rotation = Vector3(spn.x, 0, -spn.y)
+				model.position.y = float(ps.get("lift", 0.0)) * hgt
+				var hd := Poses.joint(ps, "head")
+				hyaw = hd.x
+				hpitch = hd.y + sin(t * 1.7) * 0.01
 			"sleep":
 				# Lie on their back, centred on where they stood.
 				model.rotation.x = -PI / 2
@@ -1190,11 +1402,137 @@ func on_hit(from: Actor) -> void:
 		var hl: String = ["Ow!", "Hey!", "Ouch!", "What was that for?!"][int(App.sim_randf() * 4.0) % 4]
 		if App.settings.get("hit_lines", true):
 			say(hl, 1.6)
-		if base_behavior in ["idle", "wander", "talk", "sit", "dance", "wave", "gather"] and App.sim_randf() < 0.5:
-			set_behavior("flee", false)
-			flee_t = 4.0
+		if base_behavior in ["idle", "wander", "talk", "sit", "dance", "wave", "gather", "group"] and App.sim_randf() < 0.5:
+			start_temp("flee", 4.0)
+			threat = from
+		studio.emit_event("hit", pos, from, self)
+
+
+## Does `b` for `dur` seconds (running away, standing up for a friend), then
+## goes back to what they were doing.
+func start_temp(b: String, dur: float) -> void:
+	if temp_t <= 0.0:
+		resume = behavior if not behavior in ["flee", "fight"] else _settled()
+	set_behavior(b, false)
+	temp_t = dur
+
+
+## Shows an action over what they're doing for a moment ("laugh", "wave",
+## "celebrate", "point" or "pose:<built-in key>").
+func react(act: String, dur: float) -> void:
+	react_act = act
+	react_t = dur
+
+
+func glance(b: Actor, dur: float) -> void:
+	look_who = b
+	look_t = dur
+
+
+## Can react to things now (not the player, not busy with a script).
+func can_react() -> bool:
+	return App.settings.get("reactions", true) and studio.player != self and not keyed and goto.is_empty() and behavior in CALM and knock_t <= 0.0
+
+
+## Feelings and monsters, checked every tick: run from who they fear and from
+## monsters on the hunt, greet friends, glare and mutter at rivals.
+func _feelings() -> void:
+	if not can_react():
+		return
+	for b in studio.actors:
+		if b == self or b.rig.is_empty():
+			continue
+		var d := Vector2(b.pos.x - pos.x, b.pos.z - pos.z).length()
+		if d > 6.0:
+			continue
+		var f := feeling(b)
+		var hunting: bool = b.is_monster() and not is_monster() and kind_group == "people" and b.behavior in ["chase", "fight"] and f != "friend" and b != studio.player
+		if (f == "scared" and d < 4.5 and b.behavior != "sleep") or (hunting and d < 4.0):
+			start_temp("flee", 4.0)
+			threat = b
+			if react_cd <= 0.0:
+				chat(PANIC[int(App.sim_randf() * PANIC.size()) % PANIC.size()], 1.4)
+			react_cd = 2.0
+			studio.emit_event("panic", pos, b, self)
+			return
+		if f == "friend" and d < 4.0 and b.behavior != "sleep" and t - float(_met.get(b.name, -99.0)) > 30.0:
+			_met[b.name] = t
+			if speak_t <= 0.0:
+				react("wave", 1.6)
+				glance(b, 2.5)
+				chat(GREET[int(App.sim_randf() * GREET.size()) % GREET.size()] % b.name, 2.0)
+			return
+		if f == "rival" and d < 5.0:
+			if look_t <= 0.2:
+				glance(b, 1.0)
+			if t - float(_met.get(b.name, -99.0)) > 20.0:
+				_met[b.name] = t
+				if speak_t <= 0.0:
+					chat(RIVAL[int(App.sim_randf() * RIVAL.size()) % RIVAL.size()], 1.8)
+
+
+## Something happened nearby (see Studio.emit_event): someone was hit
+## ("hit": src hit dst), someone ran off in a panic ("panic": dst ran from
+## src) or someone is celebrating ("cheer": src). Bystanders look round,
+## gasp, laugh, run away, stand up for a friend or join in.
+func react_to(e: Dictionary) -> void:
+	var src: Actor = e.get("src")
+	var dst: Actor = e.get("dst")
+	if self == src or self == dst or not can_react() or react_cd > 0.0:
+		return
+	var at: Vector3 = e["pos"]
+	var d := Vector2(at.x - pos.x, at.z - pos.z).length()
+	if d > REACT_RANGE:
+		return
+	var calm_kind := kind_group == "people"
+	match str(e["k"]):
+		"hit":
+			react_cd = 3.0
+			var fv := feeling(dst)
+			var fa := feeling(src)
+			if fv == "friend" and fa != "scared" and fa != "friend":
+				start_temp("fight", 6.0)
+				foe = src
+				chat(DEFEND[int(App.sim_randf() * DEFEND.size()) % DEFEND.size()].replace("%s", dst.name), 1.8)
+			elif fa == "scared" or (calm_kind and src.is_monster() and fa != "friend"):
+				start_temp("flee", 4.0)
+				threat = src
+				chat(PANIC[int(App.sim_randf() * PANIC.size()) % PANIC.size()], 1.4)
+			elif fv == "rival":
+				react("laugh", 2.0)
+				glance(dst, 2.5)
+				chat(GLOAT[int(App.sim_randf() * GLOAT.size()) % GLOAT.size()], 1.6)
+			else:
+				glance(src, 3.0)
+				var r := App.sim_randf()
+				if r < 0.45:
+					react("pose:surprised", 1.2)
+					chat(GASP[int(App.sim_randf() * GASP.size()) % GASP.size()], 1.6)
+				elif r < 0.7:
+					react("point", 1.5)
+		"panic":
+			react_cd = 3.0
+			glance(src, 3.0)
+			if calm_kind and d < 6.0 and App.sim_randf() < 0.35 and feeling(src) != "friend":
+				start_temp("flee", 3.5)
+				threat = src
+			else:
+				react("pose:surprised", 1.0)
+		"cheer":
+			if feeling(src) == "friend" and d < REACT_RANGE:
+				react_cd = 3.0
+				react("celebrate", 2.5)
+				glance(src, 2.5)
+			elif feeling(src) != "rival" and d < 5.0 and App.sim_randf() < 0.3:
+				react_cd = 3.0
+				glance(src, 2.0)
 
 
 func to_dict(is_player: bool) -> Dictionary:
-	return {"name": name, "look": look, "behavior": base_behavior, "notice": notice, "lines": lines, "dance": dance_style, "chat": chat_busy,
+	var d := {"name": name, "look": look, "behavior": base_behavior, "notice": notice, "lines": lines, "dance": dance_style, "chat": chat_busy,
 		"pos": [U.r2(pos.x), U.r2(pos.y), U.r2(pos.z)], "yaw": U.r2(yaw), "player": is_player}
+	if not rel.is_empty():
+		d["rel"] = rel
+	if not base_pose.is_empty():
+		d["pose"] = base_pose
+	return d

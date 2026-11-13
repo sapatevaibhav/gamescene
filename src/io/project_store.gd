@@ -205,6 +205,12 @@ static func migrate(d: Dictionary) -> Dictionary:
 		if not d.has("audio"):
 			d["audio"] = []
 		d["v"] = 5
+	if int(d.get("v", 5)) < 6:
+		# v6 adds scene effects (campfires, sparkles, smoke, dust), and
+		# characters' feelings ("rel") and held poses ("pose"); all optional.
+		if not d.has("fx"):
+			d["fx"] = []
+		d["v"] = 6
 	return d
 
 

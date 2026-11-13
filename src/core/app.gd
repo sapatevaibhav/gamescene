@@ -4,7 +4,7 @@ extends Node
 signal toast_requested(msg: String)
 signal settings_changed
 
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 
 ## Per-scene settings are saved with the project; device settings are not.
 var settings := {
@@ -13,15 +13,15 @@ var settings := {
 	"fps": 30, "countdown": 3, "restart": true, "res": "1080",
 	"music": "", "music_vol": 0.7, "sfx": false, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
 	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true, "bg": "scene",
-	"chatter": false, "hit_lines": true,
+	"chatter": false, "hit_lines": true, "reactions": true,
 }
 
 const SCENE_KEYS := ["time", "cycle", "weather", "fog", "mood", "frame", "fov", "shake", "dof", "subtitles", "fps", "countdown", "restart", "res",
-	"music", "music_vol", "sfx", "sfx_vol", "ambience", "amb_vol", "sub_style", "sub_size", "sub_pos", "sub_names", "bg", "chatter", "hit_lines"]
+	"music", "music_vol", "sfx", "sfx_vol", "ambience", "amb_vol", "sub_style", "sub_size", "sub_pos", "sub_names", "bg", "chatter", "hit_lines", "reactions"]
 ## Sound, subtitle and export background settings a new (or older) scene
 ## starts with.
 const SCENE_DEFAULTS := {"music": "", "music_vol": 0.7, "sfx": false, "sfx_vol": 0.8, "ambience": "auto", "amb_vol": 0.6,
-	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true, "bg": "scene", "chatter": false, "hit_lines": true}
+	"sub_style": "box", "sub_size": "m", "sub_pos": "bottom", "sub_names": true, "bg": "scene", "chatter": false, "hit_lines": true, "reactions": true}
 
 var device := {
 	"quality": "high", "show_fps": false, "names": true, "auto_jump": true, "mouse_look": "drag", "ui_scale": 1.0, "ui_sounds": false, "cool_down": false,

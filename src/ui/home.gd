@@ -43,7 +43,8 @@ func _ready() -> void:
 	center.add_child(_col)
 	_bar = PanelContainer.new()
 	# A colour of its own, so the selection actions stand out from the page.
-	var bsb := UIK.box(UIK.SECONDARY_700, 18, UIK.PRIMARY_500, 2)
+	# Blue that stands out from the dark page, with an amber edge.
+	var bsb := UIK.box(Color("2F86C6"), 18, UIK.PRIMARY_500, 2)
 	bsb.shadow_color = Color(0, 0, 0, 0.45)
 	bsb.shadow_size = UIK.px(14)
 	_bar.add_theme_stylebox_override("panel", bsb)
@@ -111,10 +112,13 @@ func refresh() -> void:
 	mark.texture = load("res://assets/brand/mark.png")
 	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	mark.custom_minimum_size = Vector2(UIK.px(30), UIK.px(30))
+	# The app's name leads the page (bigger than the question below it);
+	# "Studio" in the logo's purple.
+	var brand := 20 if _narrow() else 26
+	mark.custom_minimum_size = Vector2(UIK.px(brand + 12), UIK.px(brand + 12))
 	top.add_child(mark)
-	top.add_child(UIK.label("GameScene", 18, UIK.INK, true))
-	top.add_child(UIK.label("Studio", 18, UIK.MUTED))
+	top.add_child(UIK.label("GameScene", brand, UIK.INK, true))
+	top.add_child(UIK.label("Studio", brand, UIK.BRAND_PURPLE, true))
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(sp)
@@ -122,7 +126,7 @@ func refresh() -> void:
 	_col.add_child(top)
 	_col.add_child(UIK.spacer(18))
 	# On a phone, no bigger than the "GameScene Studio" header above it.
-	var h1 := UIK.label("What are you making?", 18 if _narrow() else 52, UIK.INK, true)
+	var h1 := UIK.label("What are you making?", 18 if _narrow() else 24, UIK.INK, true)
 	h1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_col.add_child(h1)
 	_col.add_child(UIK.spacer(6))
@@ -181,7 +185,7 @@ func refresh() -> void:
 				_recent.add_child(_recent_tile(p))
 		"recordings":
 			if recs.is_empty():
-				_col.add_child(UIK.para("No recordings yet. Press Record in a scene, or export a film from the Film panel.", 14))
+				_col.add_child(UIK.para("No recordings yet. Press Record in a scene, or make a video on the Export page.", 14))
 			for it in recs:
 				_recent.add_child(_media_tile(it))
 		"screenshots":
@@ -332,6 +336,22 @@ func _media_tile(it: Dictionary) -> Control:
 	return b
 
 
+## Where each style's cover art has its subject (0 = left edge, 1 = right).
+## The art is wide and phone cards are nearly square: the card shows the
+## slice around this point instead of the middle, so the character stays in.
+const CARD_FOCUS := {"blocky": 0.62, "anime": 0.28, "pixel": 0.4, "lowpoly": 0.3}
+
+
+## Fills `box` with the picture (no gaps), cropping around `fx`.
+static func _cover(tr: TextureRect, box: Vector2, fx: float) -> void:
+	var ts := tr.texture.get_size()
+	if ts.x <= 0.0 or ts.y <= 0.0 or box.x <= 0.0:
+		return
+	var sz := ts * maxf(box.x / ts.x, box.y / ts.y)
+	tr.size = sz
+	tr.position = Vector2(clampf(box.x * 0.5 - fx * sz.x, box.x - sz.x, 0.0), (box.y - sz.y) * 0.5)
+
+
 func _style_card(k: String) -> Control:
 	var sty: Dictionary = Styles.STYLES[k]
 	var b := Button.new()
@@ -347,44 +367,59 @@ func _style_card(k: String) -> Control:
 	ph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ph.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	ph.clip_contents = true
-	var sb := StyleBoxTexture.new()
-	var gt := GradientTexture2D.new()
-	var g := Gradient.new()
-	g.set_color(0, U.col(sty["swatch"][0]))
-	g.set_color(1, U.col(sty["swatch"][1]))
-	gt.gradient = g
-	gt.fill_from = Vector2(0.2, 0)
-	gt.fill_to = Vector2(0.8, 1)
-	sb.texture = gt
-	ph.add_theme_stylebox_override("panel", sb)
-	# A soft shade towards the bottom, like ground under the character.
-	var shade := TextureRect.new()
-	var sg := GradientTexture2D.new()
-	var sgg := Gradient.new()
-	sgg.set_color(0, Color(0, 0, 0, 0))
-	sgg.set_color(1, Color(0, 0, 0, 0.3))
-	sgg.set_offset(0, 0.55)
-	sg.gradient = sgg
-	sg.fill_from = Vector2(0.5, 0)
-	sg.fill_to = Vector2(0.5, 1)
-	shade.texture = sg
-	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	shade.stretch_mode = TextureRect.STRETCH_SCALE
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ph.add_child(shade)
-	var tr := TextureRect.new()
-	var cast: Array = Rigs.DEFAULT_CAST.get(k, [])
-	var preset: String = cast[0][0] if not cast.is_empty() else ""
-	if k == "pixel":
-		tr.texture = PixelSprites.icon({"preset": preset})
+	# Cover art (assets/styles/<style>.webp), else the drawn preview below.
+	var style_img_path := "res://assets/styles/%s.webp" % k
+	var preview_tex: Texture2D = load(style_img_path) if ResourceLoader.exists(style_img_path) else null
+	if preview_tex:
+		ph.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		var img_tr := TextureRect.new()
+		img_tr.texture = preview_tex
+		img_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img_tr.stretch_mode = TextureRect.STRETCH_SCALE
+		img_tr.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		img_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ph.add_child(img_tr)
+		var fx: float = CARD_FOCUS.get(k, 0.5)
+		ph.resized.connect(func(): _cover(img_tr, ph.size, fx))
 	else:
-		tr.texture = icons.request("home|" + k, func(): return Rigs.build({"preset": preset}, k)["root"], "char")
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ph.add_child(tr)
+		var sb := StyleBoxTexture.new()
+		var gt := GradientTexture2D.new()
+		var g := Gradient.new()
+		g.set_color(0, U.col(sty["swatch"][0]))
+		g.set_color(1, U.col(sty["swatch"][1]))
+		gt.gradient = g
+		gt.fill_from = Vector2(0.2, 0)
+		gt.fill_to = Vector2(0.8, 1)
+		sb.texture = gt
+		ph.add_theme_stylebox_override("panel", sb)
+		# A soft shade towards the bottom, like ground under the character.
+		var shade := TextureRect.new()
+		var sg := GradientTexture2D.new()
+		var sgg := Gradient.new()
+		sgg.set_color(0, Color(0, 0, 0, 0))
+		sgg.set_color(1, Color(0, 0, 0, 0.3))
+		sgg.set_offset(0, 0.55)
+		sg.gradient = sgg
+		sg.fill_from = Vector2(0.5, 0)
+		sg.fill_to = Vector2(0.5, 1)
+		shade.texture = sg
+		shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		shade.stretch_mode = TextureRect.STRETCH_SCALE
+		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ph.add_child(shade)
+		var tr := TextureRect.new()
+		var cast: Array = Rigs.DEFAULT_CAST.get(k, [])
+		var preset: String = cast[0][0] if not cast.is_empty() else ""
+		if k == "pixel":
+			tr.texture = PixelSprites.icon({"preset": preset})
+		else:
+			tr.texture = icons.request("home|" + k, func(): return Rigs.build({"preset": preset}, k)["root"], "char")
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ph.add_child(tr)
 	# "3D" / "2D" tag.
 	var tag := PanelContainer.new()
 	var tsb := UIK.box(Color(UIK.GRAY_950, 0.55), 8)
@@ -685,6 +720,13 @@ func _open_file() -> void:
 
 
 # ---------------------------------------------------------------- settings
+
+## Esc closes the settings page (desktop), like Back on a phone.
+func _unhandled_key_input(e: InputEvent) -> void:
+	if _settings and visible and e.is_action_pressed("ui_cancel"):
+		_open_settings(false)
+		get_viewport().set_input_as_handled()
+
 
 func _open_settings(on: bool) -> void:
 	_settings = on

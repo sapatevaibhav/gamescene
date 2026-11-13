@@ -272,11 +272,13 @@ static func _campfire() -> Node3D:
 	for k in 7:
 		var a := float(k) / 7 * TAU
 		g.add_child(Kit.ball(0.11, M("#8a8680"), cos(a) * 0.5, 0.06, sin(a) * 0.5, 0))
-	var f1 := Kit.cone(0.24, 0.7, 6, M("#ff8a2a", {"glow": true}), 0, 0.4, 0)
-	var f2 := Kit.cone(0.14, 0.5, 6, M("#ffd24a", {"glow": true}), 0, 0.35, 0)
-	g.add_child(f1)
-	g.add_child(f2)
-	g.set_meta("flicker", [f1, f2])
+	g.add_child(Kit.cyl(0.22, 0.26, 0.05, 8, M("#ff7a2a", {"glow": true}), 0, 0.03, 0))
+	# Flames, embers and smoke from the scene clock (see SceneFx).
+	var lite: bool = App.phone_gpu or App.device.get("quality", "high") == "low"
+	g.add_child(SceneFx.emitter("flame", 0, 1.0, 16 if lite else 24))
+	g.add_child(SceneFx.emitter("ember", 0, 1.0, 10))
+	g.add_child(SceneFx.emitter("fire_smoke", 0, 1.0, 5 if lite else 8))
+	g.set_meta("flicker", [])
 	_glow_light(g, 0.6, "#ff9a48", 2.2, 7.0, true)
 	return g
 

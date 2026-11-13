@@ -39,8 +39,8 @@ const MOODS := {
 
 const MOOD_ORDER := ["day", "sunset", "dreamy", "fantasy", "horror", "storm", "snow"]
 
-const BEHAVIORS := [["idle", "Stand"], ["wander", "Wander"], ["talk", "Chat"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"], ["follow", "Follow you"], ["chase", "Chase you"], ["flee", "Run away"], ["gather", "Gather"], ["patrol", "Patrol"],
-	["sleep", "Sleep"], ["celebrate", "Celebrate"], ["laugh", "Laugh"], ["cry", "Cry"], ["point", "Point"], ["fight", "Fight"]]
+const BEHAVIORS := [["idle", "Stand"], ["wander", "Wander"], ["talk", "Chat"], ["group", "Hang out"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"], ["follow", "Follow you"], ["chase", "Chase you"], ["flee", "Run away"], ["gather", "Gather"], ["patrol", "Patrol"],
+	["sleep", "Sleep"], ["celebrate", "Celebrate"], ["laugh", "Laugh"], ["cry", "Cry"], ["point", "Point"], ["fight", "Fight"], ["pose", "Hold a pose"]]
 
 
 static func get_style(key: String) -> Dictionary:

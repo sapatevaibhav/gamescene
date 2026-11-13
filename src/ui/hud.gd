@@ -106,7 +106,7 @@ func _ready() -> void:
 	dock_menu = _bar_button("lines", "Menu")
 	dock_menu.pressed.connect(func(): set_dock_open(true))
 	dock_row.add_child(dock_menu)
-	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Script"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["sound", "speaker", "Sound"], ["film", "film", "Film"]]:
+	for tab in [["add", "plus", "Add"], ["cast", "cast", "Cast"], ["script", "script", "Story"], ["camera", "camera", "Camera"], ["mood", "sun", "Mood"], ["sound", "speaker", "Sound"], ["film", "film", "Export"]]:
 		var b := _dock_button(tab[0], tab[1], tab[2])
 		dock_btns[tab[0]] = b
 		dock_row.add_child(b)
@@ -570,7 +570,7 @@ func _process(delta: float) -> void:
 		if studio.paused:
 			play_label.text = "Directing at %s · tap a character to change what they do  " % TimelinePanel._fmt(studio.play_t)
 		else:
-			play_label.text = "Script  %s / %s" % [U.fmt_time(studio.play_t), U.fmt_time(total)]
+			play_label.text = "Story  %s / %s" % [U.fmt_time(studio.play_t), U.fmt_time(total)]
 		play_bar.size = play_bar.get_combined_minimum_size()
 		play_bar.position.x = (get_viewport_rect().size.x - play_bar.size.x) / 2
 		if studio.play_t > total + 1.0 and not studio.paused:
@@ -635,6 +635,11 @@ func render_sheet() -> void:
 		return
 	sheet_title.text = title
 	sheet_title.set_meta("view", top[0])
+	# Full-width buttons: icon and text together in the middle.
+	for n in sheet_body.find_children("*", "Button", true, false):
+		var bt := n as Button
+		if bt.get_parent() is VBoxContainer and bt.icon != null and bt.text != "":
+			UIK.center_content(bt)
 	sheet_back.visible = view_stack.size() > 1
 	sheet.visible = true
 	var root_tab: String = view_stack[0][0]
@@ -663,60 +668,77 @@ func render_toolbar() -> void:
 	toolbar.visible = not clean
 	tool_hint.visible = not clean
 	var hint := ""
+	# One bar for every world: what you're placing (tap to choose another),
+	# then Add, Remove and Copy, always with the same words and icons.
 	match t.kind:
 		"blocks":
 			var b := Blocks.get_block(t.block)
 			toolbar_row.add_child(_tb_tex(Blocks.icon(t.block), "Block", func(): open_sheet("blocks")))
-			toolbar_row.add_child(_tb("place", "place", "Place", t.mode == "place"))
-			toolbar_row.add_child(_tb("break", "brk", "Break", t.mode == "break"))
-			toolbar_row.add_child(_tb("pick", "pickI", "Pick", t.mode == "pick"))
-			hint = {"place": "Tap to place " + str(b.get("name", "block")).to_lower(), "break": "Tap a block to break it", "pick": "Tap a block to copy it"}[t.mode]
+			_modes(["place", "break", "pick"], t.mode)
+			hint = {"place": "Tap to add " + str(b.get("name", "block")).to_lower(), "break": "Tap a block to remove it", "pick": "Tap a block to copy it"}[t.mode]
 			if not App.is_touch:
-				hint += "  ·  right click breaks, middle click picks"
+				hint += "  ·  right click removes, middle click copies"
 		"tiles":
 			var top := studio.is_top()
 			var custom_tile := t.tile >= TileSets.CUSTOM_BASE
 			var ticon: Texture2D = studio.world.custom_icon(t.tile) if custom_tile else (PixelTopArt.ground_icon(maxi(1, t.tile)) if top else PixelTiles.icon(t.tile))
 			toolbar_row.add_child(_tb_tex(ticon, "Ground" if top else "Tile", func(): open_sheet("tiles")))
-			toolbar_row.add_child(_tb("place", "place", "Paint", t.mode == "place"))
-			toolbar_row.add_child(_tb("break", "brk", "Erase", t.mode == "break"))
-			toolbar_row.add_child(_tb("pick", "pickI", "Pick", t.mode == "pick"))
+			_modes(["place", "break", "pick"], t.mode)
 			var tn := "imported tile" if custom_tile else str((PixelTopArt.GROUND[maxi(1, t.tile)] if top else PixelTiles.get_tile(t.tile)).get("name", "tile")).to_lower()
-			hint = {"place": "Tap or drag to paint " + tn, "break": "Tap or drag to erase tiles", "pick": "Tap a tile to copy it"}[t.mode]
+			hint = {"place": "Tap or drag to add " + tn, "break": "Tap or drag to remove tiles", "pick": "Tap a tile to copy it"}[t.mode]
 			if not App.is_touch:
-				hint += "  ·  right-drag erases"
+				hint += "  ·  right-drag removes"
 		"pprefab":
-			toolbar_row.add_child(_tb("pprefabs", "house", "Change", false))
-			toolbar_row.add_child(_tb("oplace", "place", "Place", t.obj_mode == "place"))
-			toolbar_row.add_child(_tb("oerase", "brk", "Erase", t.obj_mode == "erase"))
+			toolbar_row.add_child(_tb("pprefabs", "house" if studio.is_side() else "tree", "Building" if studio.is_side() else "Object", false))
+			_modes(["oplace", "oerase"], "oplace" if t.obj_mode == "place" else "oerase")
 			var pname := ""
 			if SpriteImport.is_key(t.pprefab):
 				pname = SpriteImport.display_name(SpriteImport.id_of(t.pprefab))
 			elif studio.is_top():
 				pname = str(PixelTopArt.OBJECTS.get(t.pprefab, {"name": "object"})["name"])
 			else:
-				toolbar_row.add_child(_tb("flip", "rotate", "Flip", t.flip))
+				if t.obj_mode == "place":
+					toolbar_row.add_child(_tb("flip", "rotate", "Flip", t.flip))
 				pname = str(PixelTiles.PREFABS.get(t.pprefab, {"name": "building"})["name"])
-			hint = "Tap the ground to place a " + pname.to_lower()
+			hint = "Tap the ground to add a " + pname.to_lower()
 			if t.obj_mode == "erase":
 				hint = "Tap or drag over trees, houses and objects to remove them" if studio.is_top() else "Tap a tree or building to remove all of it (the ground stays)"
 			elif not App.is_touch:
 				hint += "  ·  right click removes"
 		"prefab":
-			toolbar_row.add_child(_tb("prefabs", "house", "Change", false))
-			toolbar_row.add_child(_tb("rot", "rotate", "Rotate", false))
-			hint = "Tap the ground to build a " + str(VoxelWorld.PREFABS[t.prefab]["name"]).to_lower()
+			toolbar_row.add_child(_tb("prefabs", "house", "Building", false))
+			_modes(["oplace", "oerase"], "oplace" if t.obj_mode == "place" else "oerase")
+			if t.obj_mode == "place":
+				toolbar_row.add_child(_tb("rot", "rotate", "Rotate", false))
+				hint = "Tap the ground to add a " + str(VoxelWorld.PREFABS[t.prefab]["name"]).to_lower()
+				if not App.is_touch:
+					hint += "  ·  right click removes"
+			else:
+				hint = "Tap a building or tree to remove all of it (the ground stays)"
 		"objects":
 			if not t.sel.is_empty():
 				toolbar_row.add_child(_tb("move", "move", "Move", t.moving))
 				toolbar_row.add_child(_tb("prot", "rotate", "Rotate", false))
 				toolbar_row.add_child(_tb("psize", "size", "Size", false))
-				toolbar_row.add_child(_tb("pdel", "trash", "Delete", false))
+				toolbar_row.add_child(_tb("pdel", "trash", "Remove", false))
 				hint = "Tap where it should go" if t.moving else t.sel_name() + " selected"
 			else:
-				toolbar_row.add_child(_tb("objects", "tree", "Change", false))
+				toolbar_row.add_child(_tb("objects", "tree", "Object", false))
+				_modes(["oplace", "oerase"], "oplace" if t.obj_mode == "place" else "oerase")
 				var pn: String = Props.display_name(studio.style_key, t.prop) if t.prop != "" else ""
-				hint = ("Tap the ground to add a " + pn.to_lower() + ". Tap an object to edit it.") if pn != "" else "Tap an object to edit it"
+				if t.obj_mode == "erase":
+					hint = "Tap an object to remove it"
+				else:
+					hint = ("Tap the ground to add a " + pn.to_lower() + ". Tap an object to move, turn or resize it.") if pn != "" else "Tap an object to move, turn or resize it"
+		"effects":
+			toolbar_row.add_child(_tb("effects", str(SceneFx.KINDS[t.effect]["icon"]), "Effect", false))
+			_modes(["oplace", "oerase"], "oplace" if t.obj_mode == "place" else "oerase")
+			if t.obj_mode == "erase":
+				hint = "Tap an effect to remove it"
+			else:
+				hint = "Tap to add " + str(SceneFx.KINDS[t.effect]["name"]).to_lower()
+				if not App.is_touch:
+					hint += "  ·  right click removes"
 		"terrain":
 			toolbar_row.add_child(_tb("raise", "up", "Raise", t.terra == "raise"))
 			toolbar_row.add_child(_tb("lower", "down", "Lower", t.terra == "lower"))
@@ -728,6 +750,15 @@ func render_toolbar() -> void:
 	toolbar_row.add_child(_tb("done", "check", "Done", false, true))
 	tool_hint.text = "  " + hint + "  "
 	layout()
+
+
+## The shared mode buttons: Add (+), Remove (bin), Copy (dropper).
+const MODE_LOOK := {"place": ["plus", "Add"], "oplace": ["plus", "Add"], "break": ["trash", "Remove"], "oerase": ["trash", "Remove"], "pick": ["pickI", "Copy"]}
+
+
+func _modes(acts: Array, current: String) -> void:
+	for a in acts:
+		toolbar_row.add_child(_tb(a, MODE_LOOK[a][0], MODE_LOOK[a][1], current == a))
 
 
 func _tb(act: String, icon: String, text: String, on: bool, primary := false) -> Button:
@@ -770,6 +801,8 @@ func _tool_action(a: String) -> void:
 			render_toolbar()
 		"objects":
 			open_sheet("objects")
+		"effects":
+			open_sheet("effects")
 		"place", "break", "pick":
 			t.mode = a
 			render_toolbar()
@@ -1210,7 +1243,7 @@ func toggle_timeline() -> void:
 
 func play_script() -> void:
 	if not studio.has_script():
-		toast("Add a few lines to the script first.")
+		toast("Add a few moments to the story first (Story).")
 		return
 	close_sheet()
 	studio.play_scene(true)

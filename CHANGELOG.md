@@ -60,6 +60,18 @@ Imported characters also get:
 - **Spring bones**: hair, skirts, coats, sleeves, tails and ribbons sway and trail, found from bone names (VRoid `J_Sec_*`, hair, skirt ...) or, on rigs with meaningless names, from chains hanging off the head or torso.
 - **Feelings**: joy, anger, sorrow and surprise from the model's own face shapes (VRM, VRoid, MMD and game exports), plus blinking and mouth shapes while talking.
 
+### Living scenes
+
+| What | How |
+|---|---|
+| Behaviours | Stand, wander, chat (pairs), hang out (circles of 2–5), dance (8 styles), wave, sit, follow, chase, run away, gather, patrol, sleep, celebrate, laugh, cry, point, fight, hold a pose |
+| Reactions | Within 8 m of a hit, a panic or a celebration: friends defend or join in, rivals laugh, the scared run, others look, gasp or point. Monsters on the hunt send people running. On by default; Settings → This scene turns them off |
+| Feelings | Friend, rival or scared of, per pair (both ways for friends and rivals by default) |
+| Poses | 14 built-in poses, a pose editor (10 joints, crouch, mirror) and a pose library shared by every scene (`user://assets/poses.json`) |
+| Effects | Campfire (flames, embers, smoke, firelight), magic sparkles, smoke, dust; every style; replay exactly |
+
+All of it is deterministic: a take, a scrub and an export play out the same.
+
 ### Sound
 
 Every built-in sound is made in code when the app starts (nothing is
@@ -123,11 +135,31 @@ Opening files: drop a scene file (`.json`) on the window to open it; inside a sc
 
 ## [Unreleased]
 
-## [0.20.0] - 2026-11-12
-
-Phone polish, from testing on an Adreno 610 phone (Android 16) and a 120 Hz OnePlus.
+Living scenes: characters that hang out, react and have feelings about each other, a pose library, and campfires, sparkles, smoke and dust.
 
 ### Added
+- **Hang out** (a new behaviour): characters set to it form small circles of two to five with whoever is nearby, stand round facing the middle, take turns to talk while the others watch the speaker, and laugh now and then. Friends end up in the same circle; rivals never do. Circles form round obstacles (a well, a wall) without anyone getting stuck.
+- **Reactions to what happens nearby** (within 8 m): when someone is hit, a friend of theirs comes to stand up for them and fights the attacker, a rival laughs, someone scared of the attacker (or anyone, if it's a monster) runs, and everyone else turns to look, gasps or points. Someone running off in a panic makes the others look and sometimes run too, and friends join in when someone starts celebrating (a story moment). Afterwards everyone goes back to what they were doing. A scene setting turns reactions off (Settings → This scene); scripted walks and held poses are never interrupted.
+- **Feelings: friends, rivals and fears** (character → Friends, rivals and fears): friends wave and say hello when they meet, stand together and stand up for each other; rivals glare (with an angry face on imported characters), mutter, won't hang out together, and are the first ones a fighter goes for; a character scared of someone runs away when they come close. Friends and rivals are set both ways by default. Feelings follow a renamed character and are saved with the scene.
+- **Running from monsters**: people run from monsters that are chasing or fighting when they come within 4 m, and Run away now runs from any monster that's awake (and from anyone they're scared of), not only from the player and chasers.
+- **Hold a pose** (a new behaviour) and **the pose library**: 14 built-in poses (hands on hips, arms crossed, thinking, salute, shrug, bow, kneel, victory fist, both arms up, surprised, cowering, looking far, hands together, hero stance). **Shape a pose** opens a pose editor: pick a joint (head, body, arms, elbows, legs, knees), drag the sliders, crouch or lift, mirror, and save it by name to use on any character in any scene. Imported characters bend elbows and knees; built-in characters show arms, legs, body and head; Pixel 2D characters show the nearest picture they have. In director mode a pose is a 5 s story moment, and a Pose story cue can hold any pose for a while. Reactions use the same poses (surprised, cowering).
+- **Effects** (Add → Effects), in every style: **Campfire** (flames, embers and smoke, with flickering firelight in the 3D styles), **Magic sparkles**, **Smoke** and **Dust in the air**, placed and removed with the usual build bar. They're particles worked out from the scene clock in the shader, so every take, scrub and resumed export looks exactly the same. In Pixel 2D they snap to the art's pixels. Characters step out of a fire instead of standing in it ("Ouch, hot!"), wanderers keep away, and **Gather** now gathers round the nearest campfire (placed, or the world's own) instead of round the player when there is one.
+
+### Fixed
+- **Imported characters got stuck talking**: after saying any line (chatter, a reaction, a greeting) they kept the talking pose (right hand out, mouth open) for good, so dance, wave, sit, celebrate, laugh, cry and point stopped showing. Talking now ends when the line does, as it does for built-in characters.
+- **Imported characters floated when sitting or sleeping** (seen on two VRoid-style models: the seat about 0.45 m up, sleepers lying on air). Sitting and lying used a fixed drop for every rig; the body is now measured after posing and rested on the ground by its hips (sitting) or its back (lying). Hair, skirt and tail bones are left out, so long hair doesn't lift anyone.
+
+### Changed
+- The campfires already in the anime and low-poly worlds burn with the new flames, embers and smoke instead of two flickering cones.
+- Scene files are now version 6 (effects, feelings and poses); older scenes open as before.
+- Effects share one particle buffer and material per kind, so another campfire adds no new GPU resources, and their shaders compile at startup instead of stalling the first scene that has a campfire (the first anime scene after an update took up to 20 s on an Intel UHD 620 while shaders compiled). Firelight from placed campfires casts no shadows (an omni shadow renders the scene six more times).
+
+## [0.20.0] - 2026-11-12
+
+Phone polish, from testing on an Adreno 610 phone (Android 16) and a 120 Hz OnePlus, and a simpler interface.
+
+### Added
+- **One build bar in every world.** Blocks, tiles, buildings and objects all use the same bar: what you're placing (tap to choose another), then **Add**, **Remove** and **Copy** where it applies, then Done, with the same words and icons everywhere (they were Place / Paint, Break / Erase / Delete and Pick, and 3D objects could only be removed by selecting them first). 3D objects get a Remove mode, and blocky buildings and trees can be removed whole with one tap (the ground stays).
 - **Settings on the home screen** (gear in the header): how new scenes start (sound, characters chatting on their own, speaking up when hit; all quiet by default except speaking up), the studio buttons (Full, or Compact: one Menu button that opens the row, with a narrow ‹ to fold it), quality, frame rate, interface size and other device options, and an ekaai.tech footer. On a desktop the page is a centred column, not stretched across the window.
 - **Twin-stick touch controls**: walk with the left thumb and look around with the right at the same time (a second finger used to cancel the walk and start a pinch). Two fingers away from the joystick still pinch to zoom.
 - **An attack button** (sword) beside Jump on touch screens, doing what a left click does. The touch buttons show only in a scene, hide while a panel is open, and Jump is left out in the 2D top view (nothing to jump onto).
@@ -138,6 +170,8 @@ Phone polish, from testing on an Adreno 610 phone (Android 16) and a 120 Hz OneP
 - **The timeline scrolls smoothly by touch**, with the close button in its top-right corner: drag the names (or drag up and down over the lanes) to move through the characters; a thin bar shows where you are. Tapping a name still selects it.
 
 ### Changed
+- **Every studio page does one job and says so** in a line at its top. **Script is now Story** (what happens, and when) and **Film is now Export** (make a video of the whole scene: shots, video shape and size, subtitles, then Export). The frame shape is set only in Export (it was in Camera too); Record a take and Screenshot left the page (they're the red Record button and the top picture button); the take countdown and restarting the shot moved to Camera.
+- **Shorter pages**: rarely used options are behind a **More options** fold that remembers whether it's open: the camera lens and live-take options, time of day and fog, the tune list and volumes, frame rate, background and subtitle looks, and in Settings the frame rate, interface size, keys and About. Settings starts with this scene's options.
 - **Phones: the home screen is upright and scenes are landscape** (either way round); tablets turn freely on the home screen. The home screen and the studio keep clear of the status bar, notch and gesture bar.
 - **Phone home screen:** a smaller title, two scenes to a row, and "Your work" set apart from the four styles. The "⋯" menu on a scene or recording opens a full-width sheet along the bottom with big rows (desktop keeps the small menu).
 - **Scrolling on touch screens starts anywhere**, also on cards and buttons (it used to work only on the gaps between them); a flick keeps it gliding, and the card under the finger doesn't open.
@@ -146,6 +180,7 @@ Phone polish, from testing on an Adreno 610 phone (Android 16) and a 120 Hz OneP
 - **Faster saving after a recording.** The soundtrack is mixed while the recording runs (a third of a second at a time) instead of all at the end, x264 uses the veryfast preset (CRF 18) so it keeps up with rendering instead of catching up after Stop, and on Android the copy into the gallery happens in the background.
 - **New scenes start quiet**: no music and no sound effects, with ambience on Auto; the countdown beeps are off by default too. Saved scenes keep their own sound settings.
 - **Subtitles only for nearby speakers**: lines are burned in when the main character or someone within 6 m (6 tiles) of them says them.
+- **Cover art on the home screen's style cards** (Blocky, Anime fantasy, Pixel 2D, Low-poly), 1024 px WebP (about 0.8 MB in the app instead of 6 MB of PNG), cropped around each picture's character so it stays in view on a phone's nearly square cards.
 - **Home screen style cards** are all the same shape (the description always takes two lines' room), with a ground shade under the character and a 3D / 2D tag.
 - Toggle switches are drawn at the interface scale, as tall as their text, and long toggle labels wrap instead of widening the panel.
 - The settings button closes settings when tapped again, like the dock's buttons.

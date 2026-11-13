@@ -95,6 +95,39 @@ func set_b(x: int, y: int, z: int, v: int) -> void:
 	_mark(x, z)
 
 
+## Natural ground: what the world generator lays down. Everything else
+## (bricks, planks, logs, leaves, glass...) belongs to a building or tree.
+const GROUND_KEYS := ["grass", "dirt", "stone", "sand", "sandstone", "snow", "ice", "water", "path", "gravel", "bedrock", "clay"]
+
+
+## Removes the building or tree that block (x, y, z) is part of: every
+## connected block that isn't natural ground. Returns how many went.
+func clear_structure(x: int, y: int, z: int) -> int:
+	var ground := {}
+	for k in GROUND_KEYS:
+		var gid := _id(k)
+		if gid != 0:
+			ground[gid] = true
+	var part := func(cx: int, cy: int, cz: int) -> bool:
+		var v := get_b(cx, cy, cz)
+		return v != 0 and not ground.has(v)
+	if not part.call(x, y, z):
+		return 0
+	var todo: Array[Vector3i] = [Vector3i(x, y, z)]
+	var seen := {Vector3i(x, y, z): true}
+	var n := 0
+	while not todo.is_empty() and n < 6000:
+		var c: Vector3i = todo.pop_back()
+		set_b(c.x, c.y, c.z, 0)
+		n += 1
+		for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var nb: Vector3i = c + d
+			if not seen.has(nb) and part.call(nb.x, nb.y, nb.z):
+				seen[nb] = true
+				todo.append(nb)
+	return n
+
+
 func _set_raw(x: int, y: int, z: int, v: int) -> void:
 	if inside(x, y, z):
 		data[idx(x, y, z)] = v

@@ -207,7 +207,7 @@ static func sheet_for(cfg: Dictionary, top := false) -> ImageTexture:
 
 ## Actions shown facing the viewer in top view. Fighting isn't one: a
 ## fighter faces who they're fighting.
-const FACE_VIEWER := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point"]
+const FACE_VIEWER := ["dance", "wave", "sit", "sleep", "celebrate", "laugh", "cry", "point", "pose"]
 
 
 ## What the character is doing, as a frame name ("walk2", "dance0"...), plus
@@ -239,7 +239,7 @@ static func state_frame(a: Actor, sp: float) -> Array:
 	elif a.speak_t > 0.0:
 		name = "talk0" if fmod(t, 0.36) < 0.18 else "talk1"
 	else:
-		match a.behavior:
+		match a.shown():
 			"dance":
 				var dd := dance_frame(a.dance_style, t)
 				name = dd[0]
@@ -261,6 +261,8 @@ static func state_frame(a: Actor, sp: float) -> Array:
 				name = "point"
 			"fight":
 				name = "guard"
+			"pose":
+				name = Poses.sprite_frame(a.shown_pose())
 	if m.get("float", false):
 		lift += 0.35 + sin(t * 2.6) * 0.08
 	return [name, lift]
@@ -314,7 +316,7 @@ static func facing(a: Actor, sp: float) -> Array:
 	var d := Vector2(sin(a.yaw), cos(a.yaw))
 	if sp > 0.2:
 		d = Vector2(a.vel.x, a.vel.z).normalized()
-	elif a.behavior in FACE_VIEWER and a.speak_t <= 0.0 and a.attack_t <= 0.0 and a.hurt_t <= 0.0:
+	elif a.shown() in FACE_VIEWER and a.speak_t <= 0.0 and a.attack_t <= 0.0 and a.hurt_t <= 0.0:
 		return ["front", false]
 	if absf(d.x) > absf(d.y) * 1.1:
 		return ["side", d.x < 0.0]

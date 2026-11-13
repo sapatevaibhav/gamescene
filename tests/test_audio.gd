@@ -335,7 +335,7 @@ func _save(st: Studio) -> void:
 	App.settings["music"] = "tune:meadow"
 	App.settings["sub_style"] = "cinema"
 	var d := st.serialize()
-	ok(int(d["v"]) == 5 and (d["audio"] as Array).size() == 1 and d["settings"]["music"] == "tune:meadow", "saves keep sound clips and settings")
+	ok(int(d["v"]) == App.SCHEMA_VERSION and (d["audio"] as Array).size() == 1 and d["settings"]["music"] == "tune:meadow", "saves keep sound clips and settings")
 	App.settings["music"] = "tune:chase"
 	st.load_data(JSON.parse_string(JSON.stringify(d)))
 	ok(st.audio.size() == 1 and str(st.audio[0]["src"]) == "tune:chase" and App.settings["music"] == "tune:meadow" and App.settings["sub_style"] == "cinema", "and load them back")

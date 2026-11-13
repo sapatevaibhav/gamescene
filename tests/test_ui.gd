@@ -12,7 +12,7 @@ func _ready() -> void:
 		await m._new_scene(style)
 		var hud: Hud = m.hud
 		var a: Actor = m.studio.actors[1]
-		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null], ["imports", null], ["sound", null], ["sounds", null], ["anims", a.id]]
+		var views := [["add", null], ["addChar", null], ["cast", null], ["actor", a.id], ["feelings", a.id], ["pose", a.id], ["actor", a.id], ["effects", null], ["script", null], ["mood", null], ["film", null], ["shot", 0], ["settings", null], ["imports", null], ["sound", null], ["sounds", null], ["anims", a.id]]
 		if m.studio.world.is_voxel:
 			views += [["blocks", null], ["maker", null], ["prefabs", null]]
 		elif m.studio.is_flat():
@@ -32,7 +32,7 @@ func _ready() -> void:
 		m.studio.camera.set_mode("cine")
 		hud.open_sheet("camera")
 		await get_tree().process_frame
-		for t in ["blocks", "prefab", "objects", "terrain", "move_actor", "tiles", "pprefab"]:
+		for t in ["blocks", "prefab", "objects", "terrain", "move_actor", "tiles", "pprefab", "effects"]:
 			m.studio.tools.set_tool(t)
 			await get_tree().process_frame
 		m.studio.tools.set_tool("")

@@ -26,6 +26,8 @@ const GRAY_800 := Color("212939")
 const GRAY_900 := Color("171E2B")
 const GRAY_950 := Color("10151F")
 const DANGER := Color("E5484D")
+## The purple of the play button in the logo.
+const BRAND_PURPLE := Color("9666EF")
 
 # Semantic aliases used by the widgets (all built from the tokens above).
 const BG := GRAY_900
@@ -354,6 +356,36 @@ static func btn(text: String, cb: Callable, primary := false, icon := "") -> But
 	style_button(b, "primary" if primary else "neutral")
 	b.pressed.connect(cb)
 	return b
+
+
+## A wide button draws its icon at the far left and its text in the
+## middle; this puts the two together in the middle instead.
+static func center_content(b: Button) -> void:
+	if b.icon == null or b.text == "" or b.has_meta("centred"):
+		return
+	var row := hbox(8)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic := TextureRect.new()
+	ic.texture = b.icon
+	ic.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(ic)
+	var l := Label.new()
+	l.text = b.text
+	l.add_theme_font_override("font", b.get_theme_font("font"))
+	l.add_theme_font_size_override("font_size", b.get_theme_font_size("font_size"))
+	l.add_theme_color_override("font_color", b.get_theme_color("font_color"))
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(l)
+	var h := maxf(b.custom_minimum_size.y, b.get_combined_minimum_size().y)
+	b.set_meta("centred", true)
+	b.text = ""
+	b.icon = null
+	b.custom_minimum_size.y = h
+	b.add_child(row)
 
 
 static func danger(text: String, cb: Callable) -> Button:

@@ -21,7 +21,9 @@ var actor_id := 0
 var tile := 1
 var pprefab := "cottage"
 var flip := false
-## Objects/buildings tool: "place" or "erase".
+## Effect to place (effects tool): a SceneFx kind.
+var effect := "fire"
+## Objects / buildings tools (every world): "place" (Add) or "erase" (Remove).
 var obj_mode := "place"
 var _last_tile := Vector2i(-1, -1)
 var _paint_button := MOUSE_BUTTON_LEFT
@@ -73,7 +75,7 @@ func set_tool(k: String, opts := {}) -> void:
 		k = ""
 	for key in opts:
 		set(key, opts[key])
-	if opts.has("pprefab") and not opts.has("obj_mode"):
+	if (opts.has("pprefab") or opts.has("prefab") or opts.has("prop") or opts.has("effect")) and not opts.has("obj_mode"):
 		# Picking something to place switches back to placing.
 		obj_mode = "place"
 	# Keep the picked tile / building valid for this kind of world.
@@ -175,6 +177,16 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 			var hit: Dictionary = w.ray(o, d, 60.0)
 			if hit.is_empty():
 				return -1
+			if kind == "prefab" and (obj_mode == "erase" or button == MOUSE_BUTTON_RIGHT):
+				# Remove: the whole building or tree under the pointer.
+				if hit.get("floor", false):
+					return -1
+				studio.checkpoint()
+				if w.clear_structure(hit["x"], hit["y"], hit["z"]) == 0:
+					App.toast("That’s the ground. Tap a building or tree.")
+					return -1
+				studio.mark_dirty()
+				return -1
 			if kind == "prefab":
 				studio.checkpoint()
 				w.stamp_prefab(prefab, hit["x"], 0 if hit.get("floor", false) else hit["y"] + 1, hit["z"], rot)
@@ -213,6 +225,14 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 				return -1
 			var p = hit.get("prop")
 			var pt: Vector3 = hit["point"]
+			if obj_mode == "erase" or button == MOUSE_BUTTON_RIGHT:
+				# Remove: the object under the pointer.
+				if p is Dictionary:
+					sel = p
+					delete_sel()
+				else:
+					App.toast("Tap an object to remove it.")
+				return -1
 			if p is Dictionary and not moving:
 				sel = p
 				_update_ring()
@@ -241,6 +261,29 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 				_unstick_actors()
 				studio.atmo.register_lights(w)
 				studio.mark_dirty()
+			return -1
+		"effects":
+			var hit: Dictionary = w.pick(o, d, 200.0)
+			if hit.is_empty() or not hit.has("point"):
+				return -1
+			var pt: Vector3 = hit["point"]
+			if obj_mode == "erase" or button == MOUSE_BUTTON_RIGHT:
+				var i := studio.fx.index_near(pt, 1.8)
+				if i < 0:
+					App.toast("Tap an effect to remove it.")
+					return -1
+				studio.checkpoint()
+				studio.fx.remove_at(i)
+				studio.mark_dirty()
+				return -1
+			var size := float(Styles.SIZE)
+			if pt.x < 0.5 or pt.z < 0.5 or pt.x > size - 0.5 or pt.z > size - 0.5:
+				return -1
+			studio.checkpoint()
+			if not studio.is_flat() and (not w.is_voxel or int(hit.get("ny", 1)) != 1):
+				pt.y = w.ground_at(pt.x, pt.z)
+			studio.fx.add(effect, pt)
+			studio.mark_dirty()
 			return -1
 		"move_actor":
 			var hit: Dictionary = w.pick(o, d, 120.0)

@@ -27,6 +27,57 @@ func render(name: String, arg: Variant, b: VBoxContainer) -> String:
 
 # ---------------------------------------------------------------- helpers
 
+## The first line of a page: what this page is for, in plain words.
+func _purpose(b: Control, text: String) -> void:
+	var l := UIK.para(text, 14, UIK.GRAY_200)
+	b.add_child(l)
+
+
+## Which "More options" folds are open (by page), so they stay as you left them.
+var _folds := {}
+
+
+## A "More options" fold: rarely used settings, hidden until asked for.
+## Returns the box to put them in (empty and hidden while folded).
+func _fold(b: Control, key: String, title := "More options", icon := "") -> VBoxContainer:
+	var open: bool = _folds.get(key, false)
+	# Its own colour, so it reads as "there's more here", not as an action.
+	var t := Button.new()
+	t.focus_mode = Control.FOCUS_NONE
+	t.custom_minimum_size.y = UIK.px(44)
+	var sb := UIK.box(Color(UIK.SECONDARY_500, 0.16), 12, Color(UIK.SECONDARY_300, 0.55), 1)
+	var sh := UIK.box(Color(UIK.SECONDARY_500, 0.28), 12, UIK.SECONDARY_300, 1)
+	t.add_theme_stylebox_override("normal", sb)
+	t.add_theme_stylebox_override("hover", sh)
+	t.add_theme_stylebox_override("pressed", sh)
+	t.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	var row := UIK.hbox(8)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for ic in ([icon] if icon != "" else []) + ["__text", "up" if open else "down"]:
+		if ic == "__text":
+			var l := UIK.label(title, 14, UIK.SECONDARY_100, true)
+			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(l)
+			continue
+		var tr := TextureRect.new()
+		tr.texture = Icons.tex(ic, UIK.px(18), UIK.SECONDARY_100)
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(tr)
+	t.add_child(row)
+	t.pressed.connect(func():
+		_folds[key] = not _folds.get(key, false)
+		_rerender())
+	b.add_child(UIK.spacer(4))
+	b.add_child(t)
+	var box := UIK.vbox(10)
+	box.visible = open
+	b.add_child(box)
+	return box
+
+
 func _section(b: Control, text: String) -> void:
 	b.add_child(UIK.spacer(4))
 	b.add_child(UIK.label(text, 13, UIK.MUTED, true))
@@ -78,6 +129,7 @@ func _rerender() -> void:
 # ---------------------------------------------------------------- add
 
 func v_add(_a, b: VBoxContainer) -> String:
+	_purpose(b, "Put things into your scene.")
 	var items := [["person", "Character", "People, monsters, animals", func(): hud.push_view("addChar")]]
 	if studio.world.is_voxel:
 		items.append(["cube", "Blocks", "Place and break", func(): hud.push_view("blocks")])
@@ -91,6 +143,7 @@ func v_add(_a, b: VBoxContainer) -> String:
 	else:
 		items.append(["tree", "Objects", "Trees, houses, props", func(): hud.push_view("objects")])
 		items.append(["hill", "Ground", "Raise hills, dig valleys", func(): studio.tools.set_tool("terrain"); hud.close_sheet()])
+	items.append(["fire", "Effects", "Campfires, sparkles, smoke, dust", func(): hud.push_view("effects")])
 	if AssetTags.can_import_sprites(studio.style_key):
 		items.append(["upload", "Sprite", "Import .png or .ase", func(): _import_sprite("char")])
 	elif AssetTags.can_import_models(studio.style_key):
@@ -98,8 +151,26 @@ func v_add(_a, b: VBoxContainer) -> String:
 	else:
 		items.append(["upload", "Skin", "Upload a 64×64 character PNG", func(): _upload_skin()])
 	_tiles(b, items)
-	b.add_child(UIK.para("Tip: tap a character in the scene to direct them. Press B for the build tool.", 12))
+	b.add_child(UIK.para("Every building tool has the same bar: Add, Remove and Copy." + ("" if App.is_touch else " Press B to open it."), 12))
 	return "Add"
+
+
+func v_effects(_a, b: VBoxContainer) -> String:
+	_purpose(b, "Fire, magic and air you can place anywhere. They move with the scene clock, so every take and video looks the same.")
+	var f := _picks(b)
+	for k in SceneFx.ORDER:
+		var kd: Dictionary = SceneFx.KINDS[k]
+		f.add_child(UIK.pick(Icons.tex(str(kd["icon"]), 48, UIK.TAPE), str(kd["name"]), studio.tools.kind == "effects" and studio.tools.effect == k, func():
+			studio.tools.set_tool("effects", {"effect": k})
+			hud.close_sheet(), false, 74))
+	b.add_child(UIK.para("Campfires light up the night, keep characters from walking into them, and anyone set to Gather sits round the nearest one.", 12))
+	if not studio.fx.items.is_empty():
+		b.add_child(UIK.danger("Remove all effects (%d)" % studio.fx.items.size(), func():
+			studio.checkpoint()
+			studio.fx.clear()
+			studio.mark_dirty()
+			_rerender()))
+	return "Effects"
 
 
 func v_addChar(_a, b: VBoxContainer) -> String:
@@ -556,6 +627,7 @@ func import_props(paths: PackedStringArray) -> void:
 # ---------------------------------------------------------------- cast
 
 func v_cast(_a, b: VBoxContainer) -> String:
+	_purpose(b, "Who’s in the scene and what each one does. Tap someone to change them.")
 	# Grid of face portraits with name and current action underneath.
 	var g := UIK.grid(3, 8)
 	for a in studio.actors:
@@ -638,7 +710,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	var directing := studio.directing()
 	if directing:
 		_section(b, "What they do from %s" % TimelinePanel._fmt(studio.play_t))
-		b.add_child(UIK.para("Director mode: picking an action adds a 5 s cue to the script at the playhead. Drag its edge in the timeline to change how long it lasts.", 12))
+		b.add_child(UIK.para("Director mode: picking an action adds a 5 s moment to the story at the playhead. Drag its edge in the timeline to change how long it lasts.", 12))
 	elif a != studio.player:
 		_section(b, "What they do")
 	if directing or a != studio.player:
@@ -666,6 +738,15 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 				_rerender()))
 		b.add_child(dg)
 		b.add_child(UIK.para("Mix changes style every few seconds; any other style loops.", 12))
+	if a != studio.player and (a.base_behavior == "pose" or a.behavior == "pose"):
+		_section(b, "Pose")
+		b.add_child(_pose_chips(a))
+		if not directing:
+			b.add_child(UIK.btn("Shape a pose", func(): hud.push_view("pose", a.id), false, "pose"))
+	if a != studio.player:
+		_section(b, "Feelings")
+		b.add_child(UIK.para(_feelings_text(a), 12))
+		b.add_child(UIK.btn("Friends, rivals and fears", func(): hud.push_view("feelings", a.id), false, "heart"))
 	if a != studio.player:
 		b.add_child(UIK.toggle("Notice the player (turn to look)", a.notice, func(on: bool): a.notice = on; studio.mark_dirty()))
 		b.add_child(UIK.toggle("Chat while doing a task", a.chat_busy, func(on: bool): a.chat_busy = on; studio.mark_dirty()))
@@ -728,24 +809,218 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	return a.name
 
 
+# ---------------------------------------------------------------- poses
+
+var _pose_joint := "upperArmR"
+var _pose_name := ""
+
+
+## Built-in and saved poses as chips; picking one makes them hold it (in
+## director mode, from the playhead for 5 s).
+func _pose_chips(a: Actor) -> Control:
+	var f := UIK.flow()
+	var cur := a.pose
+	var all: Array = Poses.BUILTIN_ORDER.map(func(k): return Poses.builtin(k))
+	all.append_array(Poses.library())
+	for p in all:
+		var on: bool = (p.has("key") and str(cur.get("key", "")) == str(p["key"])) or (not p.has("key") and not cur.has("key") and str(cur.get("name", "")) == str(p["name"]))
+		f.add_child(UIK.chip(str(p["name"]), on, func(): _apply_pose(a, p)))
+	return f
+
+
+func _apply_pose(a: Actor, p: Dictionary) -> void:
+	if studio.directing():
+		studio.direct_action(a, "pose", 5.0, p)
+		hud.toast("%s: %s from %s" % [a.name, p["name"], TimelinePanel._fmt(studio.play_t)])
+	else:
+		a.pose = p.duplicate(true)
+		a.base_pose = a.pose
+		if a.base_behavior != "pose":
+			a.set_behavior("pose")
+			studio.capture_start()
+	studio.mark_dirty()
+	_rerender()
+
+
+func _feelings_text(a: Actor) -> String:
+	var parts := []
+	for kind in [["friend", "Friends with"], ["rival", "Rivals with"], ["scared", "Scared of"]]:
+		var names := []
+		for n in a.rel:
+			if a.rel[n] == kind[0] and studio.actor_by_name(n) != null:
+				names.append(n)
+		if not names.is_empty():
+			parts.append("%s %s" % [kind[1], ", ".join(PackedStringArray(names))])
+	return ("; ".join(PackedStringArray(parts)) + ".") if not parts.is_empty() else "No feelings about anyone yet: they treat everyone the same."
+
+
+var _rel_both := true
+
+
+## Friends, rivals and fears: how this character feels about everyone else.
+func v_feelings(id: Variant, b: VBoxContainer) -> String:
+	var a := studio.actor_by_id(int(id))
+	if a == null:
+		return ""
+	_purpose(b, "How %s feels about the others. Friends greet each other, hang out together and stand up for each other. Rivals glare, mutter and pick fights. Scared ones run away." % a.name)
+	b.add_child(UIK.toggle("Friends and rivals both ways", _rel_both, func(on: bool): _rel_both = on))
+	for o in studio.actors:
+		if o == a:
+			continue
+		var row := UIK.hbox(6)
+		var nl := UIK.label(o.name + (" (you)" if o == studio.player else ""), 14, UIK.INK, true)
+		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nl.clip_text = true
+		nl.custom_minimum_size.x = UIK.px(70)
+		row.add_child(nl)
+		for fk in Actor.FEELINGS:
+			if fk[0] == "":
+				continue
+			var on: bool = a.rel.get(o.name, "") == fk[0]
+			row.add_child(UIK.chip(fk[1], on, func():
+				var v: String = "" if on else fk[0]
+				_set_feeling(a, o, v)
+				if _rel_both and fk[0] != "scared" and o != studio.player:
+					_set_feeling(o, a, v)
+				studio.mark_dirty()
+				_rerender()))
+		b.add_child(row)
+	return "%s’s feelings" % a.name
+
+
+func _set_feeling(a: Actor, o: Actor, v: String) -> void:
+	if v == "":
+		a.rel.erase(o.name)
+	else:
+		a.rel[o.name] = v
+
+
+const POSE_AXES := {"head": ["Turn", "Nod"], "spine": ["Lean forward", "Lean sideways"], "upperArm": ["Raise (forward)", "Out to the side"],
+	"lowerArm": ["Bend", ""], "upperLeg": ["Raise (forward)", "Out to the side"], "lowerLeg": ["Bend", ""]}
+
+
+## The pose editor: pick a joint, set its angles, save to the library.
+func v_pose(id: Variant, b: VBoxContainer) -> String:
+	var a := studio.actor_by_id(int(id))
+	if a == null:
+		return ""
+	if a.base_behavior != "pose":
+		a.set_behavior("pose")
+		studio.capture_start()
+	_purpose(b, "Start from a pose, then pick a joint and drag the sliders. Save it to use on anyone, in any scene.")
+	b.add_child(_pose_chips(a))
+	_section(b, "Joint")
+	var jf := UIK.flow()
+	for j in Poses.JOINTS:
+		jf.add_child(UIK.chip(Poses.JOINT_NAMES[j], _pose_joint == j, func(): _pose_joint = j; _rerender()))
+	b.add_child(jf)
+	var j := _pose_joint
+	var base_j: String = j.rstrip("LR") if j.begins_with("upper") or j.begins_with("lower") else j
+	var axes: Array = POSE_AXES.get(base_j, ["Angle", ""])
+	var rng: Array = Poses.RANGES[j]
+	var cur := Poses.joint(a.pose, j)
+	var deg := func(x: float) -> String: return "%d°" % roundi(rad_to_deg(x))
+	var edit := func(axis: int, x: float) -> void:
+		var p := a.pose.duplicate(true)
+		p.erase("key")
+		var v := Poses.joint(p, j)
+		if axis == 0:
+			v.x = x
+		else:
+			v.y = x
+		Poses.set_joint(p, j, v)
+		if not str(p.get("name", "")).ends_with("*") and p.has("name"):
+			p["name"] = str(p["name"]) + "*"
+		a.pose = p
+		a.base_pose = p
+		studio.mark_dirty()
+	# Forward is negative in the pose; show raising as positive.
+	var flip_x: bool = j.begins_with("upper") or j.begins_with("lowerArm") or j == "head"
+	b.add_child(UIK.slider(axes[0], -cur.x if flip_x else cur.x, -rng[0][1] if flip_x else rng[0][0], -rng[0][0] if flip_x else rng[0][1], 0.02,
+		func(x: float): edit.call(0, -x if flip_x else x), deg))
+	if axes[1] != "":
+		b.add_child(UIK.slider(axes[1], cur.y, rng[1][0], rng[1][1], 0.02, func(x: float): edit.call(1, x), deg))
+	b.add_child(UIK.slider("Crouch or lift", float(a.pose.get("lift", 0.0)), -0.3, 0.1, 0.01, func(x: float):
+		var p := a.pose.duplicate(true)
+		p.erase("key")
+		p.erase("sprite")
+		p["lift"] = snappedf(x, 0.01)
+		a.pose = p
+		a.base_pose = p
+		studio.mark_dirty(), func(x: float): return "%d%%" % roundi(x * 100)))
+	var r := UIK.flow(8)
+	r.add_child(UIK.btn("Mirror", func():
+		a.pose = Poses.mirrored(a.pose)
+		a.pose.erase("key")
+		a.base_pose = a.pose
+		studio.mark_dirty()
+		_rerender(), false, "shuffle"))
+	r.add_child(UIK.btn("Stand straight", func():
+		a.pose = {"name": "Standing"}
+		a.base_pose = a.pose
+		studio.mark_dirty()
+		_rerender(), false, "stand"))
+	b.add_child(r)
+	_section(b, "Pose library")
+	if _pose_name == "":
+		_pose_name = str(a.pose.get("name", "")).trim_suffix("*")
+	var row := UIK.hbox(6)
+	var le := UIK.line_edit(_pose_name, "Name this pose", func(t: String): _pose_name = t)
+	le.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(le)
+	row.add_child(UIK.btn("Save", func():
+		var n := _pose_name.strip_edges()
+		if n == "":
+			hud.toast("Give the pose a name first.")
+			return
+		var p := a.pose.duplicate(true)
+		p.erase("key")
+		if Poses.save_pose(n, p):
+			p["name"] = n.left(32)
+			a.pose = p
+			a.base_pose = p
+			studio.mark_dirty()
+			hud.toast("Saved “%s” to your poses." % n)
+		else:
+			hud.toast("Couldn’t save the pose.")
+		_rerender(), true, "save"))
+	b.add_child(row)
+	var lib := Poses.library()
+	if lib.is_empty():
+		b.add_child(UIK.para("Saved poses show up for every character, in every scene and style.", 12))
+	else:
+		for p in lib:
+			var lr := UIK.hbox(6)
+			var nl := UIK.label(str(p["name"]), 14)
+			nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			lr.add_child(nl)
+			lr.add_child(UIK.icon_btn("trash", func():
+				Poses.delete_pose(str(p["name"]))
+				_rerender(), "Delete pose", 36, false))
+			b.add_child(lr)
+	if a.rig.get("kind", "") == "sprite":
+		b.add_child(UIK.para("Pixel 2D characters show the nearest picture they have (arms up, pointing, crouching, sitting).", 12))
+	elif a.rig.get("kind", "") != "model":
+		b.add_child(UIK.para("Built-in characters have no elbows or knees, so those joints only show on imported 3D characters.", 12))
+	return "Pose"
+
+
 # ---------------------------------------------------------------- script (timeline cues)
 
-const CUE_ACTIONS := [["say", "Say"], ["walkto", "Walk to"], ["runto", "Run to"], ["idle", "Stand"], ["wander", "Wander"], ["talk", "Chat"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"], ["follow", "Follow"], ["flee", "Run away"], ["gather", "Gather"], ["sleep", "Sleep"], ["celebrate", "Celebrate"], ["laugh", "Laugh"], ["cry", "Cry"], ["point", "Point"], ["fight", "Fight"]]
+const CUE_ACTIONS := [["say", "Say"], ["walkto", "Walk to"], ["runto", "Run to"], ["idle", "Stand"], ["wander", "Wander"], ["talk", "Chat"], ["group", "Hang out"], ["dance", "Dance"], ["wave", "Wave"], ["sit", "Sit"], ["follow", "Follow"], ["flee", "Run away"], ["gather", "Gather"], ["sleep", "Sleep"], ["celebrate", "Celebrate"], ["laugh", "Laugh"], ["cry", "Cry"], ["point", "Point"], ["fight", "Fight"], ["pose", "Pose"]]
 
 
 func v_script(_a, b: VBoxContainer) -> String:
-	b.add_child(UIK.para("Simple mode: who does what, when. Play runs the script from the scene start; recording and film export follow it too. For keyframes and a camera track, open the timeline (T).", 13))
+	_purpose(b, "What happens, and when: who says what, who walks where. Play runs it from the start; recordings and exports follow it too.")
 	var top := UIK.flow(8)
-	top.add_child(UIK.btn("Play script", hud.play_script, true, "playtri"))
+	top.add_child(UIK.btn("Play story", hud.play_script, true, "playtri"))
 	top.add_child(UIK.btn("Timeline", hud.toggle_timeline, false, "film"))
-	top.add_child(UIK.btn("Set scene start here", func():
-		studio.capture_start()
-		studio.mark_dirty()
-		hud.toast("Everyone’s current spot is now the scene start."), false, "pin"))
 	b.add_child(top)
 	var cues := studio.cues.duplicate()
 	cues.sort_custom(func(x, y): return float(x.get("start", 0)) < float(y.get("start", 0)))
-	_section(b, "Script (%d)" % cues.size())
+	_section(b, "The story so far (%d)" % cues.size())
+	if cues.is_empty():
+		b.add_child(UIK.para("Nothing yet. Add the first moment below.", 12))
 	for c in cues:
 		var row := PanelContainer.new()
 		row.add_theme_stylebox_override("panel", UIK.box(UIK.RAISE, 14, UIK.LINE))
@@ -769,7 +1044,7 @@ func v_script(_a, b: VBoxContainer) -> String:
 			_rerender(), "Delete", 38, false))
 		row.add_child(h)
 		b.add_child(row)
-	_section(b, "Add a line to the script")
+	_section(b, "Add a moment")
 	if new_cue["actor"] == "" or studio.actor_by_name(new_cue["actor"]) == null:
 		new_cue["actor"] = studio.actors[0].name if not studio.actors.is_empty() else ""
 	b.add_child(UIK.label("Who", 13, UIK.MUTED))
@@ -788,8 +1063,15 @@ func v_script(_a, b: VBoxContainer) -> String:
 		b.add_child(UIK.para("They head to where the camera is looking when you add the line.", 12))
 	b.add_child(UIK.slider("Starts at", new_cue["start"], 0, 120, 0.5, func(x): new_cue["start"] = x, func(x): return "%.1fs" % x))
 	b.add_child(UIK.slider("Lasts", new_cue["dur"], 0.5, 30, 0.5, func(x): new_cue["dur"] = x, func(x): return "%.1fs" % x))
-	b.add_child(UIK.btn("Add to script", _add_cue, true, "plus"))
-	return "Script"
+	b.add_child(UIK.btn("Add to the story", _add_cue, true, "plus"))
+	var more := _fold(b, "story")
+	more.add_child(UIK.para("The scene start is where everyone stands when the story begins. Move people where you want them, then:", 12))
+	more.add_child(UIK.btn("Set scene start here", func():
+		studio.capture_start()
+		studio.mark_dirty()
+		hud.toast("Everyone’s current spot is now the scene start."), false, "pin"))
+	more.add_child(UIK.para("The Timeline is for exact timing: keyframes for characters and camera moves.", 12))
+	return "Story"
 
 
 func _add_cue() -> void:
@@ -818,6 +1100,7 @@ func _add_cue() -> void:
 # ---------------------------------------------------------------- camera
 
 func v_camera(_a, b: VBoxContainer) -> String:
+	_purpose(b, "How you look at the scene right now. A live take (the red Record button) films through this camera.")
 	var cam := studio.camera
 	var tiles := [["follow", "Follow", "Third person", "third"], ["eye", "First person", "Their eyes", "first"], ["film", "Cinematic", "Auto shots", "cine"], ["drone", "Free camera", "Fly anywhere", "free"]]
 	var g := UIK.grid(2, 10)
@@ -861,25 +1144,24 @@ func v_camera(_a, b: VBoxContainer) -> String:
 		b.add_child(UIK.slider("Height", cam.cine["height"], 0, 14, 0.2, func(x): cam.cine["height"] = x; studio.mark_dirty()))
 	elif cam.mode == "third":
 		b.add_child(UIK.slider("Distance", cam.dist, 1.5, 16, 0.5, func(x): cam.dist = x; studio.mark_dirty()))
-	_section(b, "Lens")
-	b.add_child(UIK.slider("Field of view", App.settings["fov"], 25, 110, 1, func(x): App.settings["fov"] = x; studio.mark_dirty(), func(x): return "%d°" % int(x)))
-	b.add_child(UIK.toggle("Depth of field (focus on the subject)", App.settings["dof"], func(on): App.settings["dof"] = on; studio.mark_dirty()))
-	b.add_child(UIK.toggle("Handheld shake", App.settings["shake"], func(on): App.settings["shake"] = on; studio.mark_dirty()))
-	_section(b, "Frame")
-	var fr := UIK.flow()
-	for f in [["full", "Full screen"], ["16:9", "16:9 wide"], ["9:16", "9:16 vertical"], ["1:1", "1:1 square"]]:
-		fr.add_child(UIK.chip(f[1], App.settings["frame"] == f[0], func():
-			App.settings["frame"] = f[0]
-			hud.frame_guide.queue_redraw()
-			studio.mark_dirty()
-			_rerender()))
-	b.add_child(fr)
+	var more := _fold(b, "camera")
+	more.add_child(UIK.label("Lens", 13, UIK.MUTED, true))
+	more.add_child(UIK.slider("Field of view", App.settings["fov"], 25, 110, 1, func(x): App.settings["fov"] = x; studio.mark_dirty(), func(x): return "%d°" % int(x)))
+	more.add_child(UIK.toggle("Depth of field (focus on the subject)", App.settings["dof"], func(on): App.settings["dof"] = on; studio.mark_dirty()))
+	more.add_child(UIK.toggle("Handheld shake", App.settings["shake"], func(on): App.settings["shake"] = on; studio.mark_dirty()))
+	more.add_child(UIK.label("Live takes", 13, UIK.MUTED, true))
+	var cd := UIK.flow()
+	for n in [0, 3, 5]:
+		cd.add_child(UIK.chip("No countdown" if n == 0 else "%ds countdown" % n, int(App.settings["countdown"]) == n, func(): App.settings["countdown"] = n; _rerender()))
+	more.add_child(cd)
+	more.add_child(UIK.toggle("Restart the cinematic shot when a take starts", App.settings["restart"], func(on): App.settings["restart"] = on))
 	return "Camera"
 
 
 # ---------------------------------------------------------------- mood
 
 func v_mood(_a, b: VBoxContainer) -> String:
+	_purpose(b, "Time of day, weather and sky.")
 	if studio.is_side():
 		_section(b, "Backdrop")
 		var bc := UIK.flow()
@@ -924,12 +1206,7 @@ func v_mood(_a, b: VBoxContainer) -> String:
 			_rerender())
 		g.add_child(btn)
 	b.add_child(g)
-	_section(b, "Fine tune")
-	b.add_child(UIK.slider("Time of day", App.settings["time"], 0, 24, 0.1, func(x):
-		App.settings["time"] = x
-		studio.atmo.apply()
-		studio.mark_dirty(), func(x): return "%d:%02d" % [int(x), int(fmod(x, 1.0) * 60)]))
-	b.add_child(UIK.toggle("Day and night cycle", App.settings["cycle"], func(on): App.settings["cycle"] = on; studio.mark_dirty()))
+	_section(b, "Weather")
 	var w := UIK.flow()
 	for x in [["clear", "Clear"], ["rain", "Rain & storm"], ["snow", "Snow"]]:
 		w.add_child(UIK.chip(x[1], App.settings["weather"] == x[0], func():
@@ -938,10 +1215,16 @@ func v_mood(_a, b: VBoxContainer) -> String:
 			studio.mark_dirty()
 			_rerender()))
 	b.add_child(w)
-	b.add_child(UIK.slider("View distance (fog)", App.settings["fog"], 20, 200, 1, func(x):
+	var more := _fold(b, "mood")
+	more.add_child(UIK.slider("Time of day", App.settings["time"], 0, 24, 0.1, func(x):
+		App.settings["time"] = x
+		studio.atmo.apply()
+		studio.mark_dirty(), func(x): return "%d:%02d" % [int(x), int(fmod(x, 1.0) * 60)]))
+	more.add_child(UIK.slider("View distance (fog)", App.settings["fog"], 20, 200, 1, func(x):
 		App.settings["fog"] = x
 		studio.atmo.apply()
 		studio.mark_dirty(), func(x): return "%dm" % int(x)))
+	more.add_child(UIK.toggle("Day and night cycle", App.settings["cycle"], func(on): App.settings["cycle"] = on; studio.mark_dirty()))
 	return "Mood"
 
 
@@ -971,77 +1254,73 @@ const SHOT_TYPES := [["orbit", "Orbit"], ["dolly", "Dolly"], ["crane", "Crane"],
 
 
 func v_film(_a, b: VBoxContainer) -> String:
-	var take := UIK.hbox()
-	take.add_child(UIK.btn("Record a take", hud.toggle_record, true, "clap"))
-	take.add_child(UIK.btn("Screenshot", hud.screenshot, false, "image"))
-	b.add_child(take)
-	b.add_child(UIK.para("A take records what you direct live, at a steady frame rate, without any editor controls.", 12))
-	_section(b, "Shot list (%d shots, %s)" % [studio.shots.size(), U.fmt_time(_shots_len())])
-	b.add_child(UIK.para("Export film replays the scene from its start and cuts between these shots — like a multi-camera shoot.", 12))
+	_purpose(b, "Make a video of the whole scene: it plays from the start and cuts between your shots. (To film what you do live, use the red Record button.)")
+	_section(b, "Shots (%d, %s)" % [studio.shots.size(), U.fmt_time(_shots_len())])
 	for i in studio.shots.size():
 		var s: Dictionary = studio.shots[i]
 		var row := Button.new()
 		row.focus_mode = Control.FOCUS_NONE
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		row.custom_minimum_size.y = UIK.px(52)
+		row.custom_minimum_size.y = UIK.px(48)
 		var kind := str(s.get("shot", "orbit")) if s.get("mode", "cine") == "cine" else str(s.get("mode"))
 		var tgt := str(s.get("target", ""))
-		row.text = "%d.  %s   ·  %s%s  ·  %.1fs" % [i + 1, s.get("name", "Shot"), _shot_label(kind), (" on " + tgt) if tgt != "" else "", float(s.get("dur", 4))]
-		UIK._card_states(row, false, 14)
+		row.text = "%d.  %s  ·  %s%s  ·  %.1fs" % [i + 1, s.get("name", "Shot"), _shot_label(kind), (" on " + tgt) if tgt != "" else "", float(s.get("dur", 4))]
+		UIK._card_states(row, false, 12)
 		row.pressed.connect(func(): hud.push_view("shot", i))
 		b.add_child(row)
-	var sr := UIK.flow()
-	sr.add_child(UIK.btn("Add shot", func():
+	var add_shot := UIK.btn("Add shot", func():
 		studio.shots.append({"name": "Shot %d" % (studio.shots.size() + 1), "mode": "cine", "shot": "orbit", "target": "", "dur": 4.0, "dist": 6.0, "height": 2.2})
 		studio.mark_dirty()
-		hud.push_view("shot", studio.shots.size() - 1), false, "plus"))
-	var unfinished := studio.unfinished_export()
-	sr.add_child(UIK.btn("Carry on export" if not unfinished.is_empty() else "Export film", hud.export_film_flow, true, "film"))
-	b.add_child(sr)
-	_section(b, "Output")
-	var res := UIK.flow()
-	for k in App.RES:
-		res.add_child(UIK.chip(App.RES[k]["label"], str(App.settings["res"]) == k, func(): App.settings["res"] = k; studio.mark_dirty(); _rerender()))
-	b.add_child(res)
-	var fps := UIK.flow()
-	for f in [24, 30, 60]:
-		fps.add_child(UIK.chip("%d fps" % f, int(App.settings["fps"]) == f, func(): App.settings["fps"] = f; studio.mark_dirty(); _rerender()))
-	b.add_child(fps)
+		hud.push_view("shot", studio.shots.size() - 1), false, "plus")
+	add_shot.custom_minimum_size.y = UIK.px(48)
+	b.add_child(add_shot)
+	_section(b, "Video")
 	var fr := UIK.flow()
-	for f in [["full", "Window"], ["16:9", "16:9"], ["9:16", "9:16 Shorts"], ["1:1", "1:1"]]:
+	for f in [["full", "Window"], ["16:9", "16:9 wide"], ["9:16", "9:16 Shorts"], ["1:1", "1:1 square"]]:
 		fr.add_child(UIK.chip(f[1], App.settings["frame"] == f[0], func():
 			App.settings["frame"] = f[0]
 			hud.frame_guide.queue_redraw()
 			studio.mark_dirty()
 			_rerender()))
 	b.add_child(fr)
-	_section(b, "Background")
+	var res := UIK.flow()
+	for k in App.RES:
+		res.add_child(UIK.chip(App.RES[k]["label"], str(App.settings["res"]) == k, func(): App.settings["res"] = k; studio.mark_dirty(); _rerender()))
+	b.add_child(res)
+	b.add_child(UIK.toggle("Burn in subtitles for dialogue", App.settings["subtitles"], func(on): App.settings["subtitles"] = on; studio.mark_dirty(); _rerender()))
+	var bgk := str(App.settings.get("bg", "scene"))
+	var vs := hud.get_viewport_rect().size
+	var sz := App.export_size(vs.x / vs.y)
+	var unfinished := studio.unfinished_export()
+	var go := UIK.btn("Carry on export" if not unfinished.is_empty() else "Export video", hud.export_film_flow, true, "film")
+	go.custom_minimum_size.y = UIK.px(50)
+	b.add_child(UIK.spacer(4))
+	b.add_child(go)
+	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, Recorder.kind_label(Recorder.kind_for(bgk))], 12))
+	var more := _fold(b, "export")
+	more.add_child(UIK.label("Frame rate", 13, UIK.MUTED, true))
+	var fps := UIK.flow()
+	for f in [24, 30, 60]:
+		fps.add_child(UIK.chip("%d fps" % f, int(App.settings["fps"]) == f, func(): App.settings["fps"] = f; studio.mark_dirty(); _rerender()))
+	more.add_child(fps)
+	more.add_child(UIK.label("Background", 13, UIK.MUTED, true))
 	var bgr := UIK.flow()
 	for o in Recorder.BACKGROUNDS:
-		bgr.add_child(UIK.chip(o[1], str(App.settings.get("bg", "scene")) == o[0], func():
+		bgr.add_child(UIK.chip(o[1], bgk == o[0], func():
 			App.settings["bg"] = o[0]
 			studio.mark_dirty()
 			_rerender()))
-	b.add_child(bgr)
-	var bgk := str(App.settings.get("bg", "scene"))
+	more.add_child(bgr)
 	if bgk in ["green", "blue"]:
-		b.add_child(UIK.para("The world and sky are replaced by flat %s behind the characters, for keying in a video editor. Characters keep their lighting." % ("green" if bgk == "green" else "blue"), 12))
+		more.add_child(UIK.para("The world and sky are replaced by flat %s behind the characters, for keying in a video editor. Characters keep their lighting." % ("green" if bgk == "green" else "blue"), 12))
 	elif bgk == "alpha":
-		b.add_child(UIK.para("Only the characters, on a transparent background, to lay over other footage.", 12))
-	var vs := hud.get_viewport_rect().size
-	var sz := App.export_size(vs.x / vs.y)
-	b.add_child(UIK.para("%d × %d · %s" % [sz.x, sz.y, Recorder.kind_label(Recorder.kind_for(bgk))], 12))
-	b.add_child(UIK.toggle("Burn in subtitles for dialogue", App.settings["subtitles"], func(on): App.settings["subtitles"] = on; studio.mark_dirty(); _rerender()))
+		more.add_child(UIK.para("Only the characters, on a transparent background, to lay over other footage.", 12))
 	if App.settings["subtitles"]:
-		_subtitle_options(b)
-	b.add_child(UIK.toggle("Restart cinematic shot when a take starts", App.settings["restart"], func(on): App.settings["restart"] = on))
-	var cd := UIK.flow()
-	for n in [0, 3, 5]:
-		cd.add_child(UIK.chip("No countdown" if n == 0 else "%ds countdown" % n, int(App.settings["countdown"]) == n, func(): App.settings["countdown"] = n; _rerender()))
-	b.add_child(cd)
+		more.add_child(UIK.label("Subtitles", 13, UIK.MUTED, true))
+		_subtitle_options(more)
 	if Media.can_reveal():
-		b.add_child(UIK.btn("Open videos folder", func(): OS.shell_open(Recorder.output_dir()), false, "folder"))
-	return "Film"
+		more.add_child(UIK.btn("Open videos folder", func(): OS.shell_open(Recorder.output_dir()), false, "folder"))
+	return "Export"
 
 
 func _shot_label(kind: String) -> String:
@@ -1120,6 +1399,22 @@ func v_shot(i: Variant, b: VBoxContainer) -> String:
 # ---------------------------------------------------------------- settings
 
 func v_settings(_a, b: VBoxContainer) -> String:
+	_purpose(b, "This scene first, then this device. (How new scenes start is in Settings on the home screen.)")
+	_section(b, "This scene")
+	b.add_child(UIK.toggle("Characters chat on their own (speech bubbles)", App.settings.get("chatter", true), func(on: bool):
+		App.settings["chatter"] = on
+		studio.mark_dirty()))
+	b.add_child(UIK.toggle("Characters speak up when hit", App.settings.get("hit_lines", true), func(on: bool):
+		App.settings["hit_lines"] = on
+		studio.mark_dirty()))
+	b.add_child(UIK.toggle("Characters react to what happens nearby (fights, monsters, friends, fire)", App.settings.get("reactions", true), func(on: bool):
+		App.settings["reactions"] = on
+		studio.mark_dirty()))
+	var r := UIK.flow()
+	r.add_child(UIK.btn("Share scene file" if App.is_mobile and Native.available() else "Export scene file", func():
+		await studio.save_now()
+		hud.export_project(studio.project_id, studio.project_name), false, "download"))
+	b.add_child(r)
 	_section(b, "Quality")
 	var q := UIK.flow()
 	for k in App.QUALITY:
@@ -1129,43 +1424,34 @@ func v_settings(_a, b: VBoxContainer) -> String:
 			studio.atmo.apply()
 			_rerender()))
 	b.add_child(q)
-	b.add_child(UIK.para("Cinematic adds global illumination bounce and 8K shadows; Battery saver suits older phones. Video export always renders at full quality.", 12))
+	b.add_child(UIK.para("Lower is smoother on older phones. Exported videos always render at full quality.", 12))
 	_section(b, "Controls")
 	b.add_child(UIK.toggle("Show name tags", App.device["names"], func(on):
 		App.set_device("names", on)
 		for a in studio.actors:
 			a.refresh_tag()))
 	b.add_child(UIK.toggle("Auto-jump onto blocks", App.device["auto_jump"], func(on): App.set_device("auto_jump", on)))
-	b.add_child(UIK.toggle("Lock the mouse to look around", App.device["mouse_look"] == "capture", func(on): App.set_device("mouse_look", "capture" if on else "drag")))
-	b.add_child(UIK.toggle("Show frame rate", App.device["show_fps"], func(on): App.set_device("show_fps", on)))
-	b.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", true), func(on): App.set_device("ui_sounds", on)))
+	if not App.is_touch:
+		b.add_child(UIK.toggle("Lock the mouse to look around", App.device["mouse_look"] == "capture", func(on): App.set_device("mouse_look", "capture" if on else "drag")))
+	var more := _fold(b, "settings")
+	more.add_child(UIK.label("Frame rate", 13, UIK.MUTED, true))
 	var fr := UIK.flow()
 	for c in [[30, "30 fps"], [60, "60 fps"], [0, "Highest"]]:
 		fr.add_child(UIK.chip(c[1], int(App.device.get("fps_cap", 0)) == c[0], func():
 			App.set_device("fps_cap", c[0])
 			App.apply_fps()
 			_rerender()))
-	b.add_child(UIK.label("Frame rate", 13, UIK.MUTED, true))
-	b.add_child(fr)
-	b.add_child(UIK.para("Highest uses your screen's full refresh rate (up to 120 or 165 Hz on fast phones). Lower saves battery and heat.", 12))
-	b.add_child(UIK.toggle("Pause exports to cool down when the device slows", App.device.get("cool_down", false), func(on): App.set_device("cool_down", on)))
-	b.add_child(UIK.slider("Interface size", App.device["ui_scale"], 0.8, 1.6, 0.05, func(x): App.set_device("ui_scale", x), func(x): return "%d%%" % int(x * 100)))
-	b.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
-	_section(b, "This scene")
-	b.add_child(UIK.toggle("Characters chat on their own (speech bubbles)", App.settings.get("chatter", true), func(on: bool):
-		App.settings["chatter"] = on
-		studio.mark_dirty()))
-	b.add_child(UIK.toggle("Characters speak up when hit", App.settings.get("hit_lines", true), func(on: bool):
-		App.settings["hit_lines"] = on
-		studio.mark_dirty()))
-	var r := UIK.flow()
-	r.add_child(UIK.btn("Share scene file" if App.is_mobile and Native.available() else "Export scene file", func():
-		await studio.save_now()
-		hud.export_project(studio.project_id, studio.project_name), false, "download"))
-	b.add_child(r)
-	_section(b, "Keys")
-	b.add_child(UIK.para("WASD move · Space jump · Shift sprint · Ctrl crouch · left click attack · right click a character for their menu · drag to look · wheel zoom · C camera · B build · T timeline · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))
-	_section(b, "About")
+	more.add_child(fr)
+	more.add_child(UIK.toggle("Show frame rate", App.device["show_fps"], func(on): App.set_device("show_fps", on)))
+	more.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", false), func(on): App.set_device("ui_sounds", on)))
+	more.add_child(UIK.toggle("Pause exports to cool down when the device slows", App.device.get("cool_down", false), func(on): App.set_device("cool_down", on)))
+	more.add_child(UIK.slider("Interface size", App.device["ui_scale"], 0.8, 1.6, 0.05, func(x): App.set_device("ui_scale", x), func(x): return "%d%%" % int(x * 100)))
+	more.add_child(UIK.para("Interface size applies the next time you open the app.", 12))
+	if not App.is_touch:
+		more.add_child(UIK.label("Keys", 13, UIK.MUTED, true))
+		more.add_child(UIK.para("WASD move · Space jump · Shift sprint · Ctrl crouch · left click attack · right click a character for their menu · drag to look · wheel zoom · C camera · B build · T timeline · R record · P screenshot · H clean view · Ctrl+Z undo · Esc close", 12))
+	more.add_child(UIK.label("About", 13, UIK.MUTED, true))
+	b = more
 	var logo := TextureRect.new()
 	logo.texture = load("res://assets/brand/wordmark.png")
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1230,9 +1516,8 @@ func _import_sound(then: Callable) -> void:
 
 ## Scene sound: background music, ambience, effects and volumes.
 func v_sound(_a, b: VBoxContainer) -> String:
+	_purpose(b, "Music, ambience and sound effects, live and in your videos.")
 	_section(b, "Background music")
-	b.add_child(UIK.para("Plays through the whole scene and in exported videos. For music that starts at a set moment, add it to the timeline's Sound row.", 12))
-	b.add_child(UIK.spacer(2))
 	var cur := str(App.settings.get("music", ""))
 	var top := UIK.flow()
 	top.add_child(UIK.chip("Match the mood", cur == "mood", func():
@@ -1245,30 +1530,34 @@ func v_sound(_a, b: VBoxContainer) -> String:
 		studio.sound.stop_preview()
 		studio.mark_dirty()
 		_rerender()))
+	if cur.begins_with("tune:") or cur.begins_with("file:"):
+		top.add_child(UIK.chip("♪ " + Sounds.label(cur), true, func(): pass))
 	b.add_child(top)
 	if cur == "mood":
 		var mood := str(App.settings.get("mood", "day"))
 		b.add_child(UIK.para("Playing %s for %s. Changing the mood changes the music (with a crossfade)." % [
 			Sounds.label("tune:" + str(Synth.MOOD_TUNES.get(mood, "meadow"))), str((Styles.MOODS.get(mood, {}) as Dictionary).get("label", mood)).to_lower()], 12))
+	var tunes := _fold(b, "tunes", "Choose a tune", "playtri")
 	for t in Synth.TUNE_ORDER:
 		var key: String = "tune:" + t
-		b.add_child(_sound_row(key, Synth.TUNES[t]["desc"], cur == key, func():
+		tunes.add_child(_sound_row(key, Synth.TUNES[t]["desc"], cur == key, func():
 			App.settings["music"] = key
 			studio.sound.stop_preview()
 			studio.mark_dirty()
 			_rerender()))
 	for id in AudioFiles.list():
 		var key: String = "file:" + id
-		b.add_child(_sound_row(key, "Imported", cur == key, func():
+		tunes.add_child(_sound_row(key, "Imported", cur == key, func():
 			App.settings["music"] = key
 			studio.sound.stop_preview()
 			studio.mark_dirty()
 			_rerender()))
-	b.add_child(UIK.btn("Import music or a sound", func():
+	tunes.add_child(UIK.btn("Import music or a sound", func():
 		_import_sound(func(key: String):
 			App.settings["music"] = key
 			studio.mark_dirty()
 			_rerender()), false, "upload"))
+	tunes.add_child(UIK.para("For music that starts at a set moment, add it to the timeline's Sound row.", 12))
 	_section(b, "Ambience")
 	var amb := UIK.flow()
 	for a in Sounds.AMBIENCES:
@@ -1286,18 +1575,18 @@ func v_sound(_a, b: VBoxContainer) -> String:
 	b.add_child(UIK.toggle("Footsteps, splashes and hits", App.settings.get("sfx", true), func(on):
 		App.settings["sfx"] = on
 		studio.mark_dirty()))
-	_section(b, "Volume")
+	var vol := _fold(b, "volume", "Volume", "speaker")
 	var pct := func(x: float) -> String: return "%d%%" % int(round(x * 100))
-	b.add_child(UIK.slider("Music", float(App.settings.get("music_vol", 0.7)), 0.0, 1.0, 0.05, func(x):
+	vol.add_child(UIK.slider("Music", float(App.settings.get("music_vol", 0.7)), 0.0, 1.0, 0.05, func(x):
 		App.settings["music_vol"] = x
 		studio.mark_dirty(), pct))
-	b.add_child(UIK.slider("Effects", float(App.settings.get("sfx_vol", 0.8)), 0.0, 1.0, 0.05, func(x):
+	vol.add_child(UIK.slider("Effects", float(App.settings.get("sfx_vol", 0.8)), 0.0, 1.0, 0.05, func(x):
 		App.settings["sfx_vol"] = x
 		studio.mark_dirty(), pct))
-	b.add_child(UIK.slider("Ambience", float(App.settings.get("amb_vol", 0.6)), 0.0, 1.0, 0.05, func(x):
+	vol.add_child(UIK.slider("Ambience", float(App.settings.get("amb_vol", 0.6)), 0.0, 1.0, 0.05, func(x):
 		App.settings["amb_vol"] = x
 		studio.mark_dirty(), pct))
-	b.add_child(UIK.para("Exported videos are mixed at these volumes.", 12))
+	vol.add_child(UIK.para("Exported videos are mixed at these volumes.", 12))
 	return "Sound"
 
 

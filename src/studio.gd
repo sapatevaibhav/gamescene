@@ -16,7 +16,15 @@ var atmo := Atmosphere.new()
 var camera := CameraRig.new()
 var recorder := Recorder.new()
 var sound := SoundDirector.new()
+## Fires, magic sparkles, smoke and dust placed in the scene.
+var fx := SceneFx.new()
 var tools: EditorTools
+## Hang-out circles (behaviour "group"): [{m: [Actor], c: centre,
+## slots: {actor id: Vector2}, speaker, last, turn}].
+var groups: Array = []
+## Things that happened this tick for bystanders to react to next tick
+## (see emit_event and Actor.react_to).
+var _events: Array = []
 
 var project_id := ""
 var project_name := ""
@@ -65,11 +73,15 @@ func _ready() -> void:
 	recorder.finished.connect(func(_p, _s): recording_changed.emit(false))
 	sound.studio = self
 	add_child(sound)
+	fx.studio = self
+	add_child(fx)
 	recorder.started.connect(sound.restart)
 	tools = EditorTools.new()
 	tools.studio = self
 	add_child(tools)
 	atmo.apply_quality()
+	if DisplayServer.get_name() != "headless":
+		SceneFx.warm_up(camera)
 
 
 # ---------------------------------------------------------------- scenes
@@ -92,6 +104,9 @@ func _clear() -> void:
 	cues = []
 	shots = []
 	audio = []
+	groups = []
+	_events = []
+	fx.clear()
 	sound.stop_all()
 	timeline.clear()
 	start_state = []
@@ -208,16 +223,14 @@ func load_data(d: Dictionary) -> String:
 	scene_seed = int(d.get("seed", randi() % 100000))
 	App.sim_rng.seed = scene_seed
 	for c in d.get("cast", []):
-		var p: Array = c.get("pos", [40, 0, 40])
-		add_actor({"name": c.get("name", "Someone"), "look": c.get("look", {}), "behavior": c.get("behavior", "idle"), "notice": c.get("notice", true),
-			"lines": c.get("lines", []), "dance": c.get("dance", "mix"), "chat": c.get("chat", false),
-			"x": p[0], "y": p[1], "z": p[2], "yaw": c.get("yaw", 0.0), "isPlayer": c.get("player", false)})
+		add_actor(_cast_opts(c))
 	if player == null and not actors.is_empty():
 		player = actors[0]
 	if player == null:
 		var presets := Rigs.presets_for(style_key)
 		add_actor({"name": "You", "look": {"preset": presets.keys()[0]}, "isPlayer": true, "x": 40.0, "z": 36.0})
 	camera.load_view(d.get("view", {}), d.get("cine", {}))
+	fx.load_data(d.get("fx", []))
 	cues = d.get("cues", [])
 	audio = (d.get("audio", []) as Array).filter(func(c): return c is Dictionary and c.has("src"))
 	timeline.load_data(d.get("keys", {}))
@@ -232,6 +245,14 @@ func load_data(d: Dictionary) -> String:
 	scene_changed.emit()
 	cast_changed.emit()
 	return ""
+
+
+## Options for add_actor from a saved cast entry.
+static func _cast_opts(c: Dictionary) -> Dictionary:
+	var p: Array = c.get("pos", [40, 0, 40])
+	return {"name": c.get("name", "Someone"), "look": c.get("look", {}), "behavior": c.get("behavior", "idle"), "notice": c.get("notice", true),
+		"lines": c.get("lines", []), "dance": c.get("dance", "mix"), "chat": c.get("chat", false), "rel": c.get("rel", {}), "pose": c.get("pose", {}),
+		"x": p[0], "y": p[1], "z": p[2], "yaw": c.get("yaw", 0.0), "isPlayer": c.get("player", false)}
 
 
 ## Moves everything positioned in an old, smaller world into the centre of
@@ -260,7 +281,7 @@ func serialize() -> Dictionary:
 		settings[k] = App.settings[k]
 	return {"app": "gamescene", "v": App.SCHEMA_VERSION, "name": project_name, "style": style_key, "seed": scene_seed,
 		"world": world.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player)),
-		"settings": settings, "cine": camera.cine_dict(), "view": camera.to_dict(),
+		"settings": settings, "cine": camera.cine_dict(), "view": camera.to_dict(), "fx": fx.serialize(),
 		"cues": cues, "keys": timeline.to_data(), "audio": audio, "shots": shots, "start": start_state}
 
 
@@ -284,7 +305,7 @@ func save_now(with_thumb := false) -> void:
 
 ## Snapshot before an edit. Cheap enough for 48x48 worlds.
 func checkpoint() -> void:
-	_undo.append(JSON.stringify({"world": world.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player))}))
+	_undo.append(JSON.stringify(_snapshot()))
 	if _undo.size() > 40:
 		_undo.pop_front()
 	_redo.clear()
@@ -309,16 +330,21 @@ func redo() -> void:
 func _swap(from: Array, to: Array) -> void:
 	if from.is_empty():
 		return
-	to.append(JSON.stringify({"world": world.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player))}))
+	to.append(JSON.stringify(_snapshot()))
 	var d: Dictionary = JSON.parse_string(from.pop_back())
 	if world.is_voxel:
 		world.load_data(d["world"])
 	else:
 		world.load_data(d["world"], style_key)
+	fx.load_data(d.get("fx", []))
 	_restore_cast(d["cast"])
 	atmo.register_lights(world)
 	mark_dirty()
 	cast_changed.emit()
+
+
+func _snapshot() -> Dictionary:
+	return {"world": world.serialize(), "fx": fx.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player))}
 
 
 func _restore_cast(cast: Array) -> void:
@@ -326,11 +352,9 @@ func _restore_cast(cast: Array) -> void:
 		a.dispose()
 	actors.clear()
 	player = null
+	groups = []
 	for c in cast:
-		var p: Array = c["pos"]
-		add_actor({"name": c["name"], "look": c["look"], "behavior": c["behavior"], "notice": c.get("notice", true), "lines": c.get("lines", []),
-			"dance": c.get("dance", "mix"), "chat": c.get("chat", false),
-			"x": p[0], "y": p[1], "z": p[2], "yaw": c["yaw"], "isPlayer": c.get("player", false)})
+		add_actor(_cast_opts(c))
 
 
 # ---------------------------------------------------------------- cast
@@ -419,6 +443,14 @@ func remove_actor(a: Actor) -> void:
 		return
 	a.dispose()
 	actors.erase(a)
+	for b in actors:
+		b.rel.erase(a.name)
+		if b.foe == a:
+			b.foe = null
+		if b.threat == a:
+			b.threat = null
+		if b.look_who == a:
+			b.look_who = null
 	if int(camera.cine.get("target", 0)) == a.id:
 		camera.cine["target"] = 0
 	mark_dirty()
@@ -439,6 +471,10 @@ func rename_actor(a: Actor, new_name: String) -> void:
 		if str(sh.get("target", "")) == old:
 			sh["target"] = new_name
 	timeline.rename_track(old, new_name)
+	for b in actors:
+		if b.rel.has(old):
+			b.rel[new_name] = b.rel[old]
+			b.rel.erase(old)
 	a.refresh_tag()
 	mark_dirty()
 
@@ -464,9 +500,13 @@ func direct_move(a: Actor, p: Vector3) -> void:
 
 
 ## Starts an action for a character from this moment (a script cue).
-func direct_action(a: Actor, action: String, dur := 5.0) -> void:
+func direct_action(a: Actor, action: String, dur := 5.0, pose := {}) -> void:
 	var t := snappedf(play_t, 0.01)
-	cues.append({"actor": a.name, "action": action, "start": t, "dur": dur})
+	var cue := {"actor": a.name, "action": action, "start": t, "dur": dur}
+	if action == "pose":
+		cue["pose"] = (pose if not pose.is_empty() else a.pose).duplicate(true)
+		a.pose = cue["pose"]
+	cues.append(cue)
 	a.goto = {}
 	a.set_behavior(action, false)
 	_fired[cues.size() - 1] = true
@@ -504,14 +544,20 @@ func count_behavior(b: String) -> int:
 	return n
 
 
-## Who a fleeing actor runs from: the player, or any chasing monster nearby.
+## Who a fleeing actor runs from: who scared them (a reaction), else the
+## nearest of the player, anyone chasing, monsters that are awake and anyone
+## they're scared of.
 func nearest_threat(a: Actor) -> Actor:
+	if a.threat and actors.has(a.threat) and Vector2(a.threat.pos.x - a.pos.x, a.threat.pos.z - a.pos.z).length() < 12.0:
+		return a.threat
 	var best: Actor = null
 	var bd := 7.0
 	for b in actors:
 		if b == a:
 			continue
-		if b != player and b.behavior != "chase":
+		var f := a.feeling(b)
+		var monster := b.is_monster() and not a.is_monster() and b.behavior != "sleep" and f != "friend"
+		if b != player and b.behavior != "chase" and not monster and f != "scared":
 			continue
 		var d := Vector2(b.pos.x - a.pos.x, b.pos.z - a.pos.z).length()
 		if d < bd:
@@ -524,6 +570,134 @@ func nearest_threat(a: Actor) -> Actor:
 ## someone within this distance of them (metres, = tiles in Pixel 2D);
 ## chatter further off stays in its bubble.
 const SUBTITLE_RANGE := 6.0
+
+
+## Something happened that bystanders can react to: "hit" (src hit dst),
+## "panic" (dst ran away from src) or "cheer" (src is celebrating). Handled
+## at the start of the next simulation tick, in cast order (deterministic).
+func emit_event(k: String, p: Vector3, src: Actor, dst: Actor = null) -> void:
+	if src == null or _events.size() > 32:
+		return
+	_events.append({"k": k, "pos": p, "src": src, "dst": dst})
+
+
+func _react_events() -> void:
+	if _events.is_empty():
+		return
+	var ev := _events
+	_events = []
+	for e in ev:
+		for a in actors:
+			if a != player:
+				a.react_to(e)
+
+
+## Forms and runs the hang-out circles: whoever is set to "group" joins a
+## circle nearby with room (friends first, never with a rival) or starts
+## one with the nearest free hanger-out; members take turns to talk while
+## the others watch, laugh or nod.
+func _update_groups(dt: float) -> void:
+	for g in groups.duplicate():
+		var mem: Array = g["m"]
+		var keep := []
+		for a in mem:
+			# Rivals (feelings can change mid-scene): the later one leaves.
+			if actors.has(a) and a != player and not a.keyed and a.behavior == "group" and not keep.any(func(b): return a.feeling(b) == "rival" or b.feeling(a) == "rival"):
+				keep.append(a)
+		if keep.size() == mem.size():
+			continue
+		for a in mem:
+			if not keep.has(a):
+				a.circle = {}
+		g["m"] = keep
+		if keep.size() < 2:
+			for a in keep:
+				a.circle = {}
+			groups.erase(g)
+		else:
+			_seat(g)
+	for a in actors:
+		if a == player or a.keyed or a.behavior != "group" or not a.circle.is_empty():
+			continue
+		var best: Dictionary = {}
+		var bs := 12.0
+		for g in groups:
+			var mem: Array = g["m"]
+			if mem.size() >= 5 or mem.any(func(b): return a.feeling(b) == "rival" or b.feeling(a) == "rival"):
+				continue
+			var c: Vector3 = g["c"]
+			var sc := Vector2(c.x - a.pos.x, c.z - a.pos.z).length()
+			if mem.any(func(b): return a.feeling(b) == "friend"):
+				sc -= 6.0
+			if sc < bs:
+				bs = sc
+				best = g
+		if not best.is_empty():
+			(best["m"] as Array).append(a)
+			a.circle = best
+			_seat(best)
+			continue
+		var mate: Actor = null
+		var md := 14.0
+		for b in actors:
+			if b == a or b == player or b.keyed or b.behavior != "group" or not b.circle.is_empty():
+				continue
+			if a.feeling(b) == "rival" or b.feeling(a) == "rival":
+				continue
+			var d := Vector2(b.pos.x - a.pos.x, b.pos.z - a.pos.z).length() - (4.0 if a.feeling(b) == "friend" else 0.0)
+			if d < md:
+				md = d
+				mate = b
+		if mate:
+			var mid := (a.pos + mate.pos) * 0.5
+			var g := {"m": [a, mate], "c": Vector3(mid.x, mid.y, PixelWorld.LANE if is_side() else mid.z), "slots": {}, "speaker": null, "last": null,
+				"turn": 1.0 + App.sim_randf() * 1.5}
+			groups.append(g)
+			a.circle = g
+			mate.circle = g
+			_seat(g)
+	for g in groups:
+		g["turn"] = float(g["turn"]) - dt
+		if float(g["turn"]) > 0.0:
+			continue
+		g["turn"] = 2.6 + App.sim_randf() * 1.8
+		var slots: Dictionary = g["slots"]
+		var here: Array = (g["m"] as Array).filter(func(a):
+			var s: Vector2 = slots.get(a.id, Vector2(a.pos.x, a.pos.z))
+			return Vector2(s.x - a.pos.x, s.y - a.pos.z).length() < 0.7)
+		if here.size() < 2:
+			continue
+		var who: Actor = here[int(App.sim_randf() * here.size()) % here.size()]
+		if who == g["last"]:
+			who = here[(here.find(who) + 1) % here.size()]
+		g["last"] = who
+		g["speaker"] = who
+		who.chat(who.line(), 2.4)
+		for b in here:
+			if b != who and App.sim_randf() < (0.4 if b.feeling(who) == "friend" else 0.18):
+				b.react("laugh", 1.3)
+
+
+## Places in a circle round the centre, in the order members already stand
+## (so nobody crosses through the middle). Side view: a row on the lane.
+func _seat(g: Dictionary) -> void:
+	var mem: Array = g["m"]
+	var c: Vector3 = g["c"]
+	var n := mem.size()
+	var slots := {}
+	if is_side():
+		mem.sort_custom(func(a, b): return a.pos.x < b.pos.x if a.pos.x != b.pos.x else a.id < b.id)
+		for i in n:
+			slots[mem[i].id] = Vector2(c.x + (i - (n - 1) * 0.5) * 1.0, PixelWorld.LANE)
+	else:
+		var ang := func(a: Actor) -> float: return atan2(a.pos.z - c.z, a.pos.x - c.x)
+		mem.sort_custom(func(a, b): return ang.call(a) < ang.call(b) if ang.call(a) != ang.call(b) else a.id < b.id)
+		var r := 0.5 + 0.2 * n
+		var a0: float = ang.call(mem[0])
+		for i in n:
+			var an := a0 + i * TAU / n
+			slots[mem[i].id] = find_spot(c.x + cos(an) * r, c.z + sin(an) * r)
+	g["slots"] = slots
 
 
 func on_line_spoken(a: Actor, text: String, dur: float) -> void:
@@ -574,6 +748,8 @@ func reset_to_start() -> void:
 			continue
 		var p: Array = s["pos"]
 		a.reset_sim(Vector3(p[0], p[1], p[2]), float(s["yaw"]), str(s["behavior"]))
+	groups = []
+	_events = []
 	App.sim_rng.seed = scene_seed
 	play_t = 0.0
 	_fired.clear()
@@ -683,10 +859,16 @@ func _run_cues(dt: float) -> void:
 					a.goto = {"x": float(c.get("x", a.pos.x)), "z": float(c.get("z", a.pos.z)), "run": action == "runto"}
 				_:
 					a.set_behavior(action, false)
+					a.temp_t = 0.0
+					if action == "pose" and c.get("pose") is Dictionary:
+						a.pose = c["pose"]
+					elif action == "celebrate":
+						emit_event("cheer", a.pos, a)
 		elif not active and _fired.get(i, false) == true and play_t >= e:
 			_fired[i] = false
 			if action != "say" and action != "walkto" and action != "runto":
 				a.set_behavior(a.base_behavior, false)
+				a.pose = a.base_pose
 
 
 func script_length() -> float:
@@ -842,6 +1024,7 @@ func _process(delta: float) -> void:
 	_hide_actors_near_camera()
 	atmo.tick(dt, camera.global_position)
 	world.animate(dt, _time)
+	fx.animate(_time)
 	# Wind, water and clouds run on the scene clock, not the engine's.
 	RenderingServer.global_shader_parameter_set("scene_time", _time)
 	sound.tick(dt)
@@ -918,6 +1101,8 @@ func _update_player_top(a: Actor, dt: float) -> void:
 func _sim_step(dt: float) -> void:
 	_run_cues(dt)
 	_apply_keys(dt)
+	_react_events()
+	_update_groups(dt)
 	_update_player(dt)
 	for a in actors:
 		if a != player and not a.keyed:
@@ -940,5 +1125,8 @@ func _hide_actors_near_camera() -> void:
 func _notification(what: int) -> void:
 	# Partners point at each other; break the loop so both are freed on exit.
 	if what == NOTIFICATION_PREDELETE:
+		groups = []
+		_events = []
 		for a in actors:
 			a.partner = null
+			a.unlink()

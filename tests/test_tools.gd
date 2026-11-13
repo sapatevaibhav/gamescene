@@ -40,9 +40,28 @@ func _ready() -> void:
 	studio.redo()
 	ok(w.get_b(10, gy, 10) == 0, "redo removes it again")
 	studio.tools.set_tool("prefab", {"prefab": "cottage"})
+	var built_before := _built(w)
 	var before: String = w.serialize()["rle"]
 	studio.tools.tap(center)
 	ok(w.serialize()["rle"] != before, "stamp prefab")
+	# Remove (the same bar in every world): one tap takes the whole building.
+	studio.tools.obj_mode = "erase"
+	studio.tools.tap(center)
+	ok(_built(w) == built_before, "Remove takes the whole building away and leaves the ground (%d built blocks, %d before)" % [_built(w), built_before])
+	studio.undo()
+	ok(_built(w) > built_before, "undo puts the building back")
+	studio.tools.obj_mode = "place"
+	# Effects: the same bar; a tap adds a campfire on the ground, Remove takes it.
+	studio.tools.set_tool("effects", {"effect": "fire"})
+	studio.tools.tap(center)
+	ok(studio.fx.items.size() == 1 and absf(float(studio.fx.items[0]["x"]) - 10.5) < 0.6 and absf(float(studio.fx.items[0]["y"]) - w.ground_at(10.5, 10.5)) < 0.1,
+		"a campfire goes where you tap (%s)" % [studio.fx.items])
+	studio.tools.obj_mode = "erase"
+	studio.tools.tap(center)
+	ok(studio.fx.items.is_empty(), "and Remove takes it away")
+	studio.undo()
+	ok(studio.fx.items.size() == 1, "undo puts it back")
+	studio.tools.set_tool("")
 	# Terrain styles: place a prop, select it, rotate/resize/delete, sculpt.
 	for style in ["anime", "lowpoly"]:
 		await studio.new_scene(style)
@@ -96,3 +115,16 @@ func _ready() -> void:
 		ok(hit == a.id, "%s tap selects actor" % style)
 	print("FAILS: ", fails)
 	get_tree().quit(1 if fails else 0)
+
+
+## Blocks that aren't natural ground (buildings, trees, decorations).
+func _built(w: VoxelWorld) -> int:
+	var ground := {}
+	for k in VoxelWorld.GROUND_KEYS:
+		if Blocks.ID.has(k):
+			ground[Blocks.ID[k]] = true
+	var n := 0
+	for v in w.data:
+		if v != 0 and not ground.has(v):
+			n += 1
+	return n
