@@ -375,12 +375,23 @@ func clip_cam(_from: Vector3, _dir: Vector3, dist: float) -> float:
 
 # ---------------------------------------------------------------- generation
 
-func new_world(_style := "pixeltop") -> void:
+## World layouts besides the default village (see Templates).
+const LAYOUTS := ["forest", "mountain", "city"]
+
+
+func new_world(_style := "pixeltop", layout := "") -> void:
 	var r := U.rng(5151)
 	var G := PixelTopArt.G
 	ground.fill(G["void"])
 	objects.clear()
 	var c := MAP / 2
+	if layout in LAYOUTS:
+		for z in D:
+			for x in MAP:
+				ground[idx(x, z)] = G["grass"]
+		call("_layout_" + layout, r)
+		rebuild()
+		return
 	for z in D:
 		for x in MAP:
 			ground[idx(x, z)] = G["grass"]
@@ -453,6 +464,85 @@ func new_world(_style := "pixeltop") -> void:
 		elif v < 0.85:
 			place_object("flowers", x, z, false)
 	rebuild()
+
+
+## Trees and the rest scattered where `ok(x, z)` allows.
+func _scatter(r: U.Rng, n: int, keys: Array, ok: Callable) -> void:
+	for k in n:
+		var x := int(r.next() * MAP)
+		var z := int(r.next() * D)
+		if ok.call(x, z):
+			place_object(keys[int(r.next() * keys.size())], x, z, false)
+
+
+## Deep woods with a clearing in the middle and a winding trail.
+func _layout_forest(r: U.Rng) -> void:
+	var G := PixelTopArt.G
+	var c := MAP / 2
+	for z in D:
+		for x in MAP:
+			if r.next() < 0.18:
+				ground[idx(x, z)] = G["dark"]
+	for z in D:
+		var tx := c + int(round(sin(z * 0.15) * 4.0))
+		for w in [-1, 0]:
+			ground[idx(tx + w, z)] = G["path"]
+	for z in range(c - 5, c + 5):
+		for x in range(c - 6, c + 6):
+			ground[idx(x, z)] = G["meadow"]
+	_recompute_solid()
+	place_object("stump", c - 4, c + 2, false)
+	place_object("stump", c + 3, c - 3, false)
+	_scatter(r, 900, ["tree", "pine", "pine", "bush", "tree", "rock", "flowers", "stump"], func(x: int, z: int) -> bool:
+		var trail := absi(x - (c + int(round(sin(z * 0.15) * 4.0)))) < 3
+		return not trail and not (absi(x - c) < 8 and absi(z - c) < 7))
+
+
+## A snowy mountain pass: rock and ice on both sides, a road through the snow.
+func _layout_mountain(r: U.Rng) -> void:
+	var G := PixelTopArt.G
+	var c := MAP / 2
+	for z in D:
+		for x in MAP:
+			var road := absi(x - (c + int(round(sin(z * 0.1) * 5.0))))
+			ground[idx(x, z)] = G["path"] if road < 2 else G["snow"]
+			if road > 9 and r.next() < 0.06:
+				ground[idx(x, z)] = G["ice"]
+	_recompute_solid()
+	place_object("tent", c + 4, c - 2, false)
+	place_object("campfire", c + 4, c + 2, false)
+	_scatter(r, 700, ["pine", "pine", "rock", "rock", "deadtree"], func(x: int, z: int) -> bool:
+		return absi(x - (c + int(round(sin(z * 0.1) * 5.0)))) > 4 and not (absi(x - c - 4) < 4 and absi(z - c) < 5))
+
+
+## A town at night: a cobbled square, streets in a grid lined with houses,
+## stalls and lamps.
+func _layout_city(r: U.Rng) -> void:
+	var G := PixelTopArt.G
+	var c := MAP / 2
+	for z in D:
+		for x in MAP:
+			var street := (x - 2) % 14 >= 10 or (z - 2) % 14 >= 10
+			ground[idx(x, z)] = G["cobble"] if street else G["grass"]
+	for z in range(c - 6, c + 6):
+		for x in range(c - 7, c + 7):
+			ground[idx(x, z)] = G["plaza"]
+	_recompute_solid()
+	place_object("fountain", c - 1, c - 1, false)
+	for sx in [c - 6, c + 4]:
+		place_object("stall", sx, c + 3, false)
+	for bx in range(2, MAP - 9, 14):
+		for bz in range(2, D - 9, 14):
+			if absi(bx + 4 - c) < 11 and absi(bz + 4 - c) < 11:
+				continue
+			place_object("house", bx + 1, bz + 4, false)
+			place_object("house", bx + 5, bz + 4, false)
+			place_object("tree", bx + 2, bz + 8, false)
+			place_object("barrel", bx + 8, bz + 8, false)
+	for x in range(6, MAP - 3, 7):
+		for z in range(6, D - 3, 7):
+			if ((x - 2) % 14 >= 10 or (z - 2) % 14 >= 10) and object_at(x, z) < 0:
+				place_object("lamp", x, z, false)
 
 
 # ---------------------------------------------------------------- meshes

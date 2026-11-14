@@ -165,9 +165,12 @@ func _show_busy(on: bool) -> void:
 func _ask_new_scene(style: String) -> void:
 	if style == "pixel":
 		# Pixel 2D comes in two views; each is its own kind of world.
-		hud.prompt("New Pixel 2D scene", _suggested_name(style), "Scene name", "Create", func(n: String, view: String): _new_scene(view, n), Styles.PIXEL_VIEWS)
+		var per_view := {}
+		for v in Styles.PIXEL_VIEWS:
+			per_view[v[0]] = Templates.for_style(v[0])
+		hud.prompt("New Pixel 2D scene", _suggested_name(style), "Scene name", "Create", func(n: String, view: String, tpl: String): _new_scene(view, n, tpl), Styles.PIXEL_VIEWS, per_view)
 		return
-	hud.prompt("Name your scene", _suggested_name(style), "Scene name", "Create", func(n: String): _new_scene(style, n))
+	hud.prompt("Name your scene", _suggested_name(style), "Scene name", "Create", func(n: String, tpl: String): _new_scene(style, n, tpl), [], {"": Templates.for_style(style)})
 
 
 func _suggested_name(style: String) -> String:
@@ -178,9 +181,11 @@ func _suggested_name(style: String) -> String:
 	return ProjectStore.unique_name(Styles.STYLES[style]["name"] + " scene " + str(n))
 
 
-func _new_scene(style: String, scene_name := "") -> void:
+func _new_scene(style: String, scene_name := "", template := "") -> void:
 	await _show_busy(true)
-	await studio.new_scene(style)
+	await studio.new_scene(style, Templates.layout_of(template))
+	if template != "":
+		Templates.apply(studio, template)
 	studio.project_id = ProjectStore.new_id()
 	studio.project_name = ProjectStore.unique_name(scene_name) if scene_name != "" else _suggested_name(style)
 	_enter_studio()
@@ -231,6 +236,10 @@ func _enter_studio() -> void:
 	hud.layout()
 	if studio.camera.mode == "cine":
 		studio.camera.cine_reset()
+	if not App.device.get("tour_done", false):
+		# First scene ever: a one-minute tour instead of the keys toast.
+		hud.start_tour()
+		return
 	if not App.is_touch:
 		if studio.is_top():
 			App.toast("WASD walks · Shift runs · left click attacks · right click a character for their menu · B builds")

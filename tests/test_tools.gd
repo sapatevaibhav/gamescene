@@ -39,6 +39,10 @@ func _ready() -> void:
 	ok(w.get_b(10, gy, 10) == Blocks.ID["stone"], "undo restores block")
 	studio.redo()
 	ok(w.get_b(10, gy, 10) == 0, "redo removes it again")
+	# A flat world: on the random village a tree could touch the cottage, and
+	# Remove takes everything joined to what you tap.
+	w.generate("flat")
+	w.rebuild()
 	studio.tools.set_tool("prefab", {"prefab": "cottage"})
 	var built_before := _built(w)
 	var before: String = w.serialize()["rle"]

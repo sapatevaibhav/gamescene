@@ -28,6 +28,8 @@ var device := {
 	"fps_cap": 0,
 	# Global settings (home screen): how new scenes start, and the phone dock.
 	"new_sound": false, "new_chatter": false, "new_hit_lines": true, "dock": "full",
+	# The first-run tour has been seen (or skipped).
+	"tour_done": false,
 }
 
 var is_touch := false
@@ -209,10 +211,14 @@ func sim_randf() -> float:
 	return sim_rng.randf()
 
 
+## Where device settings are kept (tests point it at their scratch folder).
+var device_file := "user://device.json"
+
+
 func save_device() -> void:
 	device["mouse_v"] = 2
 	device["quality_v"] = 2
-	var f := FileAccess.open("user://device.json", FileAccess.WRITE)
+	var f := FileAccess.open(device_file, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(device))
 

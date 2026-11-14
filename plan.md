@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (12 Nov 2026, v0.20.0)
+## Where it stands today (14 Nov 2026, v0.22.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -21,6 +21,8 @@
 - **Projects:** versioned JSON with migration from web saves, undo/redo, autosave, import and export.
 - **Packaging (0.19):** export presets for every platform, an Android plugin (MP4 encoding, gallery, share sheet, opened files) tested on an Android 16 phone, and store material.
 - **Phone polish (0.20):** portrait home and landscape scenes, touch scrolling and twin-stick controls, faster phone rendering and a smaller app, global settings, a compact dock and high refresh rates (tested on an Adreno 610 phone and a 120 Hz OnePlus).
+- **Living scenes (0.21):** characters hang out in small circles, react to fights, panics and celebrations nearby, run from monsters, and have feelings about each other (friend, rival, scared); a pose library with a pose editor; campfires, magic sparkles, smoke and dust in every style.
+- **Starting points (0.22):** world templates (forest, mountain pass, night town, great hall) and six ready-made scenes to remix, a first-run tour, an in-app credits page, and signed licence files for paid tiers (nothing locked yet).
 - **Tests:** headless suites plus rendered visual checks (see README).
 
 ## Architecture (decided)
@@ -50,8 +52,8 @@
 | 0.18 | Spring bones (hair, skirts, coats), blinking and feelings on imported faces, and the animation library (Mixamo-style clips fitted to any humanoid) | Done |
 | 0.19 | Packaging for Android, iOS and desktop (Phase I): export presets, Android plugin (MP4 encoder, gallery, share sheet, opened files), store material | Done |
 | 0.20 | Phone polish: portrait home and landscape scenes, touch scrolling, twin-stick controls, phone speed and app size, global settings, compact dock, frame rate | Done |
-| **0.21** | **Living scenes: hang-out circles, reactions, feelings, running from monsters, pose library, campfires and other effects (Phases E, F and G)** | **In progress** |
-| 0.22 | Templates, onboarding, credits and licence (Phases J and K) | Next |
+| 0.21 | Living scenes: hang-out circles, reactions, feelings, running from monsters, pose library, campfires and other effects (Phases E, F and G) | Done |
+| 0.22 | Templates (worlds and ready-made scenes), first-run tour, credits and licence (Phases G, J and K) | Done |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)
@@ -114,7 +116,7 @@
 - [x] Bloom, depth of field, light shafts, rain, snow, falling leaves and wind, each tied to quality tiers.
 - [x] Camera collision for the cinematic camera.
 - [ ] Motion blur, fire, magic sparkles and dust. Fire, sparkles, smoke and dust are done (0.21, Add → Effects); motion blur isn't.
-- [ ] More starter templates: indoor rooms, forest, mountain pass and night city.
+- [x] More starter templates: indoor rooms, forest, mountain pass and night city (0.22: Templates when naming a scene; the great hall in blocky and Pixel 2D side view).
 - [ ] Terrain paint brushes, a water tool and a tree-scatter brush.
 - [ ] Chunked voxel worlds with level of detail.
 - [ ] More bigger world keeping performance same by unloading the world which is not in camera view or close to player similar to chunk loading in Minecraft.
@@ -138,10 +140,10 @@
 ## Phase J: Business, legal and trust (runs alongside the others)
 
 - [x] Asset credits in `assets/CREDITS.md`.
-- [ ] An in-app credits page listing every library and asset licence.
-- [ ] Content policy: bundle only original or CC0 assets, and show a notice that uploads are the user's responsibility.
+- [x] An in-app credits page listing every library and asset licence (0.22).
+- [x] Content policy: bundle only original or CC0 assets, and show a notice that uploads are the user's responsibility (0.22).
 - [ ] Naming: keep style names generic, with no game brand names in store listings.
-- [ ] Paid tiers (Free, Creator and Studio), unlocked by a signed licence file checked on the device, with no account needed.
+- [ ] Paid tiers (Free, Creator and Studio), unlocked by a signed licence file checked on the device, with no account needed. The licence file, its check and the signing tool are done (0.22); which features each tier unlocks isn't decided, so nothing is locked yet (`Licence.GATES`).
 - [ ] A beta with 20–50 Shorts and YouTube creators, with feedback gathered in the app.
 
 ## Phase K: QA and launch
@@ -149,7 +151,7 @@
 - [ ] **Device matrix:** a low-end Android phone (3 GB RAM), a mid-range Android, an older iPhone, an iPad, a Chromebook, and Windows, macOS and Linux laptops.
 - [ ] **Performance targets:** 30 fps while editing on low-end devices, 60 fps on mid-range and up, and 1080p export that succeeds reliably on mid-range phones.
 - [ ] **Acceptance test:** the "A day in a village" demo, start to finish, on an ordinary Android phone.
-- [ ] **Onboarding:** a 60-second first-run tutorial and 3–5 ready-made scenes to remix.
+- [x] **Onboarding:** a 60-second first-run tutorial and 3–5 ready-made scenes to remix (0.22: the tour and six ready-made scenes).
 - [ ] **Launch:** store submission, a launch video made in the app itself, and a feedback channel.
 
 ## Ideas from raw-idea.md that aren't scheduled yet

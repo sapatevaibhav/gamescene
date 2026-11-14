@@ -99,12 +99,17 @@ var _was_narrow := false
 
 ## The home screen's settings page instead of the scenes (gear in the header).
 var _settings := false
+## The page inside settings: "" (settings) or "credits".
+var _sub := ""
 
 
 func refresh() -> void:
 	_was_narrow = _narrow()
 	if _settings:
-		_build_settings()
+		if _sub == "credits":
+			_build_credits()
+		else:
+			_build_settings()
 		return
 	UIK.clear(_col)
 	var top := UIK.hbox(10)
@@ -724,12 +729,24 @@ func _open_file() -> void:
 ## Esc closes the settings page (desktop), like Back on a phone.
 func _unhandled_key_input(e: InputEvent) -> void:
 	if _settings and visible and e.is_action_pressed("ui_cancel"):
-		_open_settings(false)
+		var hud: Hud = get_parent().get_node_or_null("Hud")
+		if hud and hud.modal_open():
+			# A dialog (a licence text): close just that.
+			UIK.clear(hud.modal)
+		elif _sub != "":
+			# A page inside settings (credits): back to settings.
+			_sub = ""
+			refresh()
+			_scroll.scroll_vertical = 0
+		else:
+			_open_settings(false)
+		get_viewport().set_input_as_handled()
 		get_viewport().set_input_as_handled()
 
 
 func _open_settings(on: bool) -> void:
 	_settings = on
+	_sub = ""
 	_selecting = false
 	_selected.clear()
 	refresh()
@@ -800,6 +817,37 @@ func _build_settings() -> void:
 	_page.add_child(UIK.toggle("Countdown beeps before a take", App.device.get("ui_sounds", false), func(on): App.set_device("ui_sounds", on)))
 	_page.add_child(UIK.toggle("Pause exports to cool down when the device slows", App.device.get("cool_down", false), func(on): App.set_device("cool_down", on)))
 
+	_heading("Licence")
+	var lic := Licence.current()
+	if lic.is_empty():
+		_page.add_child(UIK.para("Free. Everything in the app works; a licence file from a purchase unlocks a paid tier on this device, with no account.", 13))
+	else:
+		_page.add_child(UIK.para("%s, licensed to %s (since %s)." % [Licence.tier_name(), lic.get("holder", "you"), lic.get("issued", "")], 13, UIK.INK))
+	var lr := UIK.flow(8)
+	lr.add_child(UIK.btn("Add a licence file", func():
+		var hud: Hud = get_parent().get_node("Hud")
+		hud.pick_file(PackedStringArray(["*.gslicence ; GameScene licence"]), func(path: String):
+			var err := Licence.install(path)
+			hud.toast(err if err != "" else "Licence added: %s." % Licence.tier_name())
+			refresh(), "Add a licence file"), false, "upload"))
+	if not lic.is_empty():
+		lr.add_child(UIK.btn("Remove it", func():
+			Licence.remove()
+			refresh(), false, "trash"))
+	_page.add_child(lr)
+
+	_heading("Help and about")
+	var hr := UIK.flow(8)
+	hr.add_child(UIK.btn("Show the tour again", func():
+		App.set_device("tour_done", false)
+		var hud: Hud = get_parent().get_node("Hud")
+		hud.toast("The tour starts the next time you open a scene."), false, "playtri"))
+	hr.add_child(UIK.btn("Credits and licences", func():
+		_sub = "credits"
+		refresh()
+		_scroll.scroll_vertical = 0, false, "lines"))
+	_page.add_child(hr)
+
 	# Footer.
 	_page.add_child(UIK.spacer(28))
 	var rule := ColorRect.new()
@@ -829,6 +877,135 @@ func _build_settings() -> void:
 				var c := n as Control
 				c.add_theme_font_size_override("font_size", int(round(c.get_theme_font_size("font_size") * 1.2)))
 	_layout()
+
+
+## Credits and licences: the app, what's bundled (assets/CREDITS.md), what
+## you add yourself, and the engine with every library inside it, grouped by
+## licence. The licences ask for their text to ship with the app, so each
+## one's full text is a tap away (once per licence, not per library), with a
+## link to its official page.
+func _build_credits() -> void:
+	UIK.clear(_col)
+	_update_bar([])
+	var w := get_viewport_rect().size.x
+	var inner := w - float(UIK.px(40 if w >= UIK.px(900) else 16)) * 2.0
+	_page = UIK.vbox(12)
+	_page.custom_minimum_size.x = minf(inner, UIK.px(720))
+	_page.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_col.add_child(_page)
+	var top := UIK.hbox(10)
+	top.add_child(UIK.icon_btn("back", func():
+		_sub = ""
+		refresh(), "Back to settings (Esc)", 40))
+	var title := UIK.label("Credits and licences", 22, UIK.INK, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	_page.add_child(top)
+	_page.add_child(UIK.para("GameScene Studio %s. Made by ekaai.tech. Works fully offline: no accounts, no tracking." % ProjectSettings.get_setting("application/config/version"), 15, UIK.INK))
+	_heading("What comes with the app")
+	_page.add_child(UIK.para(credits_text(), 14))
+	_page.add_child(_link("ambientCG (CC0 textures)", "https://ambientcg.com"))
+	_heading("What you add")
+	_page.add_child(UIK.para(Sheets.RIGHTS + " Imported models, sounds and pictures stay on this device and inside scene files you export.", 14))
+	_heading("Godot Engine")
+	_page.add_child(UIK.para("Built with the Godot Engine, under the MIT licence.", 14))
+	_page.add_child(_link("godotengine.org/license", "https://godotengine.org/license"))
+	_page.add_child(_details("Godot Engine licence", Engine.get_license_text(), "https://godotengine.org/license"))
+	_heading("Libraries inside the engine, by licence")
+	# licence -> component names (a part under "A or B" counts under both).
+	var by := {}
+	for c in Engine.get_copyright_info():
+		var seen := {}
+		for p in c.get("parts", []):
+			for l in str(p.get("license", "")).replace(" and ", " or ").split(" or "):
+				l = l.strip_edges()
+				if l == "" or seen.has(l):
+					continue
+				seen[l] = true
+				if not by.has(l):
+					by[l] = []
+				by[l].append(str(c.get("name", "?")))
+	var keys := by.keys()
+	keys.sort_custom(func(a, b): return by[a].size() > by[b].size() if by[a].size() != by[b].size() else str(a) < str(b))
+	var texts := Engine.get_license_info()
+	for l in keys:
+		var box := UIK.vbox(6)
+		var head := UIK.hbox(10)
+		var name := UIK.label(licence_title(l), 16, UIK.INK, true)
+		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(name)
+		head.add_child(_link("Licence page", licence_url(l)))
+		box.add_child(head)
+		box.add_child(UIK.para(", ".join(PackedStringArray(by[l])), 14))
+		if texts.has(l):
+			box.add_child(_details(licence_title(l), str(texts[l]), licence_url(l)))
+		_page.add_child(box)
+		_page.add_child(UIK.spacer(4))
+	_page.add_child(UIK.spacer(20))
+	_layout()
+
+
+## SPDX ids for the licence names the engine uses.
+const LICENCE_IDS := {"Expat": "MIT", "BSD-3-clause": "BSD-3-Clause", "BSD-2-clause": "BSD-2-Clause", "Apache-2.0": "Apache-2.0",
+	"Zlib": "Zlib", "CC0-1.0": "CC0-1.0", "CC-BY-4.0": "CC-BY-4.0", "Unlicense": "Unlicense", "X11": "X11", "MPL-2.0": "MPL-2.0",
+	"OFL-1.1": "OFL-1.1", "ISC": "ISC", "BSL-1.0": "BSL-1.0", "curl": "curl", "LGPL-2.1": "LGPL-2.1-only", "MIT-0": "MIT-0", "FTL": "FTL", "IJG": "IJG", "Unicode": "Unicode-3.0",
+	# Not SPDX licences: their projects' own licence files.
+	"glslang": "https://github.com/KhronosGroup/glslang/blob/main/LICENSE.txt",
+	"HarfBuzz": "https://github.com/harfbuzz/harfbuzz/blob/main/COPYING"}
+
+
+static func licence_title(l: String) -> String:
+	return "MIT (Expat)" if l == "Expat" else l
+
+
+static func licence_url(l: String) -> String:
+	var id: String = LICENCE_IDS.get(l, l)
+	if id.begins_with("https://"):
+		return id
+	return "https://spdx.org/licenses/%s.html" % id
+
+
+func _link(text: String, url: String) -> LinkButton:
+	var link := LinkButton.new()
+	link.text = text + "  ↗"
+	link.uri = url
+	link.tooltip_text = url
+	link.focus_mode = Control.FOCUS_NONE
+	link.add_theme_font_size_override("font_size", UIK.px(14))
+	link.add_theme_color_override("font_color", UIK.PRIMARY_500)
+	link.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	return link
+
+
+## "View details": the licence text in a dialog over the blurred page, one
+## at a time, so the page itself stays short.
+func _details(title: String, text: String, url: String) -> Control:
+	var b := UIK.chip("View details", false, func():
+		var hud: Hud = get_parent().get_node("Hud")
+		hud.show_text(title, text, url))
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	return b
+
+
+## assets/CREDITS.md as plain text (tables become one line per row).
+static func credits_text() -> String:
+	var f := FileAccess.open("res://assets/CREDITS.md", FileAccess.READ)
+	if f == null:
+		return "Every bundled asset is original or CC0."
+	var out := []
+	for line in f.get_as_text().split("\n"):
+		var l := line.strip_edges()
+		if l.begins_with("#"):
+			l = l.lstrip("# ")
+		elif l.begins_with("|"):
+			if l.replace("|", "").replace("-", "").strip_edges() == "":
+				continue
+			var cells := Array(l.trim_prefix("|").trim_suffix("|").split("|")).map(func(c): return str(c).strip_edges().replace("`", ""))
+			if cells[0] in ["File", "What"]:
+				continue
+			l = "• " + " · ".join(PackedStringArray(cells))
+		out.append(l.replace("`", ""))
+	return "\n".join(PackedStringArray(out)).strip_edges()
 
 
 ## One dock choice: a picture of it (built from the real icons) and a line

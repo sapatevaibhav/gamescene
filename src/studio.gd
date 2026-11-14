@@ -139,10 +139,15 @@ func _make_world(key: String) -> void:
 	atmo.set_style(key)
 
 
-func new_scene(key: String) -> void:
+## A fresh scene in style `key`; `layout` picks one of the world's other
+## layouts (see Templates), "" its usual village.
+func new_scene(key: String, layout := "") -> void:
 	_clear()
 	_make_world(key)
-	world.new_world(key)
+	if layout != "" and Templates.layouts(key).has(layout):
+		world.new_world(key, layout)
+	else:
+		world.new_world(key)
 	scene_seed = randi() % 100000
 	App.sim_rng.seed = scene_seed
 	await _default_cast()

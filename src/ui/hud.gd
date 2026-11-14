@@ -262,6 +262,12 @@ func _ready() -> void:
 	shade_mat.shader = shade_sh
 	modal_shade.material = shade_mat
 	modal_shade.visible = false
+	# A click or tap on the shade, outside the dialog, closes it (= Cancel).
+	modal_shade.gui_input.connect(func(e: InputEvent):
+		var tap: bool = (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed)
+		if tap and modal_open():
+			UIK.clear(modal)
+			modal_shade.accept_event())
 	add_child(modal_shade)
 	modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1157,6 +1163,47 @@ func choose(title: String, items: Array, cb: Callable) -> void:
 		_center(card)
 
 
+## A long text in a dialog over the blurred screen (one at a time): a
+## title, the text scrolling inside, an optional link and Close.
+func show_text(title: String, text: String, url := "") -> void:
+	UIK.clear(modal)
+	var card := _card()
+	var vs := get_viewport_rect().size
+	card.custom_minimum_size.x = minf(UIK.px(640), vs.x - 32)
+	var v: VBoxContainer = card.get_child(0)
+	v.add_child(UIK.label(title, 20, UIK.INK, true))
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.custom_minimum_size.y = minf(UIK.px(460), vs.y * 0.62)
+	var body := UIK.para(text, 14, UIK.GRAY_200)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(body)
+	v.add_child(sc)
+	var row := UIK.hbox(10)
+	if url != "":
+		var link := LinkButton.new()
+		link.text = "Licence page  ↗"
+		link.uri = url
+		link.tooltip_text = url
+		link.focus_mode = Control.FOCUS_NONE
+		link.add_theme_font_size_override("font_size", UIK.px(14))
+		link.add_theme_color_override("font_color", UIK.PRIMARY_500)
+		link.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(link)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(gap)
+	row.add_child(UIK.btn("Close", func(): UIK.clear(modal), true))
+	v.add_child(row)
+	modal.add_child(card)
+	_center(card)
+
+
+## Something is open over the screen (a dialog): Esc should close that.
+func modal_open() -> bool:
+	return modal.get_children().any(func(c): return not c.is_queued_for_deletion())
+
+
 func ask(msg: String, yes: String, cb: Callable) -> void:
 	UIK.clear(modal)
 	var card := _card()
@@ -1178,7 +1225,11 @@ func ask(msg: String, yes: String, cb: Callable) -> void:
 ## an empty answer keeps the suggested text.
 ## With `choices` ([[key, label, description], ...]) it also asks to pick
 ## one, and `cb` gets (text, key).
-func prompt(title: String, suggested: String, placeholder: String, yes: String, cb: Callable, choices: Array = []) -> void:
+##
+## With `templates` ({choice key or "": [{key, name, blurb, icon, kind}]}) a
+## "Templates" fold at the bottom (closed at first) offers starting points
+## for the picked choice, and `cb` also gets the template key ("" = none).
+func prompt(title: String, suggested: String, placeholder: String, yes: String, cb: Callable, choices: Array = [], templates: Dictionary = {}) -> void:
 	UIK.clear(modal)
 	var card := _card()
 	var v: VBoxContainer = card.get_child(0)
@@ -1187,6 +1238,39 @@ func prompt(title: String, suggested: String, placeholder: String, yes: String, 
 	e.max_length = 40
 	v.add_child(e)
 	var picked := [choices[0][0] if not choices.is_empty() else ""]
+	var tpl := [""]
+	var tpl_box := UIK.vbox(6)
+	# In an array: lambdas capture locals by value, and the list redraws itself.
+	var render_tpl: Array = [func(): pass]
+	if not templates.is_empty():
+		render_tpl[0] = func():
+			UIK.clear(tpl_box)
+			var list: Array = templates.get(picked[0], templates.get("", []))
+			if not list.any(func(t): return t["key"] == tpl[0]):
+				tpl[0] = ""
+			for kind in [["scene", "Ready-made scenes to remix"], ["world", "Worlds to build in"]]:
+				var items := list.filter(func(t): return t["kind"] == kind[0])
+				if items.is_empty():
+					continue
+				tpl_box.add_child(UIK.label(kind[1], 13, UIK.MUTED, true))
+				var tg := UIK.grid(2, 8)
+				var tts := []
+				for t in items:
+					var tt := UIK.tile(str(t["icon"]), str(t["name"]), str(t["blurb"]), t["key"] == tpl[0], func(): pass)
+					tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					tts.append(tt)
+					tg.add_child(tt)
+				for i in tts.size():
+					(tts[i] as Button).pressed.connect(func():
+						var k: String = items[i]["key"]
+						# Tap again to start blank.
+						var was: String = tpl[0]
+						tpl[0] = "" if was == k else k
+						# Name it after the template unless you've typed a name.
+						if e.text.strip_edges() == suggested or (was != "" and e.text == _tpl_name(templates, was)):
+							e.text = _tpl_name(templates, tpl[0]) if tpl[0] != "" else suggested
+						render_tpl[0].call())
+				tpl_box.add_child(tg)
 	if not choices.is_empty():
 		var g := UIK.grid(2, 8)
 		var tiles := []
@@ -1199,15 +1283,38 @@ func prompt(title: String, suggested: String, placeholder: String, yes: String, 
 			(tiles[i] as Button).pressed.connect(func():
 				picked[0] = choices[i][0]
 				for j in tiles.size():
-					UIK._card_states(tiles[j], j == i, 16))
+					UIK._card_states(tiles[j], j == i, 16)
+				render_tpl[0].call())
 		v.add_child(g)
+	if not templates.is_empty():
+		# Closed at first: most people start blank.
+		var fold := UIK.btn("Templates", func(): pass, false, "folder")
+		fold.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.custom_minimum_size.y = minf(UIK.px(330), get_viewport_rect().size.y * 0.45)
+		sc.visible = false
+		tpl_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sc.add_child(tpl_box)
+		fold.text = "Templates  ▸"
+		fold.pressed.connect(func():
+			sc.visible = not sc.visible
+			fold.text = "Templates  ▾" if sc.visible else "Templates  ▸"
+			if sc.visible:
+				render_tpl[0].call()
+			await get_tree().process_frame
+			_center(card))
+		v.add_child(fold)
+		v.add_child(sc)
 	var done := func():
 		var n := e.text.strip_edges()
 		UIK.clear(modal)
-		if choices.is_empty():
-			cb.call(n if n != "" else suggested)
-		else:
-			cb.call(n if n != "" else suggested, picked[0])
+		var args: Array = [n if n != "" else suggested]
+		if not choices.is_empty():
+			args.append(picked[0])
+		if not templates.is_empty():
+			args.append(tpl[0])
+		cb.callv(args)
 	e.text_submitted.connect(func(_t): done.call())
 	var row := UIK.hbox()
 	row.alignment = BoxContainer.ALIGNMENT_END
@@ -1218,6 +1325,14 @@ func prompt(title: String, suggested: String, placeholder: String, yes: String, 
 	_center(card)
 	e.grab_focus()
 	e.select_all()
+
+
+func _tpl_name(templates: Dictionary, key: String) -> String:
+	for list in templates.values():
+		for t in list:
+			if t["key"] == key:
+				return ProjectStore.unique_name(str(t["name"]))
+	return ""
 
 
 func screenshot() -> void:
@@ -1299,6 +1414,14 @@ func set_home_mode(on: bool) -> void:
 		timeline_panel.visible = false
 		set_clean(false)
 		render_toolbar()
+
+
+## The first-run tour (see Tour); does nothing if it's already showing.
+func start_tour() -> void:
+	if get_node_or_null("Tour") != null:
+		return
+	close_sheet()
+	add_child(Tour.new(self))
 
 
 func set_clean(on: bool) -> void:

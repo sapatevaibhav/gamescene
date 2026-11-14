@@ -328,10 +328,18 @@ func stamp_prefab(key: String, x: int, y: int, flip := false) -> void:
 
 # ---------------------------------------------------------------- generation
 
-func new_world(_style := "pixel") -> void:
+## World layouts besides the default village (see Templates).
+const LAYOUTS := ["forest", "mountain", "city", "indoor"]
+
+
+func new_world(_style := "pixel", layout := "") -> void:
 	fg.fill(0)
 	bg.fill(0)
 	var r := U.rng(4242)
+	if layout in LAYOUTS:
+		call("_layout_" + layout, r)
+		rebuild()
+		return
 	# Rolling ground with a flat village in the middle and a pond.
 	var heights: Array[int] = []
 	var a := r.next() * TAU
@@ -381,6 +389,118 @@ func new_world(_style := "pixel") -> void:
 	for x in [25, 34, 44, 53]:
 		bg[idx(x, ground_y(x) + 1)] = PixelTiles.ID["lantern"]
 	rebuild()
+
+
+## Ground from a height per column: grass (or snow) on dirt on stone.
+func _ground(heights: Array, top := "grass", under := "dirt") -> void:
+	for x in W:
+		var g: int = heights[x]
+		for y in g:
+			var id := PixelTiles.ID["stone"]
+			if y >= g - 1:
+				id = PixelTiles.ID[top]
+			elif y >= g - 4:
+				id = PixelTiles.ID[under]
+			fg[idx(x, y)] = id
+
+
+func _grass_tufts(r: U.Rng, flowers := 0.12, tall := 0.3) -> void:
+	for x in W:
+		var y := ground_y(x)
+		if y >= H or bg[idx(x, y)] != 0 or fg[idx(x, y)] != 0:
+			continue
+		var v := r.next()
+		if v < flowers:
+			bg[idx(x, y)] = PixelTiles.ID["flowers"]
+		elif v < flowers + tall:
+			bg[idx(x, y)] = PixelTiles.ID["tallgrass"]
+
+
+## Woods: gentle hills with trees close together, a clearing in the middle.
+func _layout_forest(r: U.Rng) -> void:
+	var heights: Array = []
+	for x in W:
+		var hh := 14.0 + sin(x * 0.09 + 1.3) * 2.5 + sin(x * 0.23) * 1.0
+		hh = lerpf(hh, 14.0, clampf(1.0 - absf(x - 40.0) / 8.0, 0.0, 1.0) * 1.5)
+		heights.append(int(round(clampf(hh, 10.0, 20.0))))
+	_ground(heights)
+	var x := 2
+	while x < W - 4:
+		if absi(x - 40) > 7:
+			stamp_prefab("tree", x - 2, heights[x], r.next() < 0.5)
+		x += 4 + int(r.next() * 3)
+	_grass_tufts(r, 0.2, 0.45)
+
+
+## Mountains: steep peaks with snow on top and a pass down in the middle.
+func _layout_mountain(r: U.Rng) -> void:
+	var heights: Array = []
+	for x in W:
+		var d := absf(x - 40.0)
+		var hh := 13.0 + clampf((d - 9.0) * 0.55, 0.0, 16.0) + sin(x * 0.31) * 1.5 + sin(x * 0.13 + 2.0) * 2.0
+		heights.append(int(round(clampf(hh, 11.0, H - 6.0))))
+	for xx in W:
+		var g: int = heights[xx]
+		for y in g:
+			var id := PixelTiles.ID["stone"]
+			if y == g - 1:
+				id = PixelTiles.ID["snow"] if g >= 24 else PixelTiles.ID["grass"]
+			elif y >= g - 3 and g < 24:
+				id = PixelTiles.ID["dirt"]
+			fg[idx(xx, y)] = id
+	for tx in [30, 34, 47, 51]:
+		stamp_prefab("tree", tx - 2, heights[tx], tx > 40)
+	stamp_prefab("tower", 38, heights[38])
+	_grass_tufts(r, 0.05, 0.2)
+
+
+## A town: flat cobbled street lined with houses, shops and lamp posts.
+func _layout_city(r: U.Rng) -> void:
+	var heights: Array = []
+	for x in W:
+		heights.append(14)
+	_ground(heights, "cobble", "stone")
+	var keys := ["brickhouse", "cottage", "shop", "brickhouse", "tower", "cottage"]
+	var x := 2
+	var k := 0
+	while x < W - 8:
+		if absi(x - 36) > 6:
+			var key: String = keys[k % keys.size()]
+			var wide: int = (PixelTiles.PREFABS[key]["rows"][0] as String).length()
+			stamp_prefab(key, x, 14, k % 2 == 1)
+			x += wide + 2
+			k += 1
+		else:
+			x += 1
+	for lx in range(6, W - 4, 9):
+		if bg[idx(lx, 14)] == 0 and fg[idx(lx, 14)] == 0:
+			stamp_prefab("lamppost", lx, 14)
+	stamp_prefab("well", 39, 14)
+
+
+## Inside a long hall: plank floor, a wall behind with windows, shelves and
+## lanterns, the roof beams overhead.
+func _layout_indoor(_r: U.Rng) -> void:
+	var floor_y := 14
+	for x in W:
+		for y in floor_y:
+			fg[idx(x, y)] = PixelTiles.ID["stone"] if y < floor_y - 1 else PixelTiles.ID["planks"]
+	var top := floor_y + 9
+	for x in W:
+		fg[idx(x, top)] = PixelTiles.ID["planks"]
+		for y in range(floor_y, top):
+			bg[idx(x, y)] = PixelTiles.ID["wall"]
+	for x in [0, 1, W - 2, W - 1]:
+		for y in range(floor_y, top):
+			fg[idx(x, y)] = PixelTiles.ID["brick"]
+	for x in range(4, W - 4, 8):
+		bg[idx(x, floor_y + 3)] = PixelTiles.ID["window"]
+		bg[idx(x + 1, floor_y + 3)] = PixelTiles.ID["window"]
+		bg[idx(x + 4, floor_y + 5)] = PixelTiles.ID["lantern"]
+		for y in range(floor_y, floor_y + 2):
+			bg[idx(x + 2, y)] = PixelTiles.ID["bookshelf"]
+			bg[idx(x + 3, y)] = PixelTiles.ID["bookshelf"]
+		bg[idx(x + 6, floor_y + 2)] = PixelTiles.ID["torch"]
 
 
 # ---------------------------------------------------------------- meshes

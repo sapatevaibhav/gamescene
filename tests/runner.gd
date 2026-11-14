@@ -6,7 +6,7 @@ extends Node
 const SCRATCH := "user://test_projects/"
 ## Holding the classes keeps their redirected static paths alive: Godot
 ## unloads (and resets) scripts nothing references.
-var _hold := [ProjectStore, ModelRig, AssetLib, AudioFiles, Recorder, AnimLib, Poses]
+var _hold := [ProjectStore, ModelRig, AssetLib, AudioFiles, Recorder, AnimLib, Poses, Licence]
 
 
 func _ready() -> void:
@@ -19,6 +19,10 @@ func _ready() -> void:
 	AudioFiles.DIR = SCRATCH + "audio/"
 	AnimLib.DIR = SCRATCH + "anims/"
 	Poses.FILE = SCRATCH + "poses.json"
+	Licence.FILE = SCRATCH + "licence.gslicence"
+	# Device settings changed by a test (the tour, ...) stay in the scratch
+	# folder too; the user's own are only read.
+	App.device_file = SCRATCH + "device.json"
 	Recorder.DIR_OVERRIDE = SCRATCH + "exports/"
 	Recorder.JOB_DIR = SCRATCH + "jobs/"
 	AssetTags.reload()

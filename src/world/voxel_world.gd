@@ -250,9 +250,13 @@ func walkable(x: float, z: float) -> bool:
 
 # ================================================================ generation
 
-func new_world(_style_key := "blocky") -> void:
+## World layouts besides the default meadow village (see Templates).
+const LAYOUTS := ["forest", "mountain", "city", "indoor"]
+
+
+func new_world(_style_key := "blocky", layout := "") -> void:
 	Blocks.reset_custom()
-	generate("meadow")
+	generate(layout if layout in LAYOUTS else "meadow")
 	rebuild()
 
 
@@ -356,6 +360,15 @@ func generate(kind: String, p_seed := -1) -> void:
 		_fill_raw(0, 3, 0, WX - 1, 3, WZ - 1, _id("dirt"))
 		_fill_raw(0, 4, 0, WX - 1, 4, WZ - 1, _id("grass"))
 		return
+	if kind == "mountain":
+		_gen_mountain(r, seed_v)
+		return
+	if kind == "city":
+		_gen_city(r)
+		return
+	if kind == "indoor":
+		_gen_indoor()
+		return
 	if kind == "plaza":
 		_fill_raw(0, 0, 0, WX - 1, 3, WZ - 1, stone)
 		_fill_raw(0, 4, 0, WX - 1, 4, WZ - 1, _id("cobble"))
@@ -405,17 +418,21 @@ func generate(kind: String, p_seed := -1) -> void:
 			if h < water:
 				for y in range(h + 1, water + 1):
 					_set_raw(x, y, z, _id("ice") if kind == "snow" and y == water else _id("water"))
-	var door := _house(cx - 3, cz - 2, 6, 7, 6, _id("sandstone") if kind == "desert" else _id("planks"), _id("sandstone") if kind == "desert" else _id("brick"))
-	if kind != "desert":
+	var forest := kind == "forest"
+	var door := Vector2i(cx, 0)
+	if not forest:
+		door = _house(cx - 3, cz - 2, 6, 7, 6, _id("sandstone") if kind == "desert" else _id("planks"), _id("sandstone") if kind == "desert" else _id("brick"))
+	if kind != "desert" and not forest:
 		for z in range(0, door.y - 1):
 			var y := ground_y(door.x, z) - 1
 			var t := get_b(door.x, y, z)
 			if t == _id("grass") or t == _id("snow"):
 				_set_raw(door.x, y, z, _id("path"))
-	for i in int(60.0 * WX * WZ / 2304.0):
+	# A forest: three times the trees, with a clearing in the middle.
+	for i in int((180.0 if forest else 60.0) * WX * WZ / 2304.0):
 		var x := 2 + int(r.next() * (WX - 4))
 		var z := 2 + int(r.next() * (WZ - 4))
-		if Vector2(x - cx, z - cz).length() < 10 or absi(x - door.x) < 2:
+		if Vector2(x - cx, z - cz).length() < (8 if forest else 10) or (absi(x - door.x) < 2 and not forest):
 			continue
 		var y := ground_y(x, z)
 		var top := get_b(x, y - 1, z)
@@ -424,8 +441,121 @@ func generate(kind: String, p_seed := -1) -> void:
 				var h := 2 + int(r.next() * 2)
 				for k in h:
 					_set_raw(x, y + k, z, _id("cactus"))
-		elif (top == _id("grass") or top == _id("snow")) and r.next() < 0.45:
+		elif (top == _id("grass") or top == _id("snow")) and r.next() < (0.8 if forest else 0.45):
 			_tree(x, y, z, r, kind == "snow")
+
+
+## Two ridges with a road along the valley between them, snow on the tops.
+func _gen_mountain(r: U.Rng, seed_v: int) -> void:
+	var cz := WZ >> 1
+	var stone := _id("stone")
+	for x in WX:
+		var mid := cz + int(round(sin(x * 0.08) * 3.0))
+		for z in WZ:
+			var off := absi(z - mid)
+			var h := 5 + clampi(int((off - 4) * 0.8), 0, 13) + (roundi(_fbm(x, z, seed_v) * 3.0) if off > 6 else 0)
+			h = mini(h, WY - 3)
+			for y in range(0, h + 1):
+				var id := stone
+				if y == h:
+					id = _id("snow") if h >= 14 else (_id("path") if off <= 1 else (_id("grass") if h < 11 else stone))
+				elif y > h - 2 and h < 11:
+					id = _id("dirt")
+				_set_raw(x, y, z, id)
+	# Pines on the lower slopes.
+	for i in 120:
+		var x := 2 + int(r.next() * (WX - 4))
+		var z := 2 + int(r.next() * (WZ - 4))
+		var mid := cz + int(round(sin(x * 0.08) * 3.0))
+		if absi(z - mid) < 4:
+			continue
+		var y := ground_y(x, z)
+		if get_b(x, y - 1, z) == _id("grass") and y < WY - 7 and r.next() < 0.6:
+			_tree(x, y, z, r, y > 11)
+
+
+## A night city: cobbled streets in a grid, tall buildings with lit windows,
+## street lamps, and an open square in the middle.
+func _gen_city(r: U.Rng) -> void:
+	var cx := WX >> 1
+	var cz := WZ >> 1
+	_fill_raw(0, 0, 0, WX - 1, 3, WZ - 1, _id("stone"))
+	_fill_raw(0, 4, 0, WX - 1, 4, WZ - 1, _id("cobble"))
+	_fill_raw(cx - 7, 4, cz - 7, cx + 6, 4, cz + 6, _id("planks"))
+	_fill_raw(cx - 1, 5, cz - 1, cx, 5, cz, _id("water"))
+	for q in [[cx - 2, cz - 2], [cx + 1, cz - 2], [cx - 2, cz + 1], [cx + 1, cz + 1]]:
+		_set_raw(q[0], 5, q[1], _id("brick"))
+	var mats := [_id("brick"), _id("sandstone"), _id("stone"), _id("planks"), _id("basalt")]
+	# Blocks of buildings 9 wide with 5-wide streets between them.
+	for bx in range(2, WX - 9, 14):
+		for bz in range(2, WZ - 9, 14):
+			if absi(bx + 4 - cx) < 11 and absi(bz + 4 - cz) < 11:
+				continue
+			var w := 8 + int(r.next() * 2)
+			var d := 8 + int(r.next() * 2)
+			var h := 6 + int(r.next() * 12)
+			h = mini(h, WY - 7)
+			var m: int = mats[int(r.next() * mats.size())]
+			for y in range(5, 5 + h):
+				for xx in range(bx, bx + w):
+					for zz in range(bz, bz + d):
+						var edge := xx == bx or xx == bx + w - 1 or zz == bz or zz == bz + d - 1
+						if not edge:
+							continue
+						var win := y % 3 == 1 and (xx + zz) % 3 == 1 and y > 5
+						_set_raw(xx, y, zz, (_id("lamp") if r.next() < 0.35 else _id("glass")) if win else m)
+			_fill_raw(bx, 5 + h, bz, bx + w - 1, 5 + h, bz + d - 1, _id("stone"))
+			# A door on the street side.
+			_set_raw(bx + w / 2, 5, bz, 0)
+			_set_raw(bx + w / 2, 6, bz, 0)
+	for x in range(4, WX - 3, 7):
+		for z in range(4, WZ - 3, 7):
+			if (x - 2) % 14 >= 10 or (z - 2) % 14 >= 10:
+				if get_b(x, 5, z) == 0 and Vector2(x - cx, z - cz).length() > 3:
+					_fill_raw(x, 5, z, x, 7, z, _id("basalt"))
+					_set_raw(x, 8, z, _id("lamp"))
+
+
+## A big hall inside: plank floor, brick walls with windows, a roof, lamps
+## hanging from the ceiling, bookshelves, tables (counters) and a hearth.
+func _gen_indoor() -> void:
+	var cx := WX >> 1
+	var cz := WZ >> 1
+	_fill_raw(0, 0, 0, WX - 1, 3, WZ - 1, _id("stone"))
+	_fill_raw(0, 4, 0, WX - 1, 4, WZ - 1, _id("grass"))
+	var x0 := cx - 15
+	var x1 := cx + 14
+	var z0 := cz - 11
+	var z1 := cz + 10
+	var top := 12
+	_fill_raw(x0, 4, z0, x1, 4, z1, _id("planks"))
+	for y in range(5, top):
+		for x in range(x0, x1 + 1):
+			for z in range(z0, z1 + 1):
+				if x == x0 or x == x1 or z == z0 or z == z1:
+					var win := y in [7, 8] and ((x - x0) % 5 == 2 or (z - z0) % 5 == 2) and not (x in [x0, x1] and z in [z0, z1])
+					_set_raw(x, y, z, _id("glass") if win else _id("brick"))
+	_fill_raw(x0, top, z0, x1, top, z1, _id("planks"))
+	# Lamps hanging in rows under the roof.
+	for x in range(x0 + 4, x1 - 2, 6):
+		for z in range(z0 + 4, z1 - 2, 6):
+			_set_raw(x, top - 1, z, _id("lamp"))
+	# Bookshelves along the back wall, a hearth in the middle of it.
+	for x in range(x0 + 1, x1):
+		if absi(x - cx) > 2:
+			_fill_raw(x, 5, z1 - 1, x, 7, z1 - 1, _id("bookshelf"))
+	_fill_raw(cx - 2, 5, z1 - 1, cx + 2, 8, z1 - 1, _id("brick"))
+	_set_raw(cx, 5, z1 - 1, 0)
+	_set_raw(cx, 6, z1 - 1, 0)
+	# Long tables down the hall.
+	for z in range(z0 + 4, z1 - 4, 5):
+		for x in [cx - 8, cx + 7]:
+			_fill_raw(x - 3, 5, z, x + 3, 5, z, _id("planks"))
+	# The door, facing south, and a path up to it.
+	_fill_raw(cx - 1, 5, z0, cx, 7, z0, 0)
+	for z in range(0, z0):
+		_set_raw(cx, 4, z, _id("path"))
+		_set_raw(cx - 1, 4, z, _id("path"))
 
 
 ## Builds a prefab with its origin at (bx, by, bz), rotated rot * 90 degrees.

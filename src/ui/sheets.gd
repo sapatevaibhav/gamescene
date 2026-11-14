@@ -152,6 +152,7 @@ func v_add(_a, b: VBoxContainer) -> String:
 		items.append(["upload", "Skin", "Upload a 64×64 character PNG", func(): _upload_skin()])
 	_tiles(b, items)
 	b.add_child(UIK.para("Every building tool has the same bar: Add, Remove and Copy." + ("" if App.is_touch else " Press B to open it."), 12))
+	_rights(b)
 	return "Add"
 
 
@@ -216,6 +217,7 @@ func _models_section(b: VBoxContainer, on_pick: Callable) -> void:
 	if not AssetTags.can_import_models(style):
 		return
 	_section(b, "3D models")
+	_rights(b)
 	var f := _picks(b)
 	f.add_child(UIK.pick(Icons.tex("upload", 48, UIK.TAPE), "Import", false, _import_model))
 	var mine := _style_models()
@@ -294,7 +296,17 @@ func _import_model() -> void:
 
 ## Lists imported characters and objects with delete buttons, so files can be
 ## removed and imported again. Scenes using a deleted file show a placeholder.
+## Shown wherever files come in: the app bundles only original or CC0 art,
+## and what people import is theirs to answer for.
+const RIGHTS := "Only import things you made or have the right to use. What you add, and what you make with it, is your responsibility."
+
+
+func _rights(b: Control) -> void:
+	b.add_child(UIK.para(RIGHTS, 11, UIK.MUTED))
+
+
 func v_imports(_a, b: VBoxContainer) -> String:
+	_rights(b)
 	var style := studio.style_key
 	var chars := _style_models()
 	var objs := _style_props()
@@ -1614,6 +1626,7 @@ func v_sounds(_a, b: VBoxContainer) -> String:
 		var key: String = "file:" + id
 		b.add_child(_sound_row(key, "%.1f s" % Sounds.length(key), false, add.bind(key)))
 	b.add_child(UIK.btn("Import music or a sound", func(): _import_sound(add), false, "upload"))
+	_rights(b)
 	return "Add a sound"
 
 

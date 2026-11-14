@@ -1113,15 +1113,22 @@ func _ring_place(key: String, n: int, d: float, r: U.Rng, offset := 0.0, face :=
 		add_prop(key, x, z, atan2(c - x, c - z) if face else r.next() * 6, 1)
 
 
-## Generates a fresh world for `key` (terrain + the style's village/outpost).
-func new_world(key: String) -> void:
+## World layouts besides the default village (see Templates).
+const LAYOUTS := ["forest", "mountain", "city"]
+
+
+## Generates a fresh world for `key` (terrain + the style's village/outpost),
+## or one of LAYOUTS.
+func new_world(key: String, layout := "") -> void:
 	style_key = key
 	var seed := randi() % 1000
 	var r := U.rng(seed + 7)
 	var c := TN / 2.0
 	gen_terrain(seed)
 	clear_props()
-	if key == "anime":
+	if layout in LAYOUTS:
+		call("_layout_" + layout, key, r, seed)
+	elif key == "anime":
 		# A forest glade: ruins and a campfire in a clearing, a winding path,
 		# dense broadleaf forest all around, undergrowth everywhere.
 		add_prop("arch", c, c + 7.5, PI)
@@ -1166,12 +1173,128 @@ func new_world(key: String) -> void:
 		_scatter_props("tree", 12, 12, 22, r)
 		_scatter_props("rock", 8, 10, 22, r)
 		_scatter_props("flowers", 10, 7, 18, r)
+	_finish_props()
+
+
+func _finish_props() -> void:
 	for p in props:
 		flatten_at(p.x, p.z, _footprint(p) * p.s + 0.6, terrain_h(p.x, p.z))
 	for p in props:
 		update_prop(p)
 	rebuild()
 	rebuild_grass()
+
+
+## A deep forest with a clearing in the middle and a trail running through.
+func _layout_forest(key: String, r: U.Rng, _seed: int) -> void:
+	var c := TN / 2.0
+	path.fill(0)
+	for j in TN:
+		for i in TN:
+			# A trail winding north-south through the clearing.
+			var cx := c + sin(j * 0.12) * 4.0
+			if absf(i + 0.5 - cx) < 1.0 and Vector2(i - c, j - c).length() > 6.5:
+				path[j * TN + i] = 1
+	flatten_at(c, c, 8.0, 3.0)
+	if key == "anime":
+		add_prop("log", c + 3.2, c - 1.0, 1.3)
+		add_prop("log", c - 3.0, c + 0.8, 0.2)
+		add_prop("stump", c - 1.4, c - 3.0)
+		add_prop("mushrooms", c + 2.0, c + 3.2)
+		_scatter_props("tall", 15, 9, 23, r)
+		_scatter_props("oak", 24, 8, 23, r)
+		_scatter_props("blossom", 4, 9, 20, r)
+		_scatter_props("bush", 20, 7, 23, r)
+		_scatter_props("fern", 26, 6, 23, r)
+		_scatter_props("mushrooms", 10, 7, 23, r)
+		_scatter_props("rocks", 8, 9, 23, r)
+		_scatter_props("log", 6, 9, 21, r)
+		_scatter_props("flowers", 14, 5, 23, r)
+	else:
+		add_prop("bench", c + 3.0, c - 1.0, -PI / 2)
+		add_prop("bench", c - 3.0, c + 0.5, PI / 2)
+		_scatter_props("pine", 50, 8, 23, r)
+		_scatter_props("tree", 30, 8, 23, r)
+		_scatter_props("rock", 14, 8, 23, r)
+		_scatter_props("flowers", 14, 5, 23, r)
+
+
+## A pass between two ridges: a road along the valley floor, rocks and pines
+## on the slopes.
+func _layout_mountain(key: String, r: U.Rng, seed: int) -> void:
+	var c := TN / 2.0
+	for j in TN + 1:
+		for i in TN + 1:
+			var off := absf(j - c - sin(i * 0.08) * 3.0)
+			var ridge := clampf((off - 5.0) * 0.75, 0.0, 9.0) + fbm(i * 2.1, j * 2.1, seed + 3) * 2.5 * clampf((off - 4.0) / 6.0, 0.0, 1.0)
+			h[_hi(i, j)] = clampf(2.8 + ridge, 0.4, 12.0)
+	path.fill(0)
+	for j in TN:
+		for i in TN:
+			if absf(j + 0.5 - c - sin((i + 0.5) * 0.08) * 3.0) < 1.2:
+				path[j * TN + i] = 1
+	water = 0.0
+	var rock := "rocks" if key == "anime" else "rock"
+	var tree := "tall" if key == "anime" else "pine"
+	for k in 26:
+		var x := 2.0 + r.next() * (TN - 4.0)
+		var side := 1.0 if r.next() < 0.5 else -1.0
+		var z := c + sin(x * 0.08) * 3.0 + side * (6.5 + r.next() * 14.0)
+		if free_spot(x, z, 4.0):
+			add_prop(tree if k % 3 else rock, x, z, r.next() * TAU, 0.9 + r.next() * 0.4)
+	for k in 14:
+		var x := 2.0 + r.next() * (TN - 4.0)
+		var z := c + sin(x * 0.08) * 3.0 + (1.0 if k % 2 else -1.0) * (3.0 + r.next() * 2.0)
+		if free_spot(x, z, 1.0):
+			add_prop("stone" if key == "anime" else "rock", x, z, r.next() * TAU, 0.6)
+	if key == "anime":
+		add_prop("lantern", c - 2.0, c + sin(c * 0.08) * 3.0 - 2.4)
+		add_prop("pillar", c + 9.0, c + sin((c + 9) * 0.08) * 3.0 + 3.0)
+
+
+## A town of streets: houses in rows along a main street and a cross street,
+## lamp posts all along them, a square with a well in the middle.
+func _layout_city(key: String, r: U.Rng, _seed: int) -> void:
+	var c := TN / 2.0
+	for j in TN + 1:
+		for i in TN + 1:
+			var e := mini(mini(i, j), mini(TN - i, TN - j))
+			h[_hi(i, j)] = lerpf(5.0, 3.0, clampf(e / 6.0, 0.0, 1.0))
+	path.fill(0)
+	for j in TN:
+		for i in TN:
+			if absf(j + 0.5 - c) < 1.6 or absf(i + 0.5 - c) < 1.6 or (absf(i + 0.5 - c) < 6.0 and absf(j + 0.5 - c) < 6.0):
+				path[j * TN + i] = 1
+	water = 0.0
+	add_prop("well", c, c)
+	for b in [[c - 3.5, c + 4.0, PI], [c + 3.5, c + 4.0, PI]]:
+		add_prop("bench", b[0], b[1], b[2])
+	var lamp := "lamp"
+	for k in range(-30, 31, 6):
+		if absf(k) < 7:
+			continue
+		for sd in [-2.6, 2.6]:
+			add_prop(lamp, c + k, c + sd)
+			add_prop(lamp, c + sd, c + k)
+	for sd in [-6.5, 6.5]:
+		for sd2 in [-6.5, 6.5]:
+			add_prop(lamp, c + sd, c + sd2)
+	# Houses face the street on both sides, leaving the square open.
+	for k in range(-30, 31, 9):
+		if absf(k) < 10:
+			continue
+		for sd in [-1.0, 1.0]:
+			add_prop("house", c + k, c + sd * 8.5, 0.0 if sd > 0 else PI)
+			add_prop("house", c + sd * 8.5, c + k, PI / 2 if sd > 0 else -PI / 2)
+	if key == "anime":
+		add_prop("cart", c + 5.0, c - 4.5, 0.4)
+		add_prop("lantern", c - 5.0, c - 5.0)
+		_scatter_props("blossom", 6, 20, 23, r, true)
+		_scatter_props("oak", 10, 22, 23, r, true)
+	else:
+		add_prop("barrel", c + 5.0, c - 4.5)
+		add_prop("barrel", c + 5.6, c - 4.0)
+		_scatter_props("tree", 14, 22, 23, r, true)
 
 
 # ---------------------------------------------------------------- queries

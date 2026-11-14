@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.20.0)
+## What's supported (as of 0.22.0)
 
 ### Platforms and engine
 
@@ -71,6 +71,15 @@ Imported characters also get:
 | Effects | Campfire (flames, embers, smoke, firelight), magic sparkles, smoke, dust; every style; replay exactly |
 
 All of it is deterministic: a take, a scrub and an export play out the same.
+
+### Starting points, help and licences
+
+| What | How |
+|---|---|
+| Templates | When naming a scene (Templates fold). Worlds: forest, mountain pass, night town (every style), great hall (blocky, Pixel 2D side view). Ready-made scenes: a day in the village, campfire night, monster attack (styles with monsters), dance party, mountain journey, evening in the hall |
+| Tour | A card per studio button the first time a scene opens; Settings → Show the tour again |
+| Credits | Settings → Credits and licences: bundled assets, the engine and every library by licence, each licence's page and full text |
+| Licences | Signed `.gslicence` files checked on the device (RSA-SHA256, no account, no network). Tiers Free, Creator, Studio; nothing locked yet |
 
 ### Sound
 
@@ -134,6 +143,22 @@ Opening files: drop a scene file (`.json`) on the window to open it; inside a sc
 ---
 
 ## [Unreleased]
+
+## [0.22.0] - 2026-11-14
+
+Templates, a first-run tour, credits and licences.
+
+### Added
+- **Templates** when naming a new scene: a **Templates** fold at the bottom of the dialog (closed at first; tap a template again to start blank, and the scene takes its name unless you typed one).
+  - **Worlds to build in**: **Forest** (deep woods round a clearing, a trail through), **Mountain pass** (a road between two ridges, snow on the tops, pines on the slopes), **Night town** (streets in a grid lined with houses and lamp posts round a square) and, in blocky and Pixel 2D side view, **Great hall** (inside: plank floor, windows, shelves, long tables, a hearth). Every style has the layouts its world can make: blocky all four, anime and low-poly three, both Pixel 2D views three or four.
+  - **Ready-made scenes to remix**: **A day in the village**, **Campfire night**, **Monster attack** (styles with monsters), **Dance party**, **Mountain journey** and **Evening in the hall**. Each comes with a cast doing things (hanging out, chatting, dancing, gathering round a fire, following you), friends and rivals, story moments (lines, a scare, a fight), the right time of day or weather, and campfires, sparkles or dust.
+- **A one-minute tour** the first time a scene opens: a short card for every button (moving round, Home and undo, Cast, Add, Story and the timeline, Camera, Mood, Sound, Record, Export, and screenshot, clean view and settings), each pointing at its button with a glowing frame; a compact dock opens so the tour can show its buttons. Skip it any time; **Settings → Show the tour again** brings it back.
+- **Credits and licences** (Settings → Credits and licences; Esc goes back to Settings): the app, the bundled art and sound (from `assets/CREDITS.md`, now shipped with the app), what you add yourself, the Godot Engine licence, and every library inside the engine grouped by licence. Each licence links to its official page, and **View details** opens its full text (which the licences ask to ship with the app) in a dialog over the blurred page, one at a time; Esc, Close or a click outside it shuts it.
+- **Licences without accounts** (Settings → Licence): add a signed `.gslicence` file to unlock a paid tier (Free, Creator, Studio) on that device. It's checked on the device against the public key built into the app; nothing goes over the network. Nothing is locked yet: every feature works in every tier. `tools/licence_tool.gd` makes the key pair and signs licence files.
+- **Clicking or tapping outside a dialog closes it** (the same as Cancel), for every dialog in the app.
+- **A note wherever you import** (models, objects, sprites, sounds): only import what you made or have the right to use; what you add is your responsibility.
+
+## [0.21.0] - 2026-11-13
 
 Living scenes: characters that hang out, react and have feelings about each other, a pose library, and campfires, sparkles, smoke and dust.
 
