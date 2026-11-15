@@ -4,7 +4,7 @@ extends Node
 signal toast_requested(msg: String)
 signal settings_changed
 
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
 
 ## Per-scene settings are saved with the project; device settings are not.
 var settings := {
@@ -138,6 +138,14 @@ func q() -> Dictionary:
 ## GPUs below High.
 func lite_shading() -> bool:
 	return phone_gpu and device["quality"] in ["low", "balanced"]
+
+
+## A lighter anime world on phones at Battery saver: fewer leaf cards per
+## tree, no shadows from tree crowns and half the small plants hidden (only
+## what's drawn: scenes keep every prop). Desktop and higher settings keep
+## the full look.
+func lite_world() -> bool:
+	return phone_gpu and device["quality"] == "low"
 
 
 ## Phone GPUs: the Mobile renderer on a phone or tablet.

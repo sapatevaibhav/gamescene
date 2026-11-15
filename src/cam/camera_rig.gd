@@ -111,8 +111,22 @@ func update_camera(dt: float) -> void:
 		"third":
 			var cp := cos(pitch)
 			var off := Vector3(sin(yaw) * cp, sin(pitch), cos(yaw) * cp)
-			global_position = head + off * _clip(head, off, dist)
-			_look_at_safe(head)
+			var pos := head + off * _clip(head, off, dist)
+			var look := head
+			# Someone saying a story line: blend to a shot over your shoulder
+			# onto them (or onto them alone when they're far off).
+			var spk := _story_speaker(head)
+			if spk:
+				_spk = spk
+			_sblend = lerpf(_sblend, 1.0 if spk else 0.0, 1.0 - exp(-dt * 2.5))
+			if _sblend > 0.01 and _spk and is_instance_valid(_spk.root()):
+				var shot := _speaker_shot(head, _spk)
+				pos = pos.lerp(shot[0], _sblend)
+				look = look.lerp(shot[1], _sblend)
+			elif _sblend <= 0.01:
+				_spk = null
+			global_position = pos
+			_look_at_safe(look)
 		"first":
 			global_position = Vector3(player.pos.x, player.head_y() + 0.05, player.pos.z)
 			_look_at_safe(global_position + look_dir(yaw, pitch))
@@ -145,6 +159,46 @@ func update_camera(dt: float) -> void:
 		rotate_object_local(Vector3.UP, sin(tt * 1.3 + 1) * 0.006 + sin(tt * 2.9) * 0.002)
 		rotate_object_local(Vector3.BACK, sin(tt * 0.9) * 0.004)
 	_update_dof()
+
+
+var _spk: Actor = null
+var _sblend := 0.0
+
+
+## 3D follow camera: who's saying a story or trigger line (not you); when
+## lines overlap, the one who started last (the most time left).
+func _story_speaker(_head: Vector3) -> Actor:
+	var best: Actor = null
+	var bt := 0.0
+	for a in studio.actors:
+		if a != studio.player and a.spotlight_t > bt and not a.rig.is_empty():
+			bt = a.spotlight_t
+			best = a
+	return best
+
+
+## [camera position, look point] for a shot of `spk` talking: over your
+## shoulder when they're near, close on them when they're far.
+func _speaker_shot(head: Vector3, spk: Actor) -> Array:
+	var sh := Vector3(spk.pos.x, spk.head_y() - 0.1, spk.pos.z)
+	var d := Vector3(sh.x - head.x, 0, sh.z - head.z)
+	var l := d.length()
+	var dir := d / l if l > 0.3 else Vector3(sin(yaw + PI), 0, cos(yaw + PI))
+	var side := Vector3(dir.z, 0, -dir.x)
+	var look: Vector3
+	var pos: Vector3
+	if l < 14.0:
+		look = head.lerp(sh, 0.7)
+		pos = head - dir * 2.8 + side * 0.9 + Vector3(0, 0.8, 0)
+	else:
+		look = sh
+		pos = sh - dir * 4.5 + side * 1.2 + Vector3(0, 0.7, 0)
+	# Keep out of walls and hills, like the follow camera.
+	var off := pos - look
+	var n := off.length()
+	if n > 0.01:
+		pos = look + off / n * _clip(look, off / n, n)
+	return [pos, look]
 
 
 func _update_cine(dt: float) -> void:
@@ -258,10 +312,15 @@ func _update_side(dt: float) -> void:
 			if pl:
 				# Frame a little above them: more sky, less dirt.
 				var want := Vector3(pl.pos.x, pl.pos.y + 1.0 + sz * 0.14, lane)
+				# Someone saying a story line: keep them in the picture too.
+				var fr := _story_frame(Vector2(pl.pos.x, pl.pos.y + 1.0), sz, false)
+				if not fr.is_empty():
+					want = Vector3(fr["c"].x, fr["c"].y + fr["size"] * 0.1, lane)
 				if _smooth.z != lane:
 					_smooth = want
-				_smooth = _smooth.lerp(want, 1.0 - exp(-dt * 6.0))
+				_smooth = _smooth.lerp(want, 1.0 - exp(-dt * 3.0))
 				focus = Vector2(_smooth.x, _smooth.y)
+				sz = _story_zoom(fr.get("size", sz), dt)
 			if mode == "first":
 				sz *= 0.6
 	size = sz
@@ -269,6 +328,44 @@ func _update_side(dt: float) -> void:
 	var px := 1.0 / PixelWorld.PPM
 	global_position = Vector3(snappedf(focus.x, px), snappedf(focus.y, px), lane + 30.0)
 	global_basis = Basis.IDENTITY
+
+
+var _zoom := 0.0
+
+
+## 2D follow camera: who's saying a story or trigger line right now. Frames
+## them with the player (zoomed out just enough, with a margin), or just
+## them when they're too far apart for that. {} when nobody is.
+## `me` is the player's spot in screen terms (x, y on the side view; x, z
+## seen from above).
+func _story_frame(me: Vector2, base: float, top: bool) -> Dictionary:
+	var pts: Array[Vector2] = []
+	for a in studio.actors:
+		if a != studio.player and a.spotlight_t > 0.0:
+			pts.append(Vector2(a.pos.x, a.pos.z if top else a.pos.y + 1.0))
+	if pts.is_empty():
+		return {}
+	var aspect := maxf(0.5, get_viewport().get_visible_rect().size.aspect()) if get_viewport() else 16.0 / 9.0
+	var with_me: Array[Vector2] = pts.duplicate()
+	with_me.append(me)
+	for grp in [with_me, pts]:
+		var lo: Vector2 = grp[0]
+		var hi: Vector2 = grp[0]
+		for p in grp:
+			lo = lo.min(p)
+			hi = hi.max(p)
+		var need := maxf((hi.x - lo.x + 5.0) / aspect, hi.y - lo.y + 4.0)
+		if need <= 30.0 or grp == pts:
+			return {"c": (lo + hi) * 0.5, "size": clampf(maxf(base, need), 4.0, 40.0)}
+	return {}
+
+
+## Eases the 2D follow camera's zoom (so framing a speaker doesn't snap).
+func _story_zoom(want: float, dt: float) -> float:
+	if _zoom <= 0.0:
+		_zoom = want
+	_zoom = lerpf(_zoom, want, 1.0 - exp(-dt * 2.5))
+	return _zoom
 
 
 ## Jump the follow camera straight to `p` (after going through a door).
@@ -329,10 +426,14 @@ func _update_top(dt: float) -> void:
 			var pl: Actor = studio.player
 			if pl:
 				var want := Vector3(pl.pos.x, 0, pl.pos.z)
+				var fr := _story_frame(Vector2(pl.pos.x, pl.pos.z), sz, true)
+				if not fr.is_empty():
+					want = Vector3(fr["c"].x, 0, fr["c"].y)
 				if _smooth.y != 0.0 or _smooth.distance_to(want) > 30.0:
 					_smooth = want
-				_smooth = _smooth.lerp(want, 1.0 - exp(-dt * 6.0))
+				_smooth = _smooth.lerp(want, 1.0 - exp(-dt * 3.0))
 				focus = Vector2(_smooth.x, _smooth.z)
+				sz = _story_zoom(fr.get("size", sz), dt)
 			if mode == "first":
 				sz *= 0.6
 	size = sz

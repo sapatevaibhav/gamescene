@@ -19,6 +19,11 @@ func _ready() -> void:
 			views += [["tiles", null], ["pprefabs", null]]
 		else:
 			views += [["objects", null]]
+		# A trigger in the making (the editor needs one), and one saved, so the
+		# Story page lists it.
+		hud.sheets.new_trig = {"when": "touch", "_touch": "actor", "target": a.name, "who": "", "actor": "@target", "action": "wave", "text": "", "dur": 3.0}
+		m.studio.triggers.load_data([{"when": "enter", "who": "@player", "x": 40.0, "z": 40.0, "r": 3.0, "actor": a.name, "action": "say", "text": "Hi"}])
+		views += [["trigger", -1], ["trigger", 0]]
 		for v in views:
 			hud.open_sheet(v[0], v[1])
 			await get_tree().process_frame
@@ -32,7 +37,7 @@ func _ready() -> void:
 		m.studio.camera.set_mode("cine")
 		hud.open_sheet("camera")
 		await get_tree().process_frame
-		for t in ["blocks", "prefab", "objects", "terrain", "move_actor", "tiles", "pprefab", "effects"]:
+		for t in ["blocks", "prefab", "objects", "terrain", "move_actor", "tiles", "pprefab", "effects", "pick_spot"]:
 			m.studio.tools.set_tool(t)
 			await get_tree().process_frame
 		m.studio.tools.set_tool("")

@@ -153,8 +153,104 @@ func set_tile(x: int, y: int, id: int, rebuild_now := true) -> void:
 		bg[i] = id
 	else:
 		fg[i] = id
+	if not _flowing:
+		_wake_water(x, y, id)
 	if rebuild_now:
 		rebuild()
+
+
+# ---------------------------------------------------------------- flowing water
+# As in the blocky world: water you paint (or that a removed tile lets out)
+# falls into empty space below, then spreads sideways up to FLOW_SPREAD tiles
+# from where it lands, a step every FLOW_STEP seconds. Generating and loading
+# don't start it.
+
+const FLOW_STEP := 0.07
+const FLOW_SPREAD := 5
+const FLOW_MAX := 1500
+var _flow := {}
+var _flow_t := 0.0
+var _flow_n := 0
+var _flowing := false
+
+
+func _process(dt: float) -> void:
+	if _flow.is_empty():
+		return
+	_flow_t += dt
+	var n := 0
+	var changed := false
+	while _flow_t >= FLOW_STEP and n < 3:
+		_flow_t -= FLOW_STEP
+		changed = flow_step() or changed
+		n += 1
+	if changed:
+		rebuild()
+
+
+func flowing() -> bool:
+	return not _flow.is_empty()
+
+
+## Runs the flow to the end at once.
+func settle_water() -> void:
+	var guard := 0
+	var changed := false
+	while not _flow.is_empty() and guard < 400:
+		changed = flow_step() or changed
+		guard += 1
+	if changed:
+		rebuild()
+
+
+static func _water_id() -> int:
+	return PixelTiles.ID.get("water", 0)
+
+
+## One step of the flow; true if any tile changed.
+func flow_step() -> bool:
+	var wid := _water_id()
+	var edge := _flow
+	_flow = {}
+	var changed := false
+	for c: Vector2i in edge:
+		if fg[idx(c.x, c.y)] != wid:
+			continue
+		var left: int = edge[c]
+		if c.y > 0 and fg[idx(c.x, c.y - 1)] == 0:
+			fg[idx(c.x, c.y - 1)] = wid
+			_flow[Vector2i(c.x, c.y - 1)] = FLOW_SPREAD
+			_flow_n += 1
+			changed = true
+			continue
+		if left <= 0 or (c.y > 0 and fg[idx(c.x, c.y - 1)] == wid):
+			continue
+		for dx in [1, -1]:
+			var nx: int = c.x + dx
+			if in_bounds(nx, c.y) and fg[idx(nx, c.y)] == 0:
+				fg[idx(nx, c.y)] = wid
+				_flow[Vector2i(nx, c.y)] = left - 1
+				_flow_n += 1
+				changed = true
+		if _flow_n > FLOW_MAX:
+			_flow.clear()
+			break
+	return changed
+
+
+func _wake_water(x: int, y: int, id: int) -> void:
+	var wid := _water_id()
+	if wid == 0:
+		return
+	if id == wid:
+		_flow[Vector2i(x, y)] = FLOW_SPREAD
+		_flow_n = 0
+	elif id == 0:
+		for d in [Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 0)]:
+			var nb: Vector2i = Vector2i(x, y) + d
+			if in_bounds(nb.x, nb.y) and fg[idx(nb.x, nb.y)] == wid:
+				_flow[nb] = maxi(int(_flow.get(nb, 0)), FLOW_SPREAD - 1)
+				_flow_n = 0
 
 
 func solid_at(x: int, y: int) -> bool:
@@ -332,7 +428,16 @@ func stamp_prefab(key: String, x: int, y: int, flip := false) -> void:
 const LAYOUTS := ["forest", "mountain", "city", "indoor"]
 
 
-func new_world(_style := "pixel", layout := "") -> void:
+func new_world(style := "pixel", layout := "") -> void:
+	# Building the world never sets water flowing (the pond stays a pond).
+	_flowing = true
+	_new_world(style, layout)
+	_flowing = false
+	_flow.clear()
+
+
+func _new_world(_style: String, layout: String) -> void:
+	_drop_inside()
 	fg.fill(0)
 	bg.fill(0)
 	var r := U.rng(4242)
@@ -763,10 +868,201 @@ func remove_prop(_p: Dictionary) -> void:
 # ---------------------------------------------------------------- save / load
 
 func serialize() -> Dictionary:
-	return {"pixel": 1, "w": W, "h": H, "fg": U.rle_encode(fg), "bg": U.rle_encode(bg), "decor": decor.duplicate(true), "backdrop": backdrop, "custom": custom.duplicate(true)}
+	# A house you're inside is saved as it was built (front wall and all).
+	var f := fg
+	var b := bg
+	if not inside.is_empty():
+		f = fg.duplicate()
+		b = bg.duplicate()
+		var saved: Dictionary = inside["saved"]
+		for i in saved:
+			f[i] = saved[i][0]
+			b[i] = saved[i][1]
+	return {"pixel": 1, "w": W, "h": H, "fg": U.rle_encode(f), "bg": U.rle_encode(b), "decor": decor.duplicate(true), "backdrop": backdrop, "custom": custom.duplicate(true)}
+
+
+# ---------------------------------------------------------------- going inside
+# Houses in the side view are a picture behind the street. Up at a door goes
+# inside: the front wall gives way to the room behind it (plank wall, window,
+# lamp, shelves, plank floor) and everything outside is dimmed. Up at the
+# door again, or walking out past the walls, comes back out. The house's own
+# tiles are kept aside and put back; saves always have them.
+
+## Tiles a house is built from (what "the house behind this door" is).
+const HOUSE_TILES := ["wall", "window", "door", "doortop", "roof", "brick", "brickwall", "bookshelf", "lantern", "stonewall", "mossy", "banner", "torch", "planks", "cobble"]
+## {rect: Rect2i (tiles: x, y = bottom-left), door: Vector2i, saved: {tile index: [fg, bg]}} while inside, else {}.
+var inside := {}
+var _shade: Node3D
+
+
+## The door at a character's feet, or (-1, -1).
+func door_at(p: Vector3) -> Vector2i:
+	var x := int(floor(p.x))
+	var did: int = PixelTiles.ID["door"]
+	for y in [int(floor(p.y)), int(floor(p.y)) + 1]:
+		if in_bounds(x, y) and bg[idx(x, y)] == did:
+			return Vector2i(x, y)
+	return Vector2i(-1, -1)
+
+
+## The rooms of the house behind door `d` (its walls, below the roof), or an
+## empty rect when it can't be gone into (no walls, or a tower with a ladder:
+## you already see inside those).
+func house_rect(d: Vector2i) -> Rect2i:
+	var ids := {}
+	for k in HOUSE_TILES:
+		ids[PixelTiles.ID[k]] = true
+	var ladder: int = PixelTiles.ID["ladder"]
+	var roof: int = PixelTiles.ID["roof"]
+	var part := func(c: Vector2i) -> bool:
+		return in_bounds(c.x, c.y) and (ids.has(bg[idx(c.x, c.y)]) or ids.has(fg[idx(c.x, c.y)]) or bg[idx(c.x, c.y)] == ladder)
+	var todo: Array[Vector2i] = [d]
+	var seen := {d: true}
+	var cells: Array[Vector2i] = []
+	while not todo.is_empty() and cells.size() < 300:
+		var c: Vector2i = todo.pop_back()
+		cells.append(c)
+		for o in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nb: Vector2i = c + o
+			if not seen.has(nb) and nb.y >= d.y and part.call(nb):
+				seen[nb] = true
+				todo.append(nb)
+	var lo := Vector2i(999, d.y)
+	var hi := Vector2i(-1, d.y)
+	var roof_y := 999
+	for c in cells:
+		if bg[idx(c.x, c.y)] == ladder:
+			return Rect2i()
+		if bg[idx(c.x, c.y)] == roof or fg[idx(c.x, c.y)] == roof:
+			roof_y = mini(roof_y, c.y)
+	for c in cells:
+		if c.y < roof_y:
+			lo.x = mini(lo.x, c.x)
+			hi.x = maxi(hi.x, c.x)
+			hi.y = maxi(hi.y, c.y)
+	if hi.x < lo.x or hi.x - lo.x < 1:
+		return Rect2i()
+	return Rect2i(lo, hi - lo + Vector2i.ONE)
+
+
+## Goes into the house behind door `d`. Returns false when there's no room.
+func open_house(d: Vector2i) -> bool:
+	if not inside.is_empty():
+		close_house()
+	var r := house_rect(d)
+	if r.size == Vector2i.ZERO:
+		return false
+	var saved := {}
+	var keep := func(x: int, y: int) -> void:
+		if in_bounds(x, y) and not saved.has(idx(x, y)):
+			saved[idx(x, y)] = [fg[idx(x, y)], bg[idx(x, y)]]
+	var T := PixelTiles.ID
+	for x in range(r.position.x, r.end.x):
+		# A plank floor (the ground under the house).
+		keep.call(x, r.position.y - 1)
+		if in_bounds(x, r.position.y - 1) and fg[idx(x, r.position.y - 1)] != 0:
+			fg[idx(x, r.position.y - 1)] = T["planks"]
+		for y in range(r.position.y, r.end.y):
+			keep.call(x, y)
+			fg[idx(x, y)] = 0
+			bg[idx(x, y)] = T["planks"]
+	# Furnish it: shelves on the left, a window in the middle, a lamp and a
+	# torch, as far as the room is wide and tall.
+	var x0 := r.position.x
+	var x1 := r.end.x - 1
+	var y0 := r.position.y
+	var mid := (x0 + x1) / 2
+	bg[idx(x0, y0)] = T["bookshelf"]
+	if r.size.y >= 2:
+		bg[idx(x0, y0 + 1)] = T["bookshelf"]
+		bg[idx(mid if mid != x0 else x1, y0 + 1)] = T["window"]
+	if r.size.y >= 3:
+		bg[idx(x1, y0 + 2)] = T["lantern"]
+	if r.size.x >= 4:
+		bg[idx(x1, y0)] = T["torch"] if r.size.y < 2 else T["banner"]
+	# The doorway you came in by, seen from inside (two tiles tall).
+	bg[idx(d.x, d.y)] = T["door"]
+	if r.has_point(Vector2i(d.x, d.y + 1)):
+		bg[idx(d.x, d.y + 1)] = T["doortop"]
+	inside = {"rect": r, "door": d, "saved": saved}
+	_show_shade(r)
+	rebuild()
+	return true
+
+
+func close_house() -> void:
+	if inside.is_empty():
+		return
+	var saved: Dictionary = inside["saved"]
+	for i in saved:
+		fg[i] = saved[i][0]
+		bg[i] = saved[i][1]
+	inside = {}
+	if _shade:
+		_shade.visible = false
+	rebuild()
+
+
+## Forgets being inside without putting tiles back (the world is replaced).
+func _drop_inside() -> void:
+	inside = {}
+	if _shade:
+		_shade.visible = false
+
+
+## At the doorway of the house you're in (to go back out).
+func at_inside_door(p: Vector3) -> bool:
+	if inside.is_empty():
+		return false
+	var d: Vector2i = inside["door"]
+	return absf(p.x - (d.x + 0.5)) < 0.8
+
+
+## Is this spot inside the house you've gone into (left to right)?
+func in_house(p: Vector3) -> bool:
+	if inside.is_empty():
+		return false
+	var r: Rect2i = inside["rect"]
+	return p.x >= r.position.x - 0.3 and p.x <= r.end.x + 0.3
+
+
+## Everything outside the room, dimmed (four dark panels round it, in front
+## of the street).
+func _show_shade(r: Rect2i) -> void:
+	if _shade == null:
+		_shade = Node3D.new()
+		_shade.name = "IndoorShade"
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(0.03, 0.03, 0.06, 0.62)
+		m.render_priority = 8
+		for k in 4:
+			var q := MeshInstance3D.new()
+			q.mesh = QuadMesh.new()
+			q.material_override = m
+			q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_shade.add_child(q)
+		add_child(_shade)
+	var x0 := float(r.position.x)
+	var x1 := float(r.end.x)
+	var y0 := float(r.position.y) - 1.0
+	var y1 := float(r.end.y)
+	var big := 300.0
+	# Left, right, below and above the room.
+	var boxes := [Rect2(x0 - big, y0 - big, big, big * 2 + (y1 - y0)), Rect2(x1, y0 - big, big, big * 2 + (y1 - y0)),
+		Rect2(x0, y0 - big, x1 - x0, big), Rect2(x0, y1, x1 - x0, big)]
+	for k in 4:
+		var b: Rect2 = boxes[k]
+		var q: MeshInstance3D = _shade.get_child(k)
+		(q.mesh as QuadMesh).size = b.size
+		q.position = Vector3(b.position.x + b.size.x / 2.0, b.position.y + b.size.y / 2.0, LANE + 0.8)
+	_shade.visible = true
 
 
 func load_data(d: Dictionary, _style := "") -> void:
+	_flow.clear()
+	_drop_inside()
 	if int(d.get("w", 0)) != W or int(d.get("h", 0)) != H or not d.has("fg"):
 		new_world()
 		return

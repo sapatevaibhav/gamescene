@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (14 Nov 2026, v0.22.0)
+## Where it stands today (15 Nov 2026, v0.23.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -23,6 +23,7 @@
 - **Phone polish (0.20):** portrait home and landscape scenes, touch scrolling and twin-stick controls, faster phone rendering and a smaller app, global settings, a compact dock and high refresh rates (tested on an Adreno 610 phone and a 120 Hz OnePlus).
 - **Living scenes (0.21):** characters hang out in small circles, react to fights, panics and celebrations nearby, run from monsters, and have feelings about each other (friend, rival, scared); a pose library with a pose editor; campfires, magic sparkles, smoke and dust in every style.
 - **Starting points (0.22):** world templates (forest, mountain pass, night town, great hall) and six ready-made scenes to remix, a first-run tour, an in-app credits page, and signed licence files for paid tiers (nothing locked yet).
+- **Stories and water (0.23):** triggers ("when someone walks into this area…"), ready-made scenes as 30-second films, the follow camera keeping the speaker in view, water that flows in every world (falling blocks and tiles, virtual-pipes water over terrain), and going inside houses in the side view.
 - **Tests:** headless suites plus rendered visual checks (see README).
 
 ## Architecture (decided)
@@ -54,6 +55,7 @@
 | 0.20 | Phone polish: portrait home and landscape scenes, touch scrolling, twin-stick controls, phone speed and app size, global settings, compact dock, frame rate | Done |
 | 0.21 | Living scenes: hang-out circles, reactions, feelings, running from monsters, pose library, campfires and other effects (Phases E, F and G) | Done |
 | 0.22 | Templates (worlds and ready-made scenes), first-run tour, credits and licence (Phases G, J and K) | Done |
+| 0.23 | Triggers, flowing water in every world, going inside side-view houses, 30-second template stories, the camera following the speaker (Phases F and G) | Done |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)
@@ -108,7 +110,7 @@
 
 - [x] Wander, chat, follow, chase, flee, gather and patrol.
 - [x] Socialising in small groups, reacting to nearby events, and fleeing from monsters as well as the player (0.21: Hang out circles, reactions to hits, panics and celebrations).
-- [ ] Triggers such as "when someone enters this area" or "when an object is touched".
+- [x] Triggers such as "when someone enters this area" or "when an object is touched" (Story → When something happens).
 - [x] Relationship settings (friendly, rival, scared) that change how characters react to each other (0.21).
 
 ## Phase G: Environment and visual polish
@@ -117,13 +119,13 @@
 - [x] Camera collision for the cinematic camera.
 - [ ] Motion blur, fire, magic sparkles and dust. Fire, sparkles, smoke and dust are done (0.21, Add → Effects); motion blur isn't.
 - [x] More starter templates: indoor rooms, forest, mountain pass and night city (0.22: Templates when naming a scene; the great hall in blocky and Pixel 2D side view).
-- [ ] Terrain paint brushes, a water tool and a tree-scatter brush.
+- [ ] Terrain paint brushes, a water tool and a tree-scatter brush. The water tool is done (Ground → Water / Dry: poured water runs downhill and pools; blocky and side-view water flows too); paint brushes and tree scatter aren't.
 - [ ] Chunked voxel worlds with level of detail.
 - [ ] More bigger world keeping performance same by unloading the world which is not in camera view or close to player similar to chunk loading in Minecraft.
 
 ## Phase H: Desktop pro layout
 
-- [ ] Scene list on the left, viewport in the centre, properties on the right and the timeline along the bottom.
+- [ ] Needs rethinking/reconsidering - Scene list on the left, viewport in the centre, properties on the right and the timeline along the bottom.
 - [ ] Move, rotate and scale handles with snapping, plus multi-select, grouping and duplicate.
 - [ ] A full keyboard-shortcut map and controller support.
 - [ ] Phones keep the current minimal layout, and the same project opens on both.
@@ -133,7 +135,7 @@
 - [x] Export presets for Android, iOS, Windows, macOS and Linux (0.19; `platform/export.sh`).
 - [x] On phones: save videos to the gallery, use the share sheet and open project files directly (0.19, Android plugin; iOS plugin written, needs building on a Mac).
 - [x] On desktop: native file dialogs, plus opening scene files by drag and drop or from the command line (0.19).
-- [ ] Store requirements: icons, an age rating and an offline-first privacy policy are done (0.19, `store/`); screenshots still need capturing, and the policy needs a contact address.
+- [ ] Store requirements: icons, an age rating and an offline-first privacy policy are done (0.19, `store/`); screenshots still need capturing. The policy's contact is contact@ekaai.tech.
 - [ ] Build and test the iOS plugin on a Mac.
 - [ ] Before release: a slimmed engine build for Android (about 84 → 55 MB APK). Remove whole modules the app doesn't use (OpenXR, WebRTC, WebSocket, ENet, multiplayer, UPnP, Theora, CSG, GridMap, navigation, JSON-RPC, mobile VR), with `optimize=size` and `lto=full`. Keep the advanced text server (Hindi and emoji text) and glTF/FBX, noise, RegEx, SVG, WebP, Ogg and MP3. Don't use "Detect from Project" class stripping: everything is built in code, so it would strip classes the app needs. Needs SCons, NDK 29 and 1–2 hours of compiling.
 
@@ -152,7 +154,7 @@
 - [ ] **Performance targets:** 30 fps while editing on low-end devices, 60 fps on mid-range and up, and 1080p export that succeeds reliably on mid-range phones.
 - [ ] **Acceptance test:** the "A day in a village" demo, start to finish, on an ordinary Android phone.
 - [x] **Onboarding:** a 60-second first-run tutorial and 3–5 ready-made scenes to remix (0.22: the tour and six ready-made scenes).
-- [ ] **Launch:** store submission, a launch video made in the app itself, and a feedback channel.
+- [ ] **Launch:** store submission, a launch video made in the app itself, and a feedback channel (Settings → Send feedback opens an email to contact@ekaai.tech with the version and device filled in).
 
 ## Ideas from raw-idea.md that aren't scheduled yet
 

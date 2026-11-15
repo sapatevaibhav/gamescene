@@ -142,7 +142,7 @@ func v_add(_a, b: VBoxContainer) -> String:
 		items.append(["tree", "Objects", "Trees, houses, rocks", func(): hud.push_view("pprefabs")])
 	else:
 		items.append(["tree", "Objects", "Trees, houses, props", func(): hud.push_view("objects")])
-		items.append(["hill", "Ground", "Raise hills, dig valleys", func(): studio.tools.set_tool("terrain"); hud.close_sheet()])
+		items.append(["hill", "Ground", "Raise hills, dig valleys, pour water", func(): studio.tools.set_tool("terrain"); hud.close_sheet()])
 	items.append(["fire", "Effects", "Campfires, sparkles, smoke, dust", func(): hud.push_view("effects")])
 	if AssetTags.can_import_sprites(studio.style_key):
 		items.append(["upload", "Sprite", "Import .png or .ase", func(): _import_sprite("char")])
@@ -1076,6 +1076,30 @@ func v_script(_a, b: VBoxContainer) -> String:
 	b.add_child(UIK.slider("Starts at", new_cue["start"], 0, 120, 0.5, func(x): new_cue["start"] = x, func(x): return "%.1fs" % x))
 	b.add_child(UIK.slider("Lasts", new_cue["dur"], 0.5, 30, 0.5, func(x): new_cue["dur"] = x, func(x): return "%.1fs" % x))
 	b.add_child(UIK.btn("Add to the story", _add_cue, true, "plus"))
+	_section(b, "When something happens (%d)" % studio.triggers.list.size())
+	b.add_child(UIK.para("Things that set off a reaction, live or while the story plays: someone walks into an area, or touches a character or an object.", 12))
+	for i in studio.triggers.list.size():
+		var tg: Dictionary = studio.triggers.list[i]
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", UIK.box(UIK.RAISE, 14, UIK.LINE))
+		var h := UIK.hbox(8)
+		var tl := UIK.para(Triggers.describe(tg), 13, UIK.INK)
+		tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(tl)
+		h.add_child(UIK.icon_btn("edit", func():
+			new_trig = tg.duplicate(true)
+			hud.push_view("trigger", i), "Change", 38, false))
+		h.add_child(UIK.icon_btn("trash", func():
+			studio.triggers.list.remove_at(i)
+			studio.triggers.reset()
+			studio.triggers.refresh()
+			studio.mark_dirty()
+			_rerender(), "Delete", 38, false))
+		row.add_child(h)
+		b.add_child(row)
+	b.add_child(UIK.btn("Add a trigger", func():
+		new_trig = {"when": "enter", "who": "", "r": 3.0, "actor": "@who", "action": "say", "text": "", "dur": 3.0, "once": false}
+		hud.push_view("trigger", -1), false, "plus"))
 	var more := _fold(b, "story")
 	more.add_child(UIK.para("The scene start is where everyone stands when the story begins. Move people where you want them, then:", 12))
 	more.add_child(UIK.btn("Set scene start here", func():
@@ -1084,6 +1108,139 @@ func v_script(_a, b: VBoxContainer) -> String:
 		hud.toast("Everyone’s current spot is now the scene start."), false, "pin"))
 	more.add_child(UIK.para("The Timeline is for exact timing: keyframes for characters and camera moves.", 12))
 	return "Story"
+
+
+# ---------------------------------------------------------------- triggers
+
+## The trigger being made or changed (see Triggers for its keys).
+var new_trig := {}
+
+
+## Makes or changes a trigger (`idx` -1 = a new one).
+func v_trigger(idx: Variant, b: VBoxContainer) -> String:
+	var t := new_trig
+	if t.is_empty():
+		return ""
+	var i := int(idx)
+	var when := str(t.get("when", "enter"))
+	var kind := "enter" if when == "enter" else ("touch_actor" if str(t.get("target", "")) != "" or t.get("_touch") == "actor" else "touch_spot")
+	_purpose(b, "When something happens, someone reacts. Works live and while the story plays, the same every take.")
+	_section(b, "When")
+	var wf := UIK.flow()
+	for w in Triggers.WHEN:
+		wf.add_child(UIK.chip(w[1], kind == w[0], func():
+			t["when"] = "enter" if w[0] == "enter" else "touch"
+			t["_touch"] = "actor" if w[0] == "touch_actor" else "spot"
+			if w[0] != "touch_actor":
+				t.erase("target")
+			if w[0] == "enter":
+				t.erase("label")
+			_rerender()))
+	b.add_child(wf)
+	b.add_child(UIK.label("Who sets it off", 13, UIK.MUTED))
+	var who := UIK.flow()
+	var opts := [["", "Anyone"], ["@player", "You"]]
+	for a in studio.actors:
+		if a != studio.player:
+			opts.append([a.name, a.name])
+	for o in opts:
+		who.add_child(UIK.chip(o[1], str(t.get("who", "")) == o[0], func(): t["who"] = o[0]; _rerender()))
+	b.add_child(who)
+	var placed := t.has("x") or str(t.get("target", "")) != ""
+	match kind:
+		"enter":
+			b.add_child(UIK.label("Where", 13, UIK.MUTED))
+			b.add_child(UIK.btn("Move the area" if t.has("x") else "Place the area", func(): _pick_spot("Tap the ground where the area goes", false), not t.has("x"), "pin"))
+			b.add_child(UIK.slider("Size (across)", float(t.get("r", 3.0)) * 2.0, 1.0, 16.0, 0.5, func(x): t["r"] = x / 2.0, func(x): return "%.1f m" % x))
+		"touch_actor":
+			b.add_child(UIK.label("Touching whom", 13, UIK.MUTED))
+			var tf := UIK.flow()
+			for a in studio.actors:
+				tf.add_child(UIK.chip(a.name, str(t.get("target", "")) == a.name, func():
+					t["target"] = a.name
+					t.erase("x")
+					_rerender()))
+			b.add_child(tf)
+		_:
+			b.add_child(UIK.label("Which object", 13, UIK.MUTED))
+			b.add_child(UIK.btn(("Touching: %s (tap to change)" % t.get("label", "that spot")) if t.has("x") else "Tap the object", func(): _pick_spot("Tap the object they should touch", true), not t.has("x"), "pin"))
+	_section(b, "Then")
+	b.add_child(UIK.label("Who reacts", 13, UIK.MUTED))
+	var rf := UIK.flow()
+	var ropts := [["@who", "Whoever it was"]]
+	if kind == "touch_actor":
+		ropts.append(["@target", "The one touched"])
+	for a in studio.actors:
+		if a != studio.player:
+			ropts.append([a.name, a.name])
+	for o in ropts:
+		rf.add_child(UIK.chip(o[1], str(t.get("actor", "@who")) == o[0], func(): t["actor"] = o[0]; _rerender()))
+	b.add_child(rf)
+	b.add_child(UIK.label("What they do", 13, UIK.MUTED))
+	var af := UIK.flow()
+	for ac in Triggers.ACTIONS:
+		af.add_child(UIK.chip(ac[1], str(t.get("action", "say")) == ac[0], func(): t["action"] = ac[0]; _rerender()))
+	b.add_child(af)
+	var say := str(t.get("action", "say")) == "say"
+	b.add_child(UIK.line_edit(str(t.get("text", "")), "What they say" if say else "And they say… (optional)", func(x: String): t["text"] = x))
+	if not str(t.get("action", "")) in ["walkto", "runto"]:
+		b.add_child(UIK.slider("For", float(t.get("dur", 3.0)), 1.0, 15.0, 0.5, func(x): t["dur"] = x, func(x): return "%.1f s" % x))
+	b.add_child(UIK.toggle("Only the first time", t.get("once", false) == true, func(on: bool): t["once"] = on))
+	var row := UIK.flow(8)
+	row.add_child(UIK.btn("Save trigger", func():
+		if not placed:
+			hud.toast("Place the area first." if kind == "enter" else ("Pick who gets touched." if kind == "touch_actor" else "Tap the object first."))
+			return
+		if say and str(t.get("text", "")).strip_edges() == "":
+			hud.toast("Type what they say.")
+			return
+		var keep := t.duplicate(true)
+		keep.erase("_touch")
+		if i >= 0 and i < studio.triggers.list.size():
+			studio.triggers.list[i] = keep
+		else:
+			studio.triggers.list.append(keep)
+		studio.triggers.reset()
+		studio.triggers.refresh()
+		studio.mark_dirty()
+		new_trig = {}
+		hud.back_view(), true, "check"))
+	b.add_child(row)
+	return "Trigger"
+
+
+## Hides the sheet so the next tap picks a spot (or object), then comes back.
+func _pick_spot(hint: String, object: bool) -> void:
+	var t := new_trig
+	var idx: Variant = hud.view_stack[-1][1] if not hud.view_stack.is_empty() else -1
+	var stack: Array = hud.view_stack.duplicate()
+	studio.tools.spot_hint = hint
+	studio.tools.spot_cb = func(hit: Dictionary):
+		var p: Vector3 = hit["point"]
+		t["x"] = U.r2(p.x)
+		t["z"] = U.r2(p.z)
+		if object:
+			t["label"] = _object_label(hit, p)
+		hud.view_stack = stack
+		hud.render_sheet()
+	hud.close_sheet()
+	studio.tools.set_tool("pick_spot")
+
+
+## A name for what was tapped: an object, an effect, a block, or a spot.
+func _object_label(hit: Dictionary, p: Vector3) -> String:
+	var fi := studio.fx.index_near(p, 1.5)
+	if fi >= 0:
+		return str(SceneFx.KINDS[studio.fx.items[fi]["k"]]["name"]).to_lower()
+	var pr: Variant = hit.get("prop")
+	if pr is Dictionary:
+		return Props.display_name(studio.style_key, str(pr["key"])).to_lower()
+	if studio.is_top() and int(hit.get("object", -1)) >= 0:
+		var o: Array = studio.world.objects[int(hit["object"])]
+		return str(PixelTopArt.OBJECTS.get(str(o[0]), {}).get("name", "the object")).to_lower()
+	if studio.world.is_voxel and hit.has("v") and not hit.get("floor", false):
+		return str(Blocks.get_block(int(hit["v"])).get("name", "the block")).to_lower()
+	return "that spot"
 
 
 func _add_cue() -> void:

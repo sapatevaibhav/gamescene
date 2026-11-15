@@ -66,9 +66,91 @@ func _ready() -> void:
 	_build_floor()
 
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
+	if not _flow.is_empty():
+		_flow_t += dt
+		var n := 0
+		while _flow_t >= FLOW_STEP and n < 3:
+			_flow_t -= FLOW_STEP
+			flow_step()
+			n += 1
 	if not _dirty.is_empty():
 		_flush()
+
+
+# ================================================================ flowing water
+# Water you place (or that a removed block lets out) falls straight down into
+# empty space, then spreads sideways up to FLOW_SPREAD blocks from where it
+# lands, a step at a time so you see it run. A step runs every FLOW_STEP
+# seconds; FLOW_MAX blocks at most per pour, so one block can't flood the
+# world. Only edits start it: generating or loading a world doesn't.
+
+const FLOW_STEP := 0.07
+const FLOW_SPREAD := 5
+const FLOW_MAX := 3000
+## The flow's edge: block -> how far it may still spread sideways.
+var _flow := {}
+var _flow_t := 0.0
+var _flow_n := 0
+var _flowing := false
+
+
+func flowing() -> bool:
+	return not _flow.is_empty()
+
+
+## Runs the flow to the end at once (tests, and before saving a snapshot).
+func settle_water() -> void:
+	var guard := 0
+	while not _flow.is_empty() and guard < 400:
+		flow_step()
+		guard += 1
+
+
+func flow_step() -> void:
+	var wid := _id("water")
+	var edge := _flow
+	_flow = {}
+	_flowing = true
+	for c: Vector3i in edge:
+		if get_b(c.x, c.y, c.z) != wid:
+			continue
+		var left: int = edge[c]
+		# Falls first: down into empty space, and spreads again where it lands.
+		if c.y > 0 and get_b(c.x, c.y - 1, c.z) == 0:
+			set_b(c.x, c.y - 1, c.z, wid)
+			_flow[Vector3i(c.x, c.y - 1, c.z)] = FLOW_SPREAD
+			_flow_n += 1
+			continue
+		if left <= 0 or (c.y > 0 and get_b(c.x, c.y - 1, c.z) == wid):
+			# Out of reach, or resting on water (it joins the pool below).
+			continue
+		for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var nb: Vector3i = c + d
+			if inside(nb.x, nb.y, nb.z) and get_b(nb.x, nb.y, nb.z) == 0:
+				set_b(nb.x, nb.y, nb.z, wid)
+				_flow[nb] = left - 1
+				_flow_n += 1
+		if _flow_n > FLOW_MAX:
+			_flow.clear()
+			break
+	_flowing = false
+
+
+func _wake_water(x: int, y: int, z: int, v: int) -> void:
+	var wid := _id("water")
+	if wid == 0:
+		return
+	if v == wid:
+		_flow[Vector3i(x, y, z)] = FLOW_SPREAD
+		_flow_n = 0
+	elif v == 0:
+		# A gap opened next to water: the water around it runs in.
+		for d in [Vector3i(0, 1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+			var nb: Vector3i = Vector3i(x, y, z) + d
+			if get_b(nb.x, nb.y, nb.z) == wid:
+				_flow[nb] = maxi(int(_flow.get(nb, 0)), FLOW_SPREAD - 1)
+				_flow_n = 0
 
 
 # ================================================================ data access
@@ -93,6 +175,8 @@ func set_b(x: int, y: int, z: int, v: int) -> void:
 		return
 	data[i] = v
 	_mark(x, z)
+	if not _flowing:
+		_wake_water(x, y, z, v)
 
 
 ## Natural ground: what the world generator lays down. Everything else
@@ -348,6 +432,7 @@ func _fill_raw(x0: int, y0: int, z0: int, x1: int, y1: int, z1: int, v: int) -> 
 ## Fills the grid with a starter landscape: "meadow", "desert", "snow",
 ## "plaza" or "flat". Call rebuild() afterwards (new_world does both).
 func generate(kind: String, p_seed := -1) -> void:
+	_flow.clear()
 	data.fill(0)
 	_mark_all()
 	var seed_v := p_seed if p_seed >= 0 else randi() % 1000
@@ -728,6 +813,7 @@ func serialize() -> Dictionary:
 
 
 func load_data(d: Dictionary) -> void:
+	_flow.clear()
 	Blocks.reset_custom()
 	for src in d.get("custom", []):
 		if src is Dictionary and not src.get("deleted", false):

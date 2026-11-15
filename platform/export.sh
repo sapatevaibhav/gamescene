@@ -2,10 +2,10 @@
 # Exports GameScene Studio for one or more platforms into build/<platform>/.
 #
 #   platform/export.sh                 # linux windows android (what a Linux PC can build)
-#   platform/export.sh android         # just the phone APK (debug-signed)
+#   platform/export.sh android         # just the phone APK (release: needs the release keystore, see platform/README.md)
 #   platform/export.sh android-store   # the Play Store bundle (.aab, needs a release keystore)
 #   platform/export.sh macos ios       # macOS .zip (ad-hoc signed); iOS needs a Mac with Xcode
-#   RELEASE=0 platform/export.sh android   # a debug build
+#   RELEASE=0 platform/export.sh android   # a debug APK, signed with Godot's debug key (for your own phone)
 #
 # Needs the Godot 4.7.2 export templates. Android also needs the Android SDK
 # and JDK 17 (set in the editor settings) and builds the plugin first.

@@ -122,6 +122,10 @@ var circle := {}
 var _met := {}
 var _hot_t := 0.0
 var _stuck_t := 0.0
+## Saying a line from the story or a trigger (seconds left, with a short
+## hold after): the 2D follow camera keeps them in view. Only the camera
+## reads it.
+var spotlight_t := 0.0
 ## "people", "mobs" or "animals" (from the look's preset).
 var kind_group := "people"
 
@@ -604,6 +608,7 @@ func reset_sim(p: Vector3, y: float, b: String) -> void:
 	_met = {}
 	_hot_t = 0.0
 	_stuck_t = 0.0
+	spotlight_t = 0.0
 	knock_t = 0.0
 	pose = base_pose
 	var springs: SpringRig = rig.get("springs")
@@ -620,6 +625,10 @@ func set_behavior(b: String, permanent := true) -> void:
 		partner.partner = null
 		partner = null
 	behavior = b
+	# A new action ends any reaction still showing (a laugh, a wave), or it
+	# would play over what they were just told to do.
+	react_t = 0.0
+	react_act = ""
 	if b != "fight":
 		foe = null
 	if b != "flee":
@@ -1346,6 +1355,8 @@ func _finish_head(dt: float, hyaw: float, hpitch: float, head: Node3D, r: Node3D
 
 
 func _tick_bubble(dt: float) -> void:
+	if spotlight_t > 0.0:
+		spotlight_t = maxf(0.0, spotlight_t - dt)
 	if bubble:
 		bubble_t -= dt
 		if bubble_t <= 0:

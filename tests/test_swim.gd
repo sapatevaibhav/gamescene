@@ -81,7 +81,10 @@ func _voxel(studio: Studio) -> void:
 	await studio.new_scene("blocky")
 	studio.in_studio = true
 	var w: VoxelWorld = studio.world
-	# Dig a 3-deep pool and fill it.
+	# Flat ground (water flows now: in a random world the pool could spill
+	# out where the ground beside it is lower). Dig a 3-deep pool and fill it.
+	w.generate("flat")
+	w.rebuild()
 	var water: int = Blocks.ID["water"]
 	var gy := w.ground_y(20.5, 20.5)
 	for y in range(gy - 3, gy):

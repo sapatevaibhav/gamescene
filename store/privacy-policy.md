@@ -39,4 +39,4 @@ If this policy ever changes, the new version will ship with an app update and be
 
 ## Contact
 
-Questions about this policy: *[contact email — fill in before submitting]*.
+Questions about this policy: contact@ekaai.tech.

@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.22.0)
+## What's supported (as of 0.23.0)
 
 ### Platforms and engine
 
@@ -67,8 +67,11 @@ Imported characters also get:
 | Behaviours | Stand, wander, chat (pairs), hang out (circles of 2–5), dance (8 styles), wave, sit, follow, chase, run away, gather, patrol, sleep, celebrate, laugh, cry, point, fight, hold a pose |
 | Reactions | Within 8 m of a hit, a panic or a celebration: friends defend or join in, rivals laugh, the scared run, others look, gasp or point. Monsters on the hunt send people running. On by default; Settings → This scene turns them off |
 | Feelings | Friend, rival or scared of, per pair (both ways for friends and rivals by default) |
+| Triggers | When someone walks into an area or touches a character or object, someone says a line, acts or walks over; every time or the first time only |
 | Poses | 14 built-in poses, a pose editor (10 joints, crouch, mirror) and a pose library shared by every scene (`user://assets/poses.json`) |
 | Effects | Campfire (flames, embers, smoke, firelight), magic sparkles, smoke, dust; every style; replay exactly |
+| Water | Blocky and Pixel 2D side view: placed water falls and spreads. Anime and low-poly: Ground → Water pours water that runs downhill and pools (virtual-pipes flow), Dry removes it. Swimmable when deep |
+| Going inside | Pixel 2D side view: Up at a door shows the room inside (houses, castles) |
 
 All of it is deterministic: a take, a scrub and an export play out the same.
 
@@ -144,12 +147,34 @@ Opening files: drop a scene file (`.json`) on the window to open it; inside a sc
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-15
+
+Triggers, flowing water in every world, going inside houses in the side view, the ready-made scenes as 30-second stories, and the camera following whoever is talking.
+
+### Added
+- **Flowing water** in the blocky world and the Pixel 2D side view: water you place falls into the empty space below, then spreads up to 5 blocks sideways where it lands, a step at a time so you see it run (poured on a roof it runs off the edges; down a hillside it pools at the bottom). Breaking a block or tile next to water lets it run out through the gap; a walled pool stays put. Undo takes it back, and generating or loading a world never sets water moving. (The top view has no "down", so painted water stays where you paint it.)
+- **Water in the anime and low-poly worlds** (Add → Ground → **Water**, and **Dry** to take it away): on a slope, water you paint runs downhill, gathers in dips and hollows and settles flat; on level ground it carves itself a hollow as you pour, so it becomes a pond about a metre deep instead of a thin film; reaching the world's lake, it joins it. It's simulated with "virtual pipes" (each pair of neighbouring points joined by a pipe whose flow builds up and carries on, slowed by friction and by the ground under shallow water), so it runs, sloshes and settles like water, and moving water's ripples slide downstream. The edges fade out into a soft shoreline. Cheap to run: about 2 ms per flow step while it moves (nothing once still), and the surface is rebuilt in under 2 ms. Deep enough, characters swim in it; shallower, they wade (with water footsteps), and wanderers keep out of it. Reshaping the ground under it sets it flowing again. Saved with the scene; undo works per stroke.
+- **Going inside houses in the Pixel 2D side view**: press W or Up (or push the stick up) at a door, and the front of the house gives way to the room behind it (plank walls, shelves, a window, a lamp, the doorway) while everything outside dims. Up at the doorway again, or walking out past the walls, comes back out. Cottages, brick houses and castles work; towers already show their inside. The first time you stand at a door, a hint says how. Saves always keep the house as built, and picking a build tool steps back out first.
+- **Triggers** (Story → When something happens): someone walks into an area, or touches a character or an object, and a character reacts: says a line, waves, runs away, walks or runs over, points, celebrates, laughs, cries, dances, fights or sits, for as long as you set. Set who sets it off (anyone, you, or one character), who reacts (whoever it was, the one touched, or anyone in the cast), and whether it's every time or only the first time. Areas are placed by tapping the ground and sized with a slider; objects by tapping them (props, effects, blocks, top-view objects). Triggers work live and while the story plays, go off the same way in every take and export, and show as rings on the ground while you edit (never in a recording). Each one reads as a sentence on the Story page ("When you walk into the area, Om says “Welcome!”"). Scene files are now version 7.
+- `platform/perf-phone.sh [styles]`: measures frame times on the Android phone connected over adb and saves them in `build/perf/`.
+- **Send feedback** (Settings → Help and about): opens your own email app with a message to contact@ekaai.tech, the app version, device and graphics already filled in. The app itself still sends nothing.
+
+### Changed
+- **The ready-made scenes are now short films of about 30 seconds**, ready to export: each tells a story with 9–13 lines of back-and-forth dialogue, people walking over, pointing, laughing, fighting and celebrating on cue, and its own shot list (an opening crane with the title card, close-ups on whoever is talking, a closing shot with a fade). A day in the village (news of a festival), Campfire night (a ghost story that ends in a BOO), Monster attack (monsters come out of the storm and a hero drives them off), Dance party (a doubter gets talked into dancing), Mountain journey (travellers reach your campfire) and Evening in the hall (an argument over a seat, broken up by a friend). They start with chatter and lines when hit turned off, so only the story's lines are heard; reactions still happen, silently.
+- **The follow camera keeps whoever is talking in view** when you play the story (or a trigger makes someone speak), in every style. In Pixel 2D it eases over to frame both you and the speaker, zooming out just enough (or just the speaker when you're too far apart); in 3D it blends to a shot over your shoulder onto them (or close on them when they're far off), keeping out of walls. When lines overlap it goes to the newest one, and after the line it eases back to you. Before, it stayed on your character and speakers were often off screen. Ordinary chatter doesn't move the camera; exports still use the shot list.
+- **Anime on phones set to Battery saver is lighter**: about a third of the distant forest (each tree with fewer, bigger leaf cards), fewer floating motes and falling leaves, two thirds of the leaf cards on nearby trees, no shadows from tree crowns (characters keep theirs), and every other small plant (ferns, bushes, flowers, mushrooms) not drawn. Scenes keep every prop; desktop and higher settings look as before. On an Adreno 610 this took the anime style from 116 to 91 ms a frame; it's still the heaviest style on low-end phones.
+
+### Fixed
+- **Pixel 2D side view: the brick house's front wall blocked you** (it was built from solid bricks), so you couldn't reach its door. Its walls are now a brick wall behind the street, like the other houses. **Doors are two tiles tall** (a door with a lintel above) on cottages, brick houses, towers and castles, and the room inside keeps the tall doorway. Houses already in your saved scenes stay as built; new ones (and new worlds) get the fix. Both new tiles are in the tile picker too.
+- **Story characters got stuck on the way somewhere**: in the Mountain journey the travellers' path and the camp were placed from the middle of the map, but the road winds, so in blocky one walked into the bank under a tree; the blocky village's newsbringer walked into the house; and in the hall the friend breaking up the fight walked back to his table afterwards. Everything is now placed on the road (or beside the group, clear of the house) and stays where the story puts it. The template test checks that every scripted walk arrives.
+- **A reaction could hide a new action**: a character still laughing or waving from a moment earlier kept doing it after being given a new action (by you or the story). A new action now ends any reaction in progress.
+
 ## [0.22.0] - 2026-11-14
 
 Templates, a first-run tour, credits and licences.
 
 ### Added
-- **Templates** when naming a new scene: a **Templates** fold at the bottom of the dialog (closed at first; tap a template again to start blank, and the scene takes its name unless you typed one).
+- **Templates** when naming a new scene: a **Show templates** fold at the bottom of the dialog (closed at first; tap a template again to start blank, and the scene takes its name unless you typed one).
   - **Worlds to build in**: **Forest** (deep woods round a clearing, a trail through), **Mountain pass** (a road between two ridges, snow on the tops, pines on the slopes), **Night town** (streets in a grid lined with houses and lamp posts round a square) and, in blocky and Pixel 2D side view, **Great hall** (inside: plank floor, windows, shelves, long tables, a hearth). Every style has the layouts its world can make: blocky all four, anime and low-poly three, both Pixel 2D views three or four.
   - **Ready-made scenes to remix**: **A day in the village**, **Campfire night**, **Monster attack** (styles with monsters), **Dance party**, **Mountain journey** and **Evening in the hall**. Each comes with a cast doing things (hanging out, chatting, dancing, gathering round a fire, following you), friends and rivals, story moments (lines, a scare, a fight), the right time of day or weather, and campfires, sparkles or dust.
 - **A one-minute tour** the first time a scene opens: a short card for every button (moving round, Home and undo, Cast, Add, Story and the timeline, Camera, Mood, Sound, Record, Export, and screenshot, clean view and settings), each pointing at its button with a glowing frame; a compact dock opens so the tour can show its buttons. Skip it any time; **Settings → Show the tour again** brings it back.

@@ -842,6 +842,10 @@ func _build_settings() -> void:
 		App.set_device("tour_done", false)
 		var hud: Hud = get_parent().get_node("Hud")
 		hud.toast("The tour starts the next time you open a scene."), false, "playtri"))
+	hr.add_child(UIK.btn("Send feedback", func():
+		if not OS.shell_open(feedback_mailto()) == OK:
+			var hud: Hud = get_parent().get_node("Hud")
+			hud.toast("No email app found. Write to " + FEEDBACK_EMAIL), false, "chat"))
 	hr.add_child(UIK.btn("Credits and licences", func():
 		_sub = "credits"
 		refresh()
@@ -877,6 +881,19 @@ func _build_settings() -> void:
 				var c := n as Control
 				c.add_theme_font_size_override("font_size", int(round(c.get_theme_font_size("font_size") * 1.2)))
 	_layout()
+
+
+const FEEDBACK_EMAIL := "contact@ekaai.tech"
+
+
+## A mailto: link for "Send feedback": opens the person's own email app with
+## the app version and this device filled in (nothing is sent by the app).
+static func feedback_mailto() -> String:
+	var info := "App: GameScene Studio %s\nDevice: %s, %s %s\nGraphics: %s (%s), quality %s" % [
+		ProjectSettings.get_setting("application/config/version"), OS.get_model_name(), OS.get_name(), OS.get_version(),
+		RenderingServer.get_video_adapter_name(), RenderingServer.get_current_rendering_method(), App.device.get("quality", "")]
+	var body := "What happened, or what would you like?\n\n\n---\n" + info
+	return "mailto:%s?subject=%s&body=%s" % [FEEDBACK_EMAIL, "GameScene Studio feedback".uri_encode(), body.uri_encode()]
 
 
 ## Credits and licences: the app, what's bundled (assets/CREDITS.md), what
@@ -942,6 +959,7 @@ func _build_credits() -> void:
 		_page.add_child(box)
 		_page.add_child(UIK.spacer(4))
 	_page.add_child(UIK.spacer(20))
+	_col.add_child(_page)
 	_layout()
 
 
@@ -967,7 +985,7 @@ static func licence_url(l: String) -> String:
 
 func _link(text: String, url: String) -> LinkButton:
 	var link := LinkButton.new()
-	link.text = text + "  ↗"
+	link.text = text
 	link.uri = url
 	link.tooltip_text = url
 	link.focus_mode = Control.FOCUS_NONE

@@ -23,6 +23,10 @@ var pprefab := "cottage"
 var flip := false
 ## Effect to place (effects tool): a SceneFx kind.
 var effect := "fire"
+## "pick_spot": the next tap on the world calls this with the hit (where a
+## trigger's area goes, or which object it watches), then the tool ends.
+var spot_cb := Callable()
+var spot_hint := ""
 ## Objects / buildings tools (every world): "place" (Add) or "erase" (Remove).
 var obj_mode := "place"
 var _last_tile := Vector2i(-1, -1)
@@ -90,6 +94,10 @@ func set_tool(k: String, opts := {}) -> void:
 		if tile < 1 or (tile >= PixelTiles.count() and tile < TileSets.CUSTOM_BASE):
 			tile = PixelTiles.ID["grass"]
 	kind = k
+	# Editing the side view from inside a house: step out first (the tools
+	# work on the house as built).
+	if k != "" and studio.world and studio.world.has_method("close_house"):
+		studio.world.close_house()
 	if k != "objects":
 		sel = {}
 		moving = false
@@ -284,6 +292,16 @@ func tap(screen: Vector2, button := MOUSE_BUTTON_LEFT) -> int:
 				pt.y = w.ground_at(pt.x, pt.z)
 			studio.fx.add(effect, pt)
 			studio.mark_dirty()
+			return -1
+		"pick_spot":
+			var hit: Dictionary = w.pick(o, d, 200.0)
+			if hit.is_empty() or not hit.has("point"):
+				return -1
+			var cb := spot_cb
+			spot_cb = Callable()
+			set_tool("")
+			if cb.is_valid():
+				cb.call(hit)
 			return -1
 		"move_actor":
 			var hit: Dictionary = w.pick(o, d, 120.0)

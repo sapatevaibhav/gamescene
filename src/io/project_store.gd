@@ -211,6 +211,11 @@ static func migrate(d: Dictionary) -> Dictionary:
 		if not d.has("fx"):
 			d["fx"] = []
 		d["v"] = 6
+	if int(d.get("v", 6)) < 7:
+		# v7 adds triggers ("when someone walks into an area ..."); optional.
+		if not d.has("triggers"):
+			d["triggers"] = []
+		d["v"] = 7
 	return d
 
 

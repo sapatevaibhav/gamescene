@@ -348,11 +348,14 @@ static func _canopy(g: Node3D, pal: String, pos: Vector3, radii: Vector3, densit
 	# Phones: fewer, slightly bigger leaf cards (the cut-out leaves are drawn
 	# over each other many times, which slow phone GPUs pay for per pixel).
 	var lite := App.lite_shading()
-	var cards := int(clampf(radii.x * radii.y * radii.z * 17.0 * density * (0.35 if lite else 1.0), 14 if lite else 30, 240))
+	# Battery saver on a phone: lighter still (two thirds of those, bigger).
+	var lighter := App.lite_world()
+	var cards := int(clampf(radii.x * radii.y * radii.z * 17.0 * density * (0.23 if lighter else (0.35 if lite else 1.0)), 10 if lighter else (14 if lite else 30), 240))
 	var variant := int(r.next() * 4)
-	var m := _mi(canopy_mesh(radii, cards, (0.85 if tex == "leaf" else 0.7) * (1.25 if lite else 1.0), variant * 97 + int(radii.x * 10)), foliage_mat(pal, tex), pos)
-	# Only tree crowns cast shadows; low undergrowth isn't worth the cost.
-	if radii.y < 1.0:
+	var m := _mi(canopy_mesh(radii, cards, (0.85 if tex == "leaf" else 0.7) * (1.4 if lighter else (1.25 if lite else 1.0)), variant * 97 + int(radii.x * 10)), foliage_mat(pal, tex), pos)
+	# Only tree crowns cast shadows; low undergrowth isn't worth the cost
+	# (nor, on Battery saver phones, the crowns: characters keep theirs).
+	if radii.y < 1.0 or lighter:
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	m.rotation.y = r.next() * TAU
 	g.add_child(m)
@@ -586,7 +589,9 @@ static func ruin_arch(r: U.Rng) -> Node3D:
 
 ## Instanced low-cost tree for the horizon forest (trunk + crown surfaces).
 static func backdrop_tree_mesh(variant: int) -> ArrayMesh:
-	var key := "bd%d" % variant
+	# Phones: a third of the leaf cards, bigger (only ever seen far off).
+	var lite := App.lite_shading()
+	var key := "bd%d%s" % [variant, "l" if lite else ""]
 	if _meshes.has(key):
 		return _meshes[key]
 	var r := U.rng(900 + variant)
@@ -598,7 +603,7 @@ static func backdrop_tree_mesh(variant: int) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for k in 3:
-		var c := canopy_mesh(Vector3(3.0, 2.4, 3.0) * (1.0 - k * 0.18), 26, 1.7, 500 + variant * 7 + k)
+		var c := canopy_mesh(Vector3(3.0, 2.4, 3.0) * (1.0 - k * 0.18), 9 if lite else 26, 2.4 if lite else 1.7, 500 + variant * 7 + k)
 		var xf := Transform3D(Basis.IDENTITY, Vector3((r.next() - 0.5) * 1.5, h * 0.82 + k * 1.6, (r.next() - 0.5) * 1.5))
 		st.append_from(c, 0, xf)
 	var crown := st.commit()

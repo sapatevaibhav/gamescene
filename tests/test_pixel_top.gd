@@ -313,7 +313,8 @@ func _sprites(studio: Studio) -> void:
 	a.vel = Vector3.ZERO
 	a.set_behavior("dance")
 	a.animate(0.05, false)
-	ok(_frame(a)[0] == "front" and str(_frame(a)[1]).begins_with("dance"), "actions face the viewer")
+	# ("Mix" dancing claps now and then: the celebrate frame.)
+	ok(_frame(a)[0] == "front" and (str(_frame(a)[1]).begins_with("dance") or str(_frame(a)[1]).begins_with("cel")), "actions face the viewer (%s)" % [_frame(a)])
 	a.set_behavior("idle")
 	# Draw order: further south is lifted higher.
 	a.pos.z = 30.0

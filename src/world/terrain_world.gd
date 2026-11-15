@@ -19,6 +19,8 @@ var style_key := "anime"
 var h := PackedFloat32Array()
 var path := PackedByteArray()
 var water := 2.2
+## Water poured on the ground (see TerrainWater).
+var pools := TerrainWater.new()
 var props: Array = []
 ## Grass/flower count multiplier; lower it on weak devices, then rebuild_grass().
 var grass_density := 1.0
@@ -75,6 +77,10 @@ func _init() -> void:
 	wm.shader = SH_WATER
 	_water_mi.material_override = wm
 	add_child(_water_mi)
+	# Water poured with the Ground → Water brush (same look as the lake).
+	pools.setup(self)
+	pools.material_override = wm
+	add_child(pools)
 	_props_root = Node3D.new()
 	_props_root.name = "Props"
 	add_child(_props_root)
@@ -221,6 +227,8 @@ func surface_at(p: Vector3) -> String:
 		return "snow"
 	var i := clampi(int(floor(p.x)), 0, TN - 1)
 	var j := clampi(int(floor(p.z)), 0, TN - 1)
+	if pools.depth_at(p.x, p.z) > 0.05:
+		return "water"
 	if path[j * TN + i] == 1:
 		return "dirt"
 	if th < water + 0.35:
@@ -229,7 +237,7 @@ func surface_at(p: Vector3) -> String:
 
 
 func walkable(x: float, z: float) -> bool:
-	return terrain_h(x, z) > water
+	return terrain_h(x, z) > water and pools.depth_at(x, z) < 0.3
 
 
 func gen_terrain(seed: int) -> void:
@@ -267,6 +275,18 @@ func flatten_at(x: float, z: float, rad: float, target: float) -> void:
 ## Sculpt brush: mode is "raise", "lower" or "smooth".
 func brush(x: float, z: float, mode: String, dt: float) -> void:
 	var R := BRUSH_R
+	if mode == "dry":
+		pools.brush(x, z, mode, dt, R)
+		return
+	if mode == "water":
+		# On level ground water carves itself a hollow where you pour it (a
+		# pond with some depth, not a film), until it's about a metre deep.
+		# On a slope it just runs downhill.
+		var slope := Vector2(terrain_h(x + 0.5, z) - terrain_h(x - 0.5, z), terrain_h(x, z + 0.5) - terrain_h(x, z - 0.5)).length()
+		if slope < 0.2 and pools.depth_at(x, z) < 1.1:
+			brush(x, z, "lower", dt * 0.3)
+		pools.brush(x, z, mode, dt, R)
+		return
 	for j in range(int(floor(z - R)), int(ceil(z + R)) + 1):
 		for i in range(int(floor(x - R)), int(ceil(x + R)) + 1):
 			if i < 1 or j < 1 or i >= TN or j >= TN:
@@ -292,6 +312,9 @@ func brush(x: float, z: float, mode: String, dt: float) -> void:
 	for p in props:
 		if absf(p.x - x) < R + 3 and absf(p.z - z) < R + 3:
 			(p.node as Node3D).position.y = terrain_h(p.x, p.z)
+	# Ground moved under poured water: it finds its level again.
+	if pools.any():
+		pools._wake(Vector2i(int(x - R) - 2, int(z - R) - 2), Vector2i(int(x + R) + 3, int(z + R) + 3))
 
 
 # ---------------------------------------------------------------- meshing
@@ -483,6 +506,13 @@ func _update_water() -> void:
 	wm.set_shader_parameter("roughness_val", 0.35 if sh == "flat" else 0.05)
 	wm.set_shader_parameter("wave_strength", 0.015 if sh == "flat" else 0.035)
 	_water_mi.position = Vector3(TN / 2.0, water, TN / 2.0)
+	# Poured water: the lake's look, but its shallow edges are clear water,
+	# not foam (puddles are shallow all over).
+	var pm := wm.duplicate() as ShaderMaterial
+	pm.set_shader_parameter("foam_width", 0.06)
+	pm.set_shader_parameter("edge_fade", true)
+	pm.set_shader_parameter("depth_fade", 0.9)
+	pools.material_override = pm
 
 
 ## Horizon skirt: a coarse grid ring around the play area at the rim height
@@ -550,6 +580,9 @@ func _build_backdrop(hf: Callable) -> void:
 	add_child(_backdrop)
 	var rr := RandomNumberGenerator.new()
 	rr.seed = 4242
+	# Phones: about a third of the horizon trees (each is dozens of cut-out
+	# leaf cards drawn over each other; 30 ms a frame on an Adreno 610).
+	var keep := 0.35 if App.lite_shading() else 1.0
 	for variant in 3:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -566,8 +599,10 @@ func _build_backdrop(hf: Callable) -> void:
 			# Thin out with distance and leave a few meadow clearings.
 			if rr.randf() < d / 160.0 or fbm(x * 0.05, z * 0.05, 7.0) < 0.36:
 				continue
+			if keep < 1.0 and rr.randf() > keep:
+				continue
 			var y: float = hf.call(x, z)
-			var sc := rr.randf_range(0.8, 1.4) * (1.0 + d / 120.0)
+			var sc := rr.randf_range(0.8, 1.4) * (1.0 + d / 120.0) * (1.25 if keep < 1.0 else 1.0)
 			xfs.append(Transform3D(Basis(Vector3.UP, rr.randf() * TAU).scaled(Vector3.ONE * sc), Vector3(x, y - 0.4, z)))
 		mm.instance_count = xfs.size()
 		for i in xfs.size():
@@ -582,7 +617,7 @@ func _build_backdrop(hf: Callable) -> void:
 
 func _motes() -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = 120
+	p.amount = 50 if App.lite_shading() else 120
 	p.lifetime = 9.0
 	p.preprocess = 9.0
 	p.position = Vector3(TN / 2.0, 5.0, TN / 2.0)
@@ -634,7 +669,7 @@ func _motes() -> GPUParticles3D:
 
 func _falling_leaves() -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = 60
+	p.amount = 25 if App.lite_shading() else 60
 	p.lifetime = 12.0
 	p.preprocess = 12.0
 	p.position = Vector3(TN / 2.0, 12.0, TN / 2.0)
@@ -916,6 +951,10 @@ func _prop_def(key: String) -> Dictionary:
 	return Props.defs(style_key).get(key, {})
 
 
+## Small plants that phones on Battery saver draw only half of.
+const LITE_SKIP := ["fern", "bush", "flowers", "mushrooms", "wildflowers"]
+
+
 func add_prop(key: String, x: float, z: float, rot := 0.0, s := 1.0, seed := -1) -> Dictionary:
 	if not Props.has(style_key, key):
 		return {}
@@ -939,6 +978,10 @@ func add_prop(key: String, x: float, z: float, rot := 0.0, s := 1.0, seed := -1)
 	var p := {"key": key, "x": x, "z": z, "rot": rot, "s": s, "seed": seed, "node": node,
 		"hw": bb.size.x / 2.0, "hd": bb.size.z / 2.0, "h": bb.size.y, "cols": cols, "bb": bb}
 	node.set_meta("prop", p)
+	# Battery saver phones: every other small plant isn't drawn (it stays in
+	# the scene, and doesn't block anyone either way).
+	if App.lite_world() and key in LITE_SKIP and seed % 2 == 1:
+		node.visible = false
 	_props_root.add_child(node)
 	update_prop(p)
 	props.append(p)
@@ -1029,9 +1072,14 @@ func water_bottom(p: Vector3) -> float:
 	return terrain_h(p.x, p.z)
 
 
-## Height of the water surface where it's deep enough to swim, else -1e9.
+## Height of the water surface where it's deep enough to swim, else -1e9:
+## the lake, or water poured on the ground.
 func water_surface(p: Vector3) -> float:
-	return water if terrain_h(p.x, p.z) < water - 0.6 else -1.0e9
+	if terrain_h(p.x, p.z) < water - 0.6:
+		return water
+	if pools.depth_at(p.x, p.z) >= TerrainWater.SWIM:
+		return pools.surface_at(p.x, p.z)
+	return -1.0e9
 
 
 func free_spot(x: float, z: float, r := 1.2) -> bool:
@@ -1126,6 +1174,7 @@ func new_world(key: String, layout := "") -> void:
 	var c := TN / 2.0
 	gen_terrain(seed)
 	clear_props()
+	pools.clear()
 	if layout in LAYOUTS:
 		call("_layout_" + layout, key, r, seed)
 	elif key == "anime":
@@ -1433,7 +1482,7 @@ func serialize() -> Dictionary:
 	var ps := []
 	for p in props:
 		ps.append([p.key, U.r2(p.x), U.r2(p.z), U.r2(p.rot), U.r2(p.s), p.seed])
-	return {"size": TN, "h": hs, "path": U.rle_encode(path), "water": water, "props": ps}
+	return {"size": TN, "h": hs, "path": U.rle_encode(path), "water": water, "props": ps, "pools": pools.serialize()}
 
 
 ## Loads a saved world. Pass `style` to switch style first (props are
@@ -1459,6 +1508,8 @@ func load_data(d: Dictionary, style := "") -> void:
 		for i in n:
 			path[(j + off) * TN + i + off] = old_path[j * n + i]
 	water = float(d.get("water", 2.2))
+	# Poured water (saved on this size of grid only).
+	pools.load_data(d.get("pools", []) if n == TN else [])
 	for e in d.get("props", []):
 		if e is Array and e.size() >= 3:
 			add_prop(str(e[0]), float(e[1]) + off, float(e[2]) + off, float(e[3]) if e.size() > 3 else 0.0, float(e[4]) if e.size() > 4 else 1.0, int(e[5]) if e.size() > 5 and e[5] != null else -1)

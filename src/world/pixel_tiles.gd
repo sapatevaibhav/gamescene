@@ -45,6 +45,9 @@ const TILES := [
 	{"name": "Mushroom", "solid": false, "layer": "bg"},
 	{"name": "Torch", "solid": false, "layer": "bg"},
 	{"name": "Banner", "solid": false, "layer": "bg"},
+	# Behind the street (houses' walls): you walk in front of these.
+	{"name": "Brick wall", "solid": false, "layer": "bg"},
+	{"name": "Door (top)", "solid": false, "layer": "bg"},
 ]
 
 const ID := {
@@ -52,6 +55,7 @@ const ID := {
 	"water": 10, "ladder": 11, "cobble": 12, "snow": 13, "roof": 14, "door": 15, "window": 16, "flowers": 17,
 	"tallgrass": 18, "lantern": 19, "gold": 20, "ice": 21, "wall": 22, "fence": 23, "trunk": 24, "stonewall": 25,
 	"mossy": 26, "marble": 27, "crate": 28, "hay": 29, "cloud": 30, "bookshelf": 31, "vines": 32, "mushroom": 33, "torch": 34, "banner": 35,
+	"brickwall": 36, "doortop": 37,
 }
 
 ## Buildings: rows top to bottom, one character per tile. "." = leave as is,
@@ -60,7 +64,8 @@ const ID := {
 const KEYS := {"G": "grass", "D": "dirt", "S": "stone", "B": "brick", "P": "planks", "L": "log", "l": "leaves",
 	"g": "glass", "h": "ladder", "C": "cobble", "R": "roof", "d": "door", "w": "window", "W": "wall",
 	"f": "flowers", "t": "tallgrass", "n": "lantern", "F": "fence", "T": "trunk", "c": "stonewall",
-	"M": "mossy", "A": "marble", "X": "crate", "Y": "hay", "O": "cloud", "k": "bookshelf", "v": "vines", "m": "mushroom", "o": "torch", "r": "banner"}
+	"M": "mossy", "A": "marble", "X": "crate", "Y": "hay", "O": "cloud", "k": "bookshelf", "v": "vines", "m": "mushroom", "o": "torch", "r": "banner",
+	"b": "brickwall", "u": "doortop"}
 
 const PREFABS := {
 	"cottage": {"name": "Cottage", "icon": "roof", "rows": [
@@ -68,7 +73,7 @@ const PREFABS := {
 		".RRRR.",
 		"RRRRRR",
 		".WwWW.",
-		".WWWn.",
+		".WuWn.",
 		".WdWW.",
 	]},
 	"tower": {"name": "Watchtower", "icon": "cobble", "rows": [
@@ -79,7 +84,7 @@ const PREFABS := {
 		"cwhc",
 		"cPhc",
 		"cwhc",
-		"c.hc",
+		"cuhc",
 		"cdhc",
 	]},
 	"tree": {"name": "Tree", "icon": "leaves", "rows": [
@@ -113,16 +118,16 @@ const PREFABS := {
 		"co...oc",
 		"cPPPPPc",
 		"cc.k.cc",
-		"c..r..c",
+		"c.rur.c",
 		"c..d..c",
 	]},
 	"brickhouse": {"name": "Brick house", "icon": "brick", "rows": [
 		"..RRRR..",
 		".RRRRRR.",
 		"RRRRRRRR",
-		".BwBBwB.",
-		".BBBBBB.",
-		".BBdBkB.",
+		".bwbbwb.",
+		".bbubbb.",
+		".bbdbkb.",
 	]},
 	"lamppost": {"name": "Lamp post", "icon": "lantern", "rows": [
 		"n",
@@ -289,6 +294,27 @@ static func _paint(id: int) -> Image:
 						img.set_pixel(x, y, Color("7e2626"))
 					elif (x + (y / 4) * 2) % 4 == 0:
 						img.set_pixel(x, y, Color("cc4d4d"))
+		"brick wall":
+			# The brick house's walls: brick, a shade darker (it's behind).
+			img.fill(Color("9c4636"))
+			for y in PX:
+				for x in PX:
+					var row := y / 4
+					var off := 4 if row % 2 == 1 else 0
+					if y % 4 == 3 or (x + off) % 8 == 7:
+						img.set_pixel(x, y, Color("c8b49c"))
+		"door (top)":
+			# The upper half of a door two tiles tall: planks with a lintel.
+			img.fill(Color("6e4a2a"))
+			for y in PX:
+				img.set_pixel(0, y, Color("4a3018"))
+				img.set_pixel(PX - 1, y, Color("4a3018"))
+				img.set_pixel(7, y, Color("5a3c20"))
+			for x in PX:
+				img.set_pixel(x, 0, Color("4a3018"))
+				img.set_pixel(x, 1, Color("4a3018"))
+			for x in range(3, 13):
+				img.set_pixel(x, 5, Color("5a3c20"))
 		"door":
 			img.fill(Color("6e4a2a"))
 			for y in PX:

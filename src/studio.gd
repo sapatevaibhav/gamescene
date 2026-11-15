@@ -18,6 +18,8 @@ var recorder := Recorder.new()
 var sound := SoundDirector.new()
 ## Fires, magic sparkles, smoke and dust placed in the scene.
 var fx := SceneFx.new()
+## "When something happens" rules (see Triggers).
+var triggers := Triggers.new()
 var tools: EditorTools
 ## Hang-out circles (behaviour "group"): [{m: [Actor], c: centre,
 ## slots: {actor id: Vector2}, speaker, last, turn}].
@@ -56,6 +58,10 @@ var input_sprint := false
 var input_crouch := false
 
 var _undo: Array = []
+## Side view: Up was held last tick (doors react to a fresh press), and the
+## "Up at a door" hint has been shown this scene.
+var _up_was := false
+var _door_hint := false
 var _redo: Array = []
 var _time := 0.0
 var _heard := false
@@ -75,6 +81,8 @@ func _ready() -> void:
 	add_child(sound)
 	fx.studio = self
 	add_child(fx)
+	triggers.studio = self
+	add_child(triggers)
 	recorder.started.connect(sound.restart)
 	tools = EditorTools.new()
 	tools.studio = self
@@ -104,9 +112,12 @@ func _clear() -> void:
 	cues = []
 	shots = []
 	audio = []
+	_door_hint = false
+	_up_was = false
 	groups = []
 	_events = []
 	fx.clear()
+	triggers.clear()
 	sound.stop_all()
 	timeline.clear()
 	start_state = []
@@ -237,6 +248,7 @@ func load_data(d: Dictionary) -> String:
 	camera.load_view(d.get("view", {}), d.get("cine", {}))
 	fx.load_data(d.get("fx", []))
 	cues = d.get("cues", [])
+	triggers.load_data(d.get("triggers", []))
 	audio = (d.get("audio", []) as Array).filter(func(c): return c is Dictionary and c.has("src"))
 	timeline.load_data(d.get("keys", {}))
 	shots = d.get("shots", [])
@@ -287,7 +299,7 @@ func serialize() -> Dictionary:
 	return {"app": "gamescene", "v": App.SCHEMA_VERSION, "name": project_name, "style": style_key, "seed": scene_seed,
 		"world": world.serialize(), "cast": actors.map(func(a): return a.to_dict(a == player)),
 		"settings": settings, "cine": camera.cine_dict(), "view": camera.to_dict(), "fx": fx.serialize(),
-		"cues": cues, "keys": timeline.to_data(), "audio": audio, "shots": shots, "start": start_state}
+		"cues": cues, "triggers": triggers.serialize(), "keys": timeline.to_data(), "audio": audio, "shots": shots, "start": start_state}
 
 
 func mark_dirty() -> void:
@@ -476,6 +488,7 @@ func rename_actor(a: Actor, new_name: String) -> void:
 		if str(sh.get("target", "")) == old:
 			sh["target"] = new_name
 	timeline.rename_track(old, new_name)
+	triggers.rename(old, new_name)
 	for b in actors:
 		if b.rel.has(old):
 			b.rel[new_name] = b.rel[old]
@@ -755,6 +768,7 @@ func reset_to_start() -> void:
 		a.reset_sim(Vector3(p[0], p[1], p[2]), float(s["yaw"]), str(s["behavior"]))
 	groups = []
 	_events = []
+	triggers.reset()
 	App.sim_rng.seed = scene_seed
 	play_t = 0.0
 	_fired.clear()
@@ -860,6 +874,7 @@ func _run_cues(dt: float) -> void:
 			match action:
 				"say":
 					a.say(str(c.get("text", "...")), float(c.get("dur", 3)))
+					a.spotlight_t = float(c.get("dur", 3)) + 0.8
 				"walkto", "runto":
 					a.goto = {"x": float(c.get("x", a.pos.x)), "z": float(c.get("z", a.pos.z)), "run": action == "runto"}
 				_:
@@ -1054,10 +1069,26 @@ func _update_player_side(a: Actor, dt: float) -> void:
 	else:
 		a.vel.x = 0.0
 	var w: PixelWorld = world
+	# Doors: Up at a door goes into the house (or back out), instead of a jump.
+	var up := not cam_free and mv.y > 0.6
+	var door := w.door_at(a.pos)
+	var used_up := false
+	if door.x >= 0 and not _door_hint:
+		_door_hint = true
+		App.toast("Push up at a door to go inside." if App.is_touch else "Press W or Up at a door to go inside.")
+	if up and not _up_was and a.on_ground:
+		if w.at_inside_door(a.pos):
+			w.close_house()
+			used_up = true
+		elif w.inside.is_empty() and door.x >= 0 and w.open_house(door):
+			used_up = true
+	_up_was = up
+	if not w.inside.is_empty() and not w.in_house(a.pos):
+		w.close_house()
 	a.on_ladder = not cam_free and w.ladder_at(a.pos) and (absf(mv.y) > 0.2 or (a.on_ladder and not a.on_ground))
 	if a.on_ladder:
 		a.vel.y = mv.y * 3.5 if absf(mv.y) > 0.2 else 0.0
-	elif not cam_free and a.on_ground and not input_crouch and (input_jump or mv.y > 0.6):
+	elif not cam_free and a.on_ground and not input_crouch and (input_jump or (mv.y > 0.6 and door.x < 0 and not w.at_inside_door(a.pos))) and not used_up:
 		a.vel.y = 7.6
 	a.crouch = input_crouch and a.on_ground
 	var was := a.blocked
@@ -1113,6 +1144,7 @@ func _sim_step(dt: float) -> void:
 		if a != player and not a.keyed:
 			a.update_npc(dt)
 	_separate()
+	triggers.tick(dt)
 
 
 func _hide_actors_near_camera() -> void:

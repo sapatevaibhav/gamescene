@@ -4,8 +4,9 @@ Builds for Linux, Windows, macOS, Android and iOS come from `export_presets.cfg`
 
 ```sh
 platform/export.sh                    # Linux, Windows and the Android APK
-platform/export.sh android            # just the APK (arm64)
-RELEASE=0 platform/export.sh android  # a debug APK (debuggable, `adb shell run-as` works)
+platform/export.sh android            # just the APK (arm64, release: needs the release keystore, below)
+RELEASE=0 platform/export.sh android  # a debug APK for your own phone (Godot's debug key; `adb shell run-as` works)
+platform/perf-phone.sh [styles]       # frame times on the phone over adb, saved in build/perf/ (puts the normal build back after)
 platform/export.sh android-store      # Play Store bundle (.aab, arm64 + armv7)
 platform/export.sh macos              # .zip with an ad-hoc signed .app
 adb install -r build/android/GameSceneStudio.apk

@@ -749,7 +749,15 @@ func render_toolbar() -> void:
 			toolbar_row.add_child(_tb("raise", "up", "Raise", t.terra == "raise"))
 			toolbar_row.add_child(_tb("lower", "down", "Lower", t.terra == "lower"))
 			toolbar_row.add_child(_tb("smooth", "smooth", "Smooth", t.terra == "smooth"))
+			toolbar_row.add_child(_tb("water", "drop", "Water", t.terra == "water"))
+			toolbar_row.add_child(_tb("dry", "brk", "Dry", t.terra == "dry"))
 			hint = "Press and drag on the ground. Two fingers or right-drag move the camera."
+			if t.terra == "water":
+				hint = "Press and drag to pour water: it runs downhill and fills the hollows."
+			elif t.terra == "dry":
+				hint = "Press and drag over water to dry it up."
+		"pick_spot":
+			hint = t.spot_hint if t.spot_hint != "" else "Tap a spot"
 		"move_actor":
 			var a := studio.actor_by_id(t.actor_id)
 			hint = "Tap where " + (a.name if a else "they") + " should stand"
@@ -815,7 +823,7 @@ func _tool_action(a: String) -> void:
 		"rot":
 			t.rot = (t.rot + 1) % 4
 			toast("Facing " + ["south", "west", "north", "east"][t.rot])
-		"raise", "lower", "smooth":
+		"raise", "lower", "smooth", "water", "dry":
 			t.terra = a
 			render_toolbar()
 		"move":
@@ -1182,7 +1190,7 @@ func show_text(title: String, text: String, url := "") -> void:
 	var row := UIK.hbox(10)
 	if url != "":
 		var link := LinkButton.new()
-		link.text = "Licence page  ↗"
+		link.text = "Licence page"
 		link.uri = url
 		link.tooltip_text = url
 		link.focus_mode = Control.FOCUS_NONE
@@ -1288,7 +1296,7 @@ func prompt(title: String, suggested: String, placeholder: String, yes: String, 
 		v.add_child(g)
 	if not templates.is_empty():
 		# Closed at first: most people start blank.
-		var fold := UIK.btn("Templates", func(): pass, false, "folder")
+		var fold := UIK.btn("Show templates", func(): pass, false, "folder")
 		fold.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		var sc := ScrollContainer.new()
 		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1296,10 +1304,10 @@ func prompt(title: String, suggested: String, placeholder: String, yes: String, 
 		sc.visible = false
 		tpl_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sc.add_child(tpl_box)
-		fold.text = "Templates  ▸"
+		fold.text = "Show templates"
 		fold.pressed.connect(func():
 			sc.visible = not sc.visible
-			fold.text = "Templates  ▾" if sc.visible else "Templates  ▸"
+			fold.text = "Hide templates" if sc.visible else "Show templates"
 			if sc.visible:
 				render_tpl[0].call()
 			await get_tree().process_frame

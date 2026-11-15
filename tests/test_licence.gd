@@ -77,7 +77,7 @@ func _ui() -> void:
 	await get_tree().process_frame
 	var fold: Button = null
 	for b in m.hud.modal.find_children("*", "Button", true, false):
-		if (b as Button).text.begins_with("Templates"):
+		if (b as Button).text.ends_with("templates"):
 			fold = b
 	ok(fold != null, "the new-scene dialog has a Templates fold")
 	var sc: ScrollContainer = m.hud.modal.find_children("*", "ScrollContainer", true, false)[0]
@@ -104,7 +104,9 @@ func _ui() -> void:
 	m.home._open_settings(true)
 	await get_tree().process_frame
 	var labels: Array = m.home.find_children("*", "Button", true, false).map(func(b): return (b as Button).text)
-	ok(labels.has("Add a licence file") and labels.has("Show the tour again") and labels.has("Credits and licences"), "Settings has the licence and help buttons")
+	ok(labels.has("Add a licence file") and labels.has("Show the tour again") and labels.has("Credits and licences") and labels.has("Send feedback"), "Settings has the licence and help buttons")
+	var mt := Home.feedback_mailto()
+	ok(mt.begins_with("mailto:contact@ekaai.tech?subject=") and mt.contains(str(ProjectSettings.get_setting("application/config/version"))) and not mt.contains(" "), "Send feedback writes an email with the version and device filled in")
 	m.home._sub = "credits"
 	m.home.refresh()
 	await get_tree().process_frame

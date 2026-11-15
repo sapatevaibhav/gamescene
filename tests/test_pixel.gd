@@ -38,6 +38,7 @@ func _ready() -> void:
 	await _sim(studio, w)
 	_content(studio)
 	_save(studio)
+	await _indoors(studio)
 	print("FAILS: ", fails)
 	get_tree().quit(1 if fails > 0 else 0)
 
@@ -205,7 +206,8 @@ func _sprites(studio: Studio) -> void:
 		a.set_behavior(beh[0])
 		a.speak_t = 0.0
 		a.animate(0.05, false)
-		ok(_frame_of(a).begins_with(beh[1]), "%s shows the %s frame (%s)" % [beh[0], beh[1], _frame_of(a)])
+		# ("Mix" dancing claps now and then: the celebrate frame.)
+		ok(_frame_of(a).begins_with(beh[1]) or (beh[0] == "dance" and _frame_of(a).begins_with("cel")), "%s shows the %s frame (%s)" % [beh[0], beh[1], _frame_of(a)])
 	a.set_behavior("idle")
 	a.say("Hi!", 2.0)
 	a.animate(0.05, false)
@@ -269,3 +271,54 @@ func _save(studio: Studio) -> void:
 	ok(err == "" and (studio.world as PixelWorld).tile(5, 30) == PixelTiles.ID["gold"], "loads them back")
 	ok((studio.world as PixelWorld).backdrop == "city", "the backdrop is saved")
 	ok(studio.actors.size() == (d["cast"] as Array).size(), "cast comes back")
+
+
+## Going inside a house: Up at the door, the room shows, saves keep the
+## house as built, walking out (or a build tool) puts the front back.
+func _indoors(studio: Studio) -> void:
+	await studio.new_scene("pixel")
+	studio.in_studio = true
+	var w: PixelWorld = studio.world
+	# The default village's first cottage (stamped at x 27 on the street).
+	var door := Vector2i(-1, -1)
+	for x in range(20, 40):
+		var d := w.door_at(Vector3(x + 0.5, w.ground_y(x), PixelWorld.LANE))
+		if d.x >= 0:
+			door = d
+			break
+	ok(door.x >= 0, "there's a house door on the village street")
+	var p := studio.player
+	p.pos = Vector3(door.x + 0.5, door.y, PixelWorld.LANE)
+	p.vel = Vector3.ZERO
+	_player_tick(studio, 10)
+	var before := w.serialize()
+	var wall_cell := Vector2i(door.x + 1, door.y + 1)
+	var wall_was := w.bg[w.idx(wall_cell.x, wall_cell.y)]
+	studio.input_move = Vector2(0, 1)
+	_player_tick(studio, 3)
+	studio.input_move = Vector2.ZERO
+	ok(not w.inside.is_empty(), "Up at the door goes inside")
+	ok(p.pos.y < door.y + 0.5, "instead of jumping")
+	var r: Rect2i = w.inside.get("rect", Rect2i())
+	ok(r.size.x >= 3 and r.size.y >= 2 and r.has_point(door), "the room is the house's walls (%s)" % r)
+	ok(w.bg[w.idx(wall_cell.x, wall_cell.y)] != wall_was, "the front wall gives way to the room")
+	ok(w.serialize() == before, "a save keeps the house as it was built")
+	_player_tick(studio, 10)
+	studio.input_move = Vector2(0, 1)
+	_player_tick(studio, 3)
+	studio.input_move = Vector2.ZERO
+	ok(w.inside.is_empty() and w.bg[w.idx(wall_cell.x, wall_cell.y)] == wall_was, "Up at the door again comes back out")
+	_player_tick(studio, 5)
+	studio.input_move = Vector2(0, 1)
+	_player_tick(studio, 3)
+	studio.input_move = Vector2(1, 0)
+	_player_tick(studio, 120)
+	studio.input_move = Vector2.ZERO
+	ok(w.inside.is_empty() and w.serialize() == before, "walking out of the house puts it back too")
+	p.pos = Vector3(door.x + 0.5, door.y, PixelWorld.LANE)
+	studio.input_move = Vector2(0, 1)
+	_player_tick(studio, 3)
+	studio.input_move = Vector2.ZERO
+	studio.tools.set_tool("tiles")
+	ok(w.inside.is_empty() and w.serialize() == before, "a build tool steps back out first")
+	studio.tools.set_tool("")
