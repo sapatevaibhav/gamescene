@@ -218,6 +218,10 @@ func set_style(key: String) -> void:
 			env.adjustment_contrast = 1.02
 			env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 			env.tonemap_exposure = 1.04
+	# Cel shading turns a wide, dithered shadow edge into speckles on skin:
+	# the anime sun is a little smaller and its shadows a little crisper.
+	sun.light_angular_distance = 0.2 if key == "anime" else 0.6
+	sun.shadow_blur = 0.8 if key == "anime" else 1.2
 	env.fog_enabled = not key in ["pixel", "pixeltop"]
 	apply_quality()
 

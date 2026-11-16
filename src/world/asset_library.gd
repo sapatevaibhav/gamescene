@@ -10,6 +10,7 @@ class_name AssetLib
 static var DIR := "user://assets/props/"
 const TOON_TEX := preload("res://src/shaders/toon_tex.gdshader")
 const TOON_TEX_DS := preload("res://src/shaders/toon_tex_ds.gdshader")
+const TOON_TEX_BLEND := preload("res://src/shaders/toon_tex_blend.gdshader")
 const PREFIX := "glb:"
 const FOLIAGE_WORDS := ["leaf", "leaves", "foliage", "bush", "grass", "fern", "plant", "flower", "canopy", "needle", "branch"]
 
@@ -303,7 +304,7 @@ static func _find_all(n: Node, cls: String) -> Array:
 	return out
 
 
-static func _toonify(root: Node, height: float) -> void:
+static func _toonify(root: Node, height: float, character := false) -> void:
 	for n in _find_all(root, "MeshInstance3D"):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -324,7 +325,18 @@ static func _toonify(root: Node, height: float) -> void:
 					m.set_shader_parameter("albedo_tex", base.albedo_texture)
 					m.set_shader_parameter("use_tex", true)
 				var cut := base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
-				if cut:
+				if cut and character:
+					# A character's see-through parts (hair cards, eyes, lashes,
+					# brows) are not leaves: they must stay fixed to the body, so
+					# no wind. Painted overlays blend softly; the rest is cut out.
+					if base.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA:
+						m.shader = TOON_TEX_BLEND
+						m.render_priority = s
+					else:
+						m.set_shader_parameter("alpha_cut", maxf(base.alpha_scissor_threshold, 0.4))
+						if base.cull_mode == BaseMaterial3D.CULL_DISABLED:
+							m.shader = TOON_TEX_DS
+				elif cut:
 					m.set_shader_parameter("alpha_cut", maxf(base.alpha_scissor_threshold, 0.4))
 					foliage = true
 				# Skin-like warm colours shade warm, the rest cool.
@@ -333,7 +345,13 @@ static func _toonify(root: Node, height: float) -> void:
 					m.set_shader_parameter("shadow_tint", Color(0.92, 0.72, 0.74))
 				elif c.g > c.r and c.g > c.b:
 					m.set_shader_parameter("shadow_tint", Color(0.32, 0.5, 0.54))
-			if foliage:
+			if character:
+				m.set_shader_parameter("shadow_edge", Vector2(0.0, 1.0))
+				# Skin is usually a white material with a painted texture, so
+				# the colour test above misses it: go by the name.
+				if label.contains("skin") or label.contains("face"):
+					m.set_shader_parameter("shadow_tint", Color(0.92, 0.72, 0.74))
+			if foliage and not character:
 				m.shader = TOON_TEX_DS
 				m.set_shader_parameter("wind", 0.05)
 				m.set_shader_parameter("model_height", height)

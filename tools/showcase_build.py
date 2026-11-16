@@ -48,14 +48,14 @@ def page(file, title, desc, body, extra_head="", page_type="software"):
 <meta property="og:description" content="{desc}">
 <meta property="og:site_name" content="GameScene Studio">
 <meta property="og:locale" content="en">
-<meta property="og:image" content="{absu("screenshots/og.jpg")}">
+<meta property="og:image" content="{absu("screenshots/share.png")}">
 <meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="675">
-<meta property="og:image:alt" content="GameScene Studio with the Camera panel open over an anime-style scene at sunset">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The GameScene Studio logo">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{title}">
 <meta name="twitter:description" content="{desc}">
-<meta name="twitter:image" content="{absu("screenshots/og.jpg")}">
+<meta name="twitter:image" content="{absu("screenshots/share.png")}">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="author" content="Vaibhav Sapate">
 {canon}
@@ -65,6 +65,12 @@ def page(file, title, desc, body, extra_head="", page_type="software"):
 <link rel="icon" type="image/png" href="screenshots/icon.png">
 <link rel="preload" href="fonts/Goeist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-NMQBMV78"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+</script>
 <script>try{{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}}catch(e){{}}</script>
 </head>
 <body>
@@ -157,7 +163,7 @@ home = f"""
         <li>No account</li>
       </ul>
     </div>
-    <div class="hero-shot">{shot("hero-camera", "The studio at sunset with the Camera panel open on a cinematic orbit shot", eager=True)}</div>
+    <div class="hero-shot">{shot("hero", "The studio with five imported anime characters posing in a forest glade under a blossom tree", eager=True)}</div>
   </div>
 </section>
 
@@ -323,7 +329,7 @@ APP_LD = {
         "Imports .glb, .vrm, .gltf and .fbx characters, sprite sheets and Aseprite files",
         "Fully offline: no account, ads, telemetry or network use",
     ],
-    "screenshot": [absu("screenshots/og.jpg")],
+    "screenshot": [absu("screenshots/hero.webp")],
     **({"url": SITE_URL + "/"} if SITE_URL else {}),
 }
 FAQ_LD = {"@context": "https://schema.org", "@type": "FAQPage",
@@ -518,7 +524,7 @@ privacy = """
 <section>
   <div class="wrap">
     <div class="prose">
-      <p>GameScene Studio is an offline app. It has no accounts, no ads, no analytics, no crash reporting and no online features, and it never connects to the internet. This website is static: it sets no cookies and loads nothing from other servers.</p>
+      <p>GameScene Studio is an offline app. It has no accounts, no ads, no analytics, no crash reporting and no online features, and it never connects to the internet. This website is separate from the app: it uses Google Tag Manager to count visits, which loads a script from Google and may set cookies in your browser. Nothing on the site reaches into the app.</p>
       <h2>What the app collects</h2>
       <p>Nothing. The app does not collect, send, sell or share any personal data. No one, including the developers, can see what you make in it.</p>
       <h2>Feedback, web links and licence files</h2>

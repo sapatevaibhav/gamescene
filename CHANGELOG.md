@@ -167,6 +167,9 @@ Open-source release terms, keyboard and macOS shortcuts, a round of fixes, and t
 - **Scene duplicate & rename**: duplicating a scene assigns a unique copy name; renaming preserves the scene's updated timestamp and list order without jumping to the top.
 - **Scene index capacity**: dropped the 64-scene cap in `ProjectStore` so all scenes remain visible in the library.
 - **File handling feedback**: distinct error message for damaged scene files vs missing files; dropped file imports report specific counts for sounds, 3D props, and instructions for VRM characters/sprites.
+- **Showcase hero image.** The home page opens on a new picture: five imported anime characters posing in a glade under a blossom tree, framed low and close with the studio controls in view. The characters are VRoid's CC0 sample models (see `assets/CREDITS.md`).
+- **Share previews show the logo.** Links to the site preview with the wordmark on the site's dark background (`screenshots/share.png`) instead of an old screenshot.
+- **Elbows turn in.** The pose editor's elbow joints have a second slider, "Turn in", which swings a bent forearm across the body. The built-in poses use it, so Hands on hips, Arms crossed, Thinking, Hands together, Victory fist and Hero stance now read properly on imported characters (before, the hands ended up raised in front of the shoulders).
 
 ### Fixed
 - **First click with a build tool**: after picking a block or object from a panel, the first click now places it where the cursor points. It used to only grab the mouse for looking around, leaving the white preview behind and the aim on the crosshair (behind your own character in third person). While a tool is picked, clicks place at the cursor and dragging looks; with the mouse already grabbed, the preview follows the crosshair.
@@ -181,6 +184,14 @@ Open-source release terms, keyboard and macOS shortcuts, a round of fixes, and t
 - **Memory leak on model import**: importing a 3D character left a second copy of the model in memory until the app closed.
 - **Clean exit**: sounds are stopped and released before the app closes (a sound still playing at exit was reported as leaked), and a licence file that isn't JSON is refused without an engine error in the log. The full test run now ends with no leak warnings or errors.
 - **Wording**: the timeline's story blocks use the Story page's words ("Walk to", "Hang out", "Run away" instead of walkto, group, flee); the player's character is "You" in the Camera and Shot subject chips; exports are called "video" throughout; the subtitle preview speaks with the scene's main character.
+- **Numbered joint chains are recognised.** Rigs whose bones are only numbered along each limb (`Skeleton_arm_joint_L__4_`, `leg_joint_L_1`, as in the glTF sample "Cesium Man") now match, so those characters walk, wave and hold poses instead of standing in a T-pose.
+- **One thing in each hand.** Character packs that ship every weapon and shield attached to the hands at once showed them all on top of each other. The first item in each hand is kept and the rest are hidden.
+- **Dotted shadows on anime skin.** The sun's soft shadow edge is dithered, and cel shading showed that as dots across faces and arms. The anime style's sun is now a little smaller with crisper shadows, at no cost in frame rate.
+- **Imported sprites stopped dancing now and then.** The "Mix" dance includes a clapping move that uses the celebrate frames; a sheet with a dance tag but no celebrate tag fell back to standing idle for those four seconds. It now keeps dancing (and a sheet with only a celebrate tag dances with it). This was also why `test_sprites` failed about one run in eight.
+- **Big-headed imported characters came in huge.** Chibi rigs, whose heads are far taller than the head bone suggests, were sized from their bones alone and stood about twice as tall as everyone else. Their height is now measured from the body itself.
+- **Imported characters that faced backwards.** VRM 0.x files (most VRoid exports) store the character facing away, so they stood with their backs to where they were looking and their arms bent behind them in poses. The importer now reads which side the left and right limbs are on and turns the model round.
+- **Faces of imported anime characters.** Eyes, eyebrows, eyelashes, hair cards and cut-out clothes were treated as leaves: they swayed in the wind, slid off the face and left it blank. A character's see-through parts now stay fixed to the body, and painted overlays (lashes, brows, eye highlights) blend softly instead of being cut out.
+- **Speckled, grey shadows on imported skin.** Soft shadows turned into dots on faces and arms, and skin painted on a white material shaded blue-grey. Characters now take shadows smoothly and skin shades warm.
 
 ## [0.23.0] - 2026-11-15
 

@@ -921,7 +921,7 @@ func _set_feeling(a: Actor, o: Actor, v: String) -> void:
 
 
 const POSE_AXES := {"head": ["Turn", "Nod"], "spine": ["Lean forward", "Lean sideways"], "upperArm": ["Raise (forward)", "Out to the side"],
-	"lowerArm": ["Bend", ""], "upperLeg": ["Raise (forward)", "Out to the side"], "lowerLeg": ["Bend", ""]}
+	"lowerArm": ["Bend", "Turn in"], "upperLeg": ["Raise (forward)", "Out to the side"], "lowerLeg": ["Bend", ""]}
 
 
 ## The pose editor: pick a joint, set its angles, save to the library.

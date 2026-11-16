@@ -8,6 +8,9 @@ uniform bool use_tex = false;
 uniform float alpha_cut = 0.0;
 uniform vec3 shadow_tint : source_color = vec3(0.68, 0.68, 0.86);
 uniform float rim_amount = 0.22;
+// Where a cast shadow turns from dark to lit. Characters use a wide range:
+// soft shadows are dithered, and a narrow one turns that into speckles on skin.
+uniform vec2 shadow_edge = vec2(0.25, 0.55);
 uniform float wind = 0.0;
 uniform float model_height = 4.0;
 
@@ -29,6 +32,9 @@ void fragment() {
 		discard;
 	}
 	ALBEDO = c.rgb;
+#ifdef TOON_BLEND
+	ALPHA = c.a;
+#endif
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
@@ -36,7 +42,11 @@ void fragment() {
 void light() {
 	float ndl = dot(NORMAL, LIGHT) * 0.5 + 0.5;
 	float sh = LIGHT_IS_DIRECTIONAL ? ATTENUATION : 1.0;
-	float lit = smoothstep(0.44, 0.48, ndl) * smoothstep(0.25, 0.55, sh);
+	// Soft shadows are dithered from pixel to pixel, which shows as a dot
+	// pattern on flat cel shading: average each 2x2 block of pixels.
+	vec2 odd = step(1.0, mod(FRAGCOORD.xy, 2.0)) - 0.5;
+	sh = clamp(sh - dFdx(sh) * odd.x - dFdy(sh) * odd.y, 0.0, 1.0);
+	float lit = smoothstep(0.44, 0.48, ndl) * smoothstep(shadow_edge.x, shadow_edge.y, sh);
 	float fall = LIGHT_IS_DIRECTIONAL ? 1.0 : ATTENUATION;
 	DIFFUSE_LIGHT += LIGHT_COLOR / PI * mix(shadow_tint * 0.85, vec3(1.0), lit) * fall;
 	float fres = 1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0);

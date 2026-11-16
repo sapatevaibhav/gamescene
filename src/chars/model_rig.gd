@@ -64,15 +64,22 @@ const SLOT_NAMES := {
 ## Exact raw names (lower case) checked before normalisation, for rigs whose
 ## numbering carries meaning (Rigify's DEF-spine.006 is the head).
 const RAW_NAMES := {
-	"hips": ["def-spine", "def-hips"],
-	"spine": ["def-spine.001", "def-spine.002"],
-	"head": ["def-spine.006", "def-head", "org-spine.006"],
+	"hips": ["def-spine", "def-hips", "skeleton_torso_joint_1"],
+	"spine": ["def-spine.001", "def-spine.002", "skeleton_torso_joint_2"],
+	"head": ["def-spine.006", "def-head", "org-spine.006", "skeleton_neck_joint_1"],
+	# Numbered joint chains (COLLADA-era exports such as the glTF sample
+	# "Cesium Man"): the number is the place in the chain, not a duplicate.
+	"upperArmL": ["skeleton_arm_joint_l__4_", "skeleton_arm_joint_l", "arm_joint_l_1"],
+	"upperArmR": ["skeleton_arm_joint_r", "skeleton_arm_joint_r__4_", "arm_joint_r_1"],
+	"upperLegL": ["leg_joint_l_1", "skeleton_leg_joint_l_1"],
+	"upperLegR": ["leg_joint_r_1", "skeleton_leg_joint_r_1"],
 }
 
 ## Names that look like a match but are helpers (twist, roll, IK, end bones).
 const BONE_EXCLUDE := ["twist", "roll", "_ik", "ik_", "pole", "target", "_tip", "helper", "dummy", "socket", "mch-", "ctrl", "nub", "fk_"]
 
 static var _cache := {}
+static var _spans := {}
 
 
 ## Copies a model file into the asset store; returns its id ("" on failure).
@@ -127,6 +134,7 @@ static func import_file(path: String) -> String:
 
 
 static func remove(id: String) -> void:
+	_spans.erase(id)
 	DirAccess.remove_absolute(DIR + id)
 	_cache.erase(id)
 
@@ -175,28 +183,30 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 		# models are measured from their bones: skinned meshes often store
 		# vertices in centimetres while the scale lives on the skeleton, so
 		# mesh bounds would be wildly off.
+		# Face +Z: some formats (VRM 0.x) store the character facing the other
+		# way. "flip" in the look turns a model round by hand.
+		if _faces_back(model, scene) != bool(look.get("flip", false)):
+			scene.rotation.y = PI
 		var want: float = float(look.get("height", 1.75))
-		var ext := _bone_extent(model, scene)
+		var ext := _body_extent(model, scene, id)
 		if ext.size.y > 0.001:
-			var s := want / (ext.size.y * 1.08)
+			var s := want / ext.size.y
 			scene.scale = Vector3.ONE * s
-			ext = _bone_extent(model, scene)
-			scene.position -= Vector3(ext.get_center().x, ext.position.y - ext.size.y * 0.02, ext.get_center().z)
+			ext = _body_extent(model, scene, id)
+			scene.position -= Vector3(ext.get_center().x, ext.position.y, ext.get_center().z)
 		else:
 			var bb := Kit.bounds(model)
 			scene.scale = Vector3.ONE * want / maxf(bb.size.y, 0.01)
 			bb = Kit.bounds(model)
 			scene.position -= Vector3(bb.get_center().x, bb.position.y, bb.get_center().z)
-		if look.get("flip", false):
-			scene.rotation.y = PI
 	var dummy := func() -> Node3D:
 		var n := Kit.group()
 		model.add_child(n)
 		return n
 	if scene and style == "anime":
-		AssetLib._toonify(scene, 1.8)
-	var ext2 := _bone_extent(model, scene) if scene else AABB()
-	var height := ext2.size.y * 1.08 if ext2.size.y > 0.01 else (Kit.bounds(model).size.y if scene else 2.0)
+		AssetLib._toonify(scene, 1.8, true)
+	var ext2 := _body_extent(model, scene, id) if scene else AABB()
+	var height := ext2.size.y if ext2.size.y > 0.01 else (Kit.bounds(model).size.y if scene else 2.0)
 	var rig := {"root": root, "model": model, "upper": dummy.call(), "head": dummy.call(), "hc": null,
 		"armL": dummy.call(), "armR": dummy.call(), "legL": dummy.call(), "legR": dummy.call(),
 		"headH": height * 0.9, "height": height, "sitDrop": height * 0.25, "kind": "model", "scale": 1.0,
@@ -233,6 +243,7 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 			rig["fwd"] = (skel_xf.basis.inverse() * Vector3.BACK).normalized()
 			rig["grest"] = {}
 			rig["base"] = {}
+			rig["armdir"] = {}
 			for slot in rig["bones"]:
 				var bi: int = rig["bones"][slot]
 				var g := sk.get_bone_global_rest(bi).basis.orthonormalized()
@@ -259,9 +270,15 @@ static func build(look: Dictionary, style := "") -> Dictionary:
 						# Character space: down, slightly out to the side and forward.
 						var want := (skel_xf.basis.inverse() * Vector3(sgn * 0.22, -1.0, 0.06)).normalized()
 						rig["base"][slot] = Quaternion(dir, want)
+						# The arm's own line at rest: a bent forearm turns about it.
+						rig["armdir"][slot] = dir
 			if rig["bones"].has("head"):
 				var head_p := Kit._local_xf(root, sk) * sk.get_bone_global_rest(rig["bones"]["head"]).origin
 				rig["headH"] = clampf(head_p.y + 0.06, 0.4, rig["height"])
+				# Big-headed (chibi) rigs: the head bone sits at the neck, far
+				# below the face.
+				if head_p.y < float(rig["height"]) * 0.6:
+					rig["headH"] = float(rig["height"]) * 0.72
 	rig["blink"] = _blink_shapes(scene) if scene else []
 	rig["mouth"] = _mouth_shapes(scene) if scene else []
 	rig["expr"] = _expr_shapes(scene) if scene else {}
@@ -363,6 +380,7 @@ static func _expr_shapes(scene: Node) -> Dictionary:
 ## Game-style rigs: hide VFX-only meshes, and stop vertex colours (often
 ## outline/mask data) from tinting textured surfaces.
 static func _clean_materials(scene: Node) -> void:
+	var held := {}
 	for n in AssetLib._find_all(scene, "MeshInstance3D"):
 		var mi := n as MeshInstance3D
 		var nm := String(mi.name).to_lower()
@@ -372,6 +390,16 @@ static func _clean_materials(scene: Node) -> void:
 			continue
 		if mi.mesh == null:
 			continue
+		# Character packs ship every weapon and shield attached to the hand
+		# at once, to pick from: keep the first thing in each hand.
+		var hold := mi.get_parent() as BoneAttachment3D
+		if hold and mi.skin == null:
+			var bone := hold.bone_name.to_lower()
+			if bone.contains("hand") or bone.contains("wrist") or bone.contains("weapon") or bone.contains("prop"):
+				if held.has(hold):
+					mi.visible = false
+					continue
+				held[hold] = true
 		for si in mi.mesh.get_surface_count():
 			var m := mi.get_active_material(si) as BaseMaterial3D
 			if m and m.albedo_texture and m.vertex_color_use_as_albedo:
@@ -399,6 +427,101 @@ static func _limb_dir(sk: Skeleton3D, b: int) -> Vector3:
 			best_len = score
 			best = d
 	return best.normalized() if best.length() > 1e-5 else Vector3.ZERO
+
+
+## True when a rigged model stands with its back to +Z: someone facing +Z
+## has their left side towards +X, so the left and right limbs tell.
+static func _faces_back(model: Node3D, scene: Node3D) -> bool:
+	var sk := _main_skeleton(scene)
+	if sk == null:
+		return false
+	var bones := find_bones(sk)
+	var xf := Kit._local_xf(model, sk)
+	for pair in [["upperArmL", "upperArmR"], ["upperLegL", "upperLegR"]]:
+		if bones.has(pair[0]) and bones.has(pair[1]):
+			var l := xf * sk.get_bone_global_rest(int(bones[pair[0]])).origin
+			var r := xf * sk.get_bone_global_rest(int(bones[pair[1]])).origin
+			var d := l - r
+			if absf(d.x) > 0.3 * d.length() and d.length() > 0.0:
+				return d.x < 0.0
+	return false
+
+
+## The standing body's box in `model` space: soles to the top of the head.
+## Measured from the bones (plus a little for the skull above the head bone
+## and the soles below the lowest one), since skinned meshes often store
+## their vertices in other units. Big-headed (chibi) rigs have a head far
+## taller than that allowance, so when the skinned meshes agree with the
+## bones about where the feet are and are plausibly sized, their height wins.
+static func _body_extent(model: Node3D, scene: Node3D, id := "") -> AABB:
+	var be := _bone_extent(model, scene)
+	if be.size.y <= 0.001:
+		return be
+	var out := AABB(be.position - Vector3(0, be.size.y * 0.02, 0), Vector3(be.size.x, be.size.y * 1.08, be.size.z))
+	# The same for every copy of a model, so measured once per file.
+	var span: Vector2
+	if id != "" and _spans.has(id):
+		span = _spans[id]
+	else:
+		span = _skin_span(model, scene, be)
+		if id != "":
+			_spans[id] = span
+	if span.y > 1.25 and span.y - span.x < 3.0 and absf(span.x) < 0.35:
+		out.position.y = be.position.y + span.x * be.size.y
+		out.size.y = (span.y - span.x) * be.size.y
+	return out
+
+
+## Where the skinned meshes' lowest and highest points are at rest, as
+## fractions of the bone box's height above its base (x = lowest, y =
+## highest). Vertices are placed through their bones, so this holds whatever
+## units or node transforms the meshes are stored with. Vector2.ZERO when
+## there is nothing skinned. A sample of the vertices is enough.
+static func _skin_span(model: Node3D, scene: Node3D, be: AABB) -> Vector2:
+	var sk := _main_skeleton(scene)
+	if sk == null:
+		return Vector2.ZERO
+	var to_model := Kit._local_xf(model, sk)
+	var lo := INF
+	var hi := -INF
+	for n in AssetLib._find_all(scene, "MeshInstance3D"):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or mi.skin == null or not mi.visible:
+			continue
+		var skin := mi.skin
+		# Each bind's mesh-to-model transform at rest.
+		var binds := []
+		for i in skin.get_bind_count():
+			var bone := skin.get_bind_bone(i)
+			if bone < 0:
+				bone = sk.find_bone(skin.get_bind_name(i))
+			binds.append(to_model * sk.get_bone_global_rest(bone) * skin.get_bind_pose(i) if bone >= 0 else null)
+		for si in mi.mesh.get_surface_count():
+			var arr := mi.mesh.surface_get_arrays(si)
+			var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES] if arr[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+			var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS] if arr[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
+			if verts.is_empty() or bones.is_empty():
+				continue
+			var per := bones.size() / verts.size()
+			var step := maxi(1, verts.size() / 600)
+			for v in range(0, verts.size(), step):
+				var y := 0.0
+				var wsum := 0.0
+				for k in per:
+					var w := weights[v * per + k]
+					var bi := bones[v * per + k]
+					if w <= 0.0 or bi >= binds.size() or binds[bi] == null:
+						continue
+					y += ((binds[bi] as Transform3D) * verts[v]).y * w
+					wsum += w
+				if wsum > 0.0:
+					y /= wsum
+					lo = minf(lo, y)
+					hi = maxf(hi, y)
+	if lo == INF:
+		return Vector2.ZERO
+	return Vector2((lo - be.position.y) / be.size.y, (hi - be.position.y) / be.size.y)
 
 
 ## Bounding box of the skeleton's rest-pose joints in `model` space
@@ -773,6 +896,11 @@ static func _pose(a: Actor, state: String, sp: float) -> void:
 			var up_slot: String = str(slot).replace("lower", "upper")
 			var pb: Quaternion = m["base"].get(up_slot, Quaternion.IDENTITY)
 			q = Quaternion((pb.inverse() * side).normalized(), ang.x) * base
+			# Elbows also turn in (y): the bent forearm swings about the
+			# upper arm, so a hand can reach a hip or cross the chest.
+			var arm: Variant = (m.get("armdir", {}) as Dictionary).get(up_slot)
+			if arm is Vector3 and absf(ang.y) > 0.001:
+				q = Quaternion(arm as Vector3, ang.y * (1.0 if slot.ends_with("L") else -1.0)) * q
 		else:
 			# Out to the side: left arm/leg rolls one way, right the other.
 			var out_sign := 1.0 if slot.ends_with("L") else -1.0

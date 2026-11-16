@@ -404,6 +404,11 @@ static func frame_index(m: Dictionary, name: String, facing: String, t: float) -
 			tries += ["attack"]
 		"swim":
 			tries += ["walk:" + facing, "walk"]
+		"celebrate":
+			# Some dances clap and cheer: a sheet with only a dance keeps dancing.
+			tries += ["dance"]
+		"dance":
+			tries += ["celebrate"]
 	tries += ["idle:" + facing, "idle"]
 	for k in tries:
 		var seq: Array = anims.get(k, [])
