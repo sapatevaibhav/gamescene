@@ -33,6 +33,7 @@ func _ready() -> void:
 	await _sim(studio, w)
 	_save(studio)
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

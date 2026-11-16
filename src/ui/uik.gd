@@ -294,13 +294,6 @@ static func para(text: String, size := 13, color := MUTED) -> Label:
 	return l
 
 
-static func section(text: String) -> Label:
-	var l := label(text, 13, MUTED, true)
-	l.add_theme_constant_override("line_spacing", 0)
-	var m := MarginContainer.new()
-	return l
-
-
 static func vbox(sep := 8) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", px(sep))
@@ -350,7 +343,9 @@ static func btn(text: String, cb: Callable, primary := false, icon := "") -> But
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_override("font", font_bold)
 	b.add_theme_font_size_override("font_size", px(14))
-	b.custom_minimum_size.y = px(42)
+	b.custom_minimum_size.y = px(44 if App.is_touch else 42)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.set_meta("primary", primary)
 	if icon != "":
 		b.icon = Icons.tex(icon, px(20), TAPE_INK if primary else INK)
 	style_button(b, "primary" if primary else "neutral")
@@ -400,7 +395,8 @@ static func icon_btn(icon: String, cb: Callable, tip := "", size := 46, glass_bg
 	b.icon = Icons.tex(icon, px(22), Color.WHITE if glass_bg else INK)
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.expand_icon = false
-	b.custom_minimum_size = Vector2(px(size), px(size))
+	var s: float = maxf(size, 44 if App.is_touch else size)
+	b.custom_minimum_size = Vector2(px(s), px(s))
 	b.tooltip_text = tip
 	if glass_bg:
 		var g := glass(14)
@@ -424,7 +420,8 @@ static func chip(text: String, on: bool, cb: Callable) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_override("font", font_bold)
 	b.add_theme_font_size_override("font_size", px(14))
-	b.custom_minimum_size.y = px(38)
+	b.custom_minimum_size.y = px(44 if App.is_touch else 38)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	style_button(b, "selected" if on else "neutral")
 	b.pressed.connect(cb)
 	return b
@@ -528,7 +525,7 @@ static func slider(title: String, value: float, lo: float, hi: float, step: floa
 	s.step = step
 	s.value = value
 	s.focus_mode = Control.FOCUS_NONE
-	s.custom_minimum_size.y = px(28)
+	s.custom_minimum_size.y = px(44 if App.is_touch else 28)
 	var show := func(x: float) -> void:
 		val.text = fmt.call(x) if fmt.is_valid() else (str(int(x)) if step >= 1 else "%.1f" % x)
 	show.call(value)

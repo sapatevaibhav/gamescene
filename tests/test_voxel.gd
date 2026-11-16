@@ -48,4 +48,5 @@ func _ready() -> void:
 	print("legacy remap ok")
 	w.animate(0.016, 1.0)
 	print("lights: ", w._lights.size())
+	await SoundDirector.hush(get_tree())
 	get_tree().quit()

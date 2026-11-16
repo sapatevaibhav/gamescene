@@ -1,0 +1,62 @@
+GameScene Studio
+Copyright (C) 2026 Vaibhav Sapate
+Original project: https://github.com/sapatevaibhav/gamescene
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option)
+any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License in the
+LICENSE file for more details.
+
+
+Additional terms under section 7 of the GNU General Public License
+-------------------------------------------------------------------
+
+The copyright holder adds the following terms, as section 7 of the License
+permits. They apply to every copy and every modified version.
+
+1. Keep the credit (section 7(b)).
+   You must keep this NOTICE file, and the copyright and licence notices in
+   the source files, in every copy you pass on. If your version has a user
+   interface, it must show, somewhere a user can reach from its settings,
+   about or credits page, the line
+
+       Based on GameScene Studio by Vaibhav Sapate
+       https://github.com/sapatevaibhav/gamescene
+
+   together with the fact that it is licensed under the GNU GPL version 3.
+   In GameScene Studio this is the "Credits and licences" page; it counts
+   as part of the Appropriate Legal Notices and must not be removed or
+   hidden.
+
+2. Say that you changed it (section 7(c)).
+   A modified version must not be presented as the original. It must be
+   marked as changed, in its README and in the credits page above, and it
+   must not suggest that the original author made, approved or supports it.
+
+3. No rights to the name or the logo (section 7(e)).
+   This licence gives no permission to use the name "GameScene Studio", the
+   GameScene logo, app icon, wordmark or splash image (the files in
+   assets/brand/). A modified version that you distribute must use a
+   different name and different artwork. See TRADEMARKS.md.
+
+
+What is under which licence
+---------------------------
+
+- Source code, shaders, tools, tests and documentation:
+  GPL-3.0-or-later with the additional terms above.
+- assets/brand/*: Copyright (C) 2026 Vaibhav Sapate, all rights reserved.
+  Not covered by the GPL. See TRADEMARKS.md.
+- assets/styles/*: made for GameScene Studio; GPL-3.0-or-later with the
+  rest of the project.
+- assets/textures/*: CC0 1.0 from ambientCG. See assets/CREDITS.md.
+- The Godot Engine and the libraries inside it keep their own licences
+  (MIT and others); the app lists them on its credits page.
+
+Scenes, videos and screenshots you make with the app are yours. The licence
+of the app places no conditions on them.

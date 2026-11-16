@@ -70,7 +70,10 @@ func _layout() -> void:
 	# Phones: clear the status bar / notch and the gesture bar.
 	var ins := App.safe_insets()
 	m.add_theme_constant_override("margin_top", UIK.px(22) + int(ins.position.y))
-	m.add_theme_constant_override("margin_bottom", UIK.px(36) + int(ins.size.y))
+	var bottom_pad := UIK.px(36)
+	if _bar.visible:
+		bottom_pad += int(_bar.get_combined_minimum_size().y + UIK.px(24))
+	m.add_theme_constant_override("margin_bottom", bottom_pad + int(ins.size.y))
 	if _settings and is_instance_valid(_page):
 		_page.custom_minimum_size.x = minf(inner, UIK.px(720))
 	if _cards == null or _recent == null:
@@ -80,8 +83,11 @@ func _layout() -> void:
 	_recent.columns = maxi(2, int((inner + gap) / float(UIK.px(250) + gap)))
 	if _bar.visible:
 		var vs := get_viewport_rect().size
+		var max_w := vs.x - UIK.px(16) * 2.0
 		_bar.size = _bar.get_combined_minimum_size()
-		_bar.position = Vector2((vs.x - _bar.size.x) / 2.0, vs.y - _bar.size.y - UIK.px(18) - ins.size.y)
+		if _bar.size.x > max_w:
+			_bar.size.x = max_w
+		_bar.position = Vector2(maxf(UIK.px(16), (vs.x - _bar.size.x) / 2.0), vs.y - _bar.size.y - UIK.px(18) - ins.size.y)
 
 
 ## A phone held upright (or any narrow window).
@@ -152,35 +158,41 @@ func refresh() -> void:
 	var recs := Media.recordings()
 	var shots := Media.screenshots()
 	# Tabs on the left, the tab's actions on the right (below them on a
-	# narrow phone screen). The row keeps its height in every state, so
-	# nothing below it moves.
-	var rh := UIK.flow(8)
-	var tabs := UIK.hbox(6)
+	# narrow phone screen).
+	var tabs: Container = UIK.flow(6) if _narrow() else UIK.hbox(6)
 	for tb in [["scenes", "Scenes", idx.size()], ["recordings", "Recordings", recs.size()], ["screenshots", "Screenshots", shots.size()]]:
-		tabs.add_child(UIK.chip("%s  %d" % [tb[1], tb[2]], _tab == tb[0], func():
+		var tab_title: String = tb[1] if _narrow() else ("%s  %d" % [tb[1], tb[2]])
+		tabs.add_child(UIK.chip(tab_title, _tab == tb[0], func():
 			if _tab != tb[0]:
 				_tab = tb[0]
 				_selecting = false
 				_selected.clear()
 				_refresh_keep_scroll()))
-	rh.add_child(tabs)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rh.add_child(gap)
 	var items := _items(idx, recs, shots)
 	var sel := UIK.btn("Done" if _selecting else "Select", func(): _set_selecting(not _selecting), _selecting, "check")
 	sel.disabled = items.is_empty()
-	rh.add_child(sel)
+	var act: Container = UIK.flow(8) if _narrow() else UIK.hbox(8)
+	act.add_child(sel)
 	match _tab:
 		"scenes":
-			rh.add_child(UIK.btn("Open a file", func(): _open_file(), false, "folder"))
+			act.add_child(UIK.btn("Open a scene file", func(): _open_file(), false, "folder"))
 		"recordings":
 			if Media.can_reveal():
-				rh.add_child(UIK.btn("Open folder", func(): OS.shell_open(Recorder.output_dir("video")), false, "folder"))
+				act.add_child(UIK.btn("Open folder", func(): OS.shell_open(Recorder.output_dir("video")), false, "folder"))
 		"screenshots":
 			if Media.can_reveal():
-				rh.add_child(UIK.btn("Open folder", func(): OS.shell_open(Recorder.output_dir("image")), false, "folder"))
-	_col.add_child(rh)
+				act.add_child(UIK.btn("Open folder", func(): OS.shell_open(Recorder.output_dir("image")), false, "folder"))
+	if _narrow():
+		_col.add_child(tabs)
+		_col.add_child(act)
+	else:
+		var rh := UIK.hbox(8)
+		rh.add_child(tabs)
+		var gap := Control.new()
+		gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rh.add_child(gap)
+		rh.add_child(act)
+		_col.add_child(rh)
 	_recent = UIK.grid(2, 14)
 	match _tab:
 		"scenes":
@@ -585,8 +597,12 @@ func _media_action(item: int, it: Dictionary) -> void:
 				Media.share([str(it["path"])])
 		3:
 			var hud: Hud = get_parent().get_node("Hud")
-			hud.ask("Delete “%s”? This can’t be undone." % it["name"], "Delete", func():
-				Media.remove(it)
+			var gallery_note := " The copy in your gallery stays." if App.is_mobile else ""
+			hud.ask("Delete “%s”? This can’t be undone.%s" % [it["name"], gallery_note], "Delete", func():
+				if Media.remove(it):
+					App.toast("Deleted %s." % it["name"])
+				else:
+					App.toast("Couldn’t delete %s." % it["name"])
 				_refresh_keep_scroll())
 
 
@@ -624,7 +640,10 @@ func _tick(on: bool) -> Control:
 
 ## Short, friendly timestamp: "Today 15:57", "Yesterday 09:10", "Nov 3".
 func _when(t: int) -> String:
-	var now := int(Time.get_unix_time_from_system())
+	# Local time: the day changes at the user's midnight, not UTC's.
+	var bias := int(Time.get_time_zone_from_system().get("bias", 0)) * 60
+	var now := int(Time.get_unix_time_from_system()) + bias
+	t += bias
 	var d := Time.get_datetime_dict_from_unix_time(t)
 	var hm := "%02d:%02d" % [d["hour"], d["minute"]]
 	var days := (now - now % 86400 - (t - t % 86400)) / 86400
@@ -632,7 +651,10 @@ func _when(t: int) -> String:
 		return "Today " + hm
 	if days == 1:
 		return "Yesterday " + hm
+	var now_d := Time.get_datetime_dict_from_unix_time(now)
 	var months := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	if int(d["year"]) != int(now_d["year"]):
+		return "%s %d, %d" % [months[int(d["month"]) - 1], d["day"], d["year"]]
 	return "%s %d" % [months[int(d["month"]) - 1], d["day"]]
 
 
@@ -668,16 +690,20 @@ func _delete_selected() -> void:
 	var n := _selected.size()
 	var hud: Hud = get_parent().get_node("Hud")
 	var noun: String = {"scenes": "scene", "recordings": "recording", "screenshots": "screenshot"}[_tab] + ("" if n == 1 else "s")
-	hud.ask("Delete %d %s? This can’t be undone." % [n, noun], "Delete", func():
+	var gallery_note := " The copies in your gallery stay." if App.is_mobile and _tab != "scenes" else ""
+	hud.ask("Delete %d %s? This can’t be undone.%s" % [n, noun, gallery_note], "Delete", func():
 		if _tab == "scenes":
 			for id in _selected.keys():
 				ProjectStore.delete(id)
+			App.toast("Deleted %d %s." % [n, noun])
 		else:
 			var all := Media.recordings() + Media.screenshots()
+			var deleted := 0
 			for it in all:
 				if _selected.has(it["path"]):
-					Media.remove(it)
-		App.toast("Deleted %d %s." % [n, noun])
+					if Media.remove(it):
+						deleted += 1
+			App.toast("Deleted %d %s.%s" % [deleted, noun, " The copies in your gallery stay." if App.is_mobile else ""])
 		_selecting = false
 		_selected.clear()
 		_refresh_keep_scroll())
@@ -696,7 +722,12 @@ func _tile_action(id: String, p: Dictionary, item: int) -> void:
 		0:
 			_rename(id, p)
 		1:
-			ProjectStore.duplicate_project(id)
+			var nid := ProjectStore.duplicate_project(id)
+			if nid != "":
+				var d := ProjectStore.load_project(nid)
+				App.toast("Duplicated as “%s”." % d.get("name", "Scene"))
+			else:
+				App.toast("Couldn’t duplicate that scene.")
 			refresh()
 		2:
 			hud.export_project(id, str(p.get("name", "scene")))
@@ -709,13 +740,17 @@ func _tile_action(id: String, p: Dictionary, item: int) -> void:
 func _rename(id: String, p: Dictionary) -> void:
 	var hud: Hud = get_parent().get_node("Hud")
 	hud.prompt("Rename scene", p.get("name", ""), "Scene name", "Save", func(n: String):
-		ProjectStore.rename(id, ProjectStore.unique_name(n, id))
+		var new_name := ProjectStore.unique_name(n, id)
+		if ProjectStore.rename(id, new_name):
+			App.toast("Renamed to “%s”." % new_name)
+		else:
+			App.toast("Couldn’t rename that scene.")
 		refresh())
 
 
 func _open_file() -> void:
 	var hud: Hud = get_parent().get_node("Hud")
-	hud.pick_file(PackedStringArray(["*.json ; GameScene project"]), func(path: String):
+	hud.pick_file(PackedStringArray(["*.json ; GameScene scene file"]), func(path: String):
 		var id := ProjectStore.import_from(path)
 		if id.begins_with("!"):
 			App.toast(id.substr(1))
@@ -726,22 +761,27 @@ func _open_file() -> void:
 
 # ---------------------------------------------------------------- settings
 
-## Esc closes the settings page (desktop), like Back on a phone.
+## Esc closes the settings page or cancels selection (desktop), like Back on a phone.
 func _unhandled_key_input(e: InputEvent) -> void:
-	if _settings and visible and e.is_action_pressed("ui_cancel"):
+	if visible and e.is_action_pressed("ui_cancel"):
 		var hud: Hud = get_parent().get_node_or_null("Hud")
 		if hud and hud.modal_open():
-			# A dialog (a licence text): close just that.
 			UIK.clear(hud.modal)
-		elif _sub != "":
-			# A page inside settings (credits): back to settings.
-			_sub = ""
-			refresh()
-			_scroll.scroll_vertical = 0
-		else:
-			_open_settings(false)
-		get_viewport().set_input_as_handled()
-		get_viewport().set_input_as_handled()
+			get_viewport().set_input_as_handled()
+			return
+		if _settings:
+			if _sub != "":
+				_sub = ""
+				refresh()
+				_scroll.scroll_vertical = 0
+			else:
+				_open_settings(false)
+			get_viewport().set_input_as_handled()
+			return
+		if _selecting:
+			_set_selecting(false)
+			get_viewport().set_input_as_handled()
+			return
 
 
 func _open_settings(on: bool) -> void:
@@ -797,12 +837,14 @@ func _build_settings() -> void:
 	_page.add_child(g)
 
 	_heading("This device")
+	_page.add_child(UIK.label("Quality", 13, UIK.MUTED, true))
 	var q := UIK.flow()
 	for k in App.QUALITY:
 		q.add_child(UIK.chip(App.QUALITY[k]["label"], App.device["quality"] == k, func():
 			App.set_device("quality", k)
 			refresh()))
 	_page.add_child(q)
+	_page.add_child(UIK.label("Frame rate", 13, UIK.MUTED, true))
 	var fr := UIK.flow()
 	for c in [[30, "30 fps"], [60, "60 fps"], [0, "Highest frame rate"]]:
 		fr.add_child(UIK.chip(c[1], int(App.device.get("fps_cap", 0)) == c[0], func():
@@ -832,8 +874,11 @@ func _build_settings() -> void:
 			refresh(), "Add a licence file"), false, "upload"))
 	if not lic.is_empty():
 		lr.add_child(UIK.btn("Remove it", func():
-			Licence.remove()
-			refresh(), false, "trash"))
+			var hud: Hud = get_parent().get_node("Hud")
+			hud.ask("Remove this licence from this device?", "Remove", func():
+				Licence.remove()
+				hud.toast("Licence removed.")
+				refresh()), false, "trash"))
 	_page.add_child(lr)
 
 	_heading("Help and about")
@@ -871,6 +916,8 @@ func _build_settings() -> void:
 	link.add_theme_font_size_override("font_size", UIK.px(14))
 	link.add_theme_color_override("font_color", UIK.PRIMARY_500)
 	link.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	if App.is_touch:
+		link.custom_minimum_size.y = UIK.px(44)
 	foot.add_child(link)
 	_page.add_child(UIK.spacer(8))
 	_page.add_child(foot)
@@ -919,6 +966,12 @@ func _build_credits() -> void:
 	top.add_child(title)
 	_page.add_child(top)
 	_page.add_child(UIK.para("GameScene Studio %s. Made by ekaai.tech. Works fully offline: no accounts, no tracking." % ProjectSettings.get_setting("application/config/version"), 15, UIK.INK))
+	# The app's own licence. NOTICE asks every version, changed or not, to
+	# keep this credit and the link to the original project on this page.
+	_heading("This app")
+	_page.add_child(UIK.para(APP_CREDIT + ". Free software under the GNU General Public License, version 3 or later: you may use, study, share and change it, as long as versions you pass on stay under the same licence, keep this credit and use their own name and logo. It comes with no warranty.", 14))
+	_page.add_child(_link("Source code: " + SOURCE_URL.trim_prefix("https://"), SOURCE_URL))
+	_page.add_child(_details("GNU General Public License 3", app_licence_text(), "https://www.gnu.org/licenses/gpl-3.0.html"))
 	_heading("What comes with the app")
 	_page.add_child(UIK.para(credits_text(), 14))
 	_page.add_child(_link("ambientCG (CC0 textures)", "https://ambientcg.com"))
@@ -959,8 +1012,26 @@ func _build_credits() -> void:
 		_page.add_child(box)
 		_page.add_child(UIK.spacer(4))
 	_page.add_child(UIK.spacer(20))
-	_col.add_child(_page)
 	_layout()
+
+
+## The credit every version of the app must show (see NOTICE), and where
+## the original project lives.
+const APP_CREDIT := "GameScene Studio by Vaibhav Sapate"
+const SOURCE_URL := "https://github.com/sapatevaibhav/gamescene"
+
+
+## The app's own terms (NOTICE) followed by the licence text (LICENSE);
+## both files ship inside every build.
+static func app_licence_text() -> String:
+	var out := []
+	for path in ["res://NOTICE", "res://LICENSE"]:
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f != null:
+			out.append(f.get_as_text().strip_edges())
+	if out.is_empty():
+		return "GNU General Public License, version 3 or later. The full text is at https://www.gnu.org/licenses/gpl-3.0.html"
+	return "\n\n\n".join(PackedStringArray(out))
 
 
 ## SPDX ids for the licence names the engine uses.
@@ -992,6 +1063,8 @@ func _link(text: String, url: String) -> LinkButton:
 	link.add_theme_font_size_override("font_size", UIK.px(14))
 	link.add_theme_color_override("font_color", UIK.PRIMARY_500)
 	link.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	if App.is_touch:
+		link.custom_minimum_size.y = UIK.px(44)
 	return link
 
 

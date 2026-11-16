@@ -208,6 +208,7 @@ func v_addChar(_a, b: VBoxContainer) -> String:
 		for sid in _style_sprites("char"):
 			sf.add_child(UIK.pick(SpriteImport.icon(sid), SpriteImport.display_name(sid), false, func(): _add_char({"sprite": sid}, {"label": SpriteImport.display_name(sid).left(18)}), true))
 		b.add_child(UIK.para("Import .png sprite sheets (a strip of frames, or an RPG grid of 3–4 columns × 4 rows: down, left, right, up) or Aseprite .ase/.aseprite files. Aseprite tags name the actions: idle, walk, run, jump, dance, wave, sit, sleep, cheer, laugh, cry, point, attack, talk; add _down, _up, _left or _right for the top view.", 12))
+	_manage_sprites(b)
 	_models_section(b, func(id): _add_char({"model": id}, {"label": id.get_basename()}))
 	return "Add a character"
 
@@ -225,7 +226,7 @@ func _models_section(b: VBoxContainer, on_pick: Callable) -> void:
 		f.add_child(UIK.pick(_look_icon({"model": id}), ModelRig.display_name(id), false, func(): on_pick.call(id)))
 	b.add_child(UIK.para("Humanoid %s files work best. Clips named idle, walk, run, dance, wave, sit, sleep, cheer, laugh, cry, point or attack play automatically; other actions use built-in poses. Models imported here stay in %s worlds.%s" % [AssetTags.formats_text(style), Styles.get_style(style)["name"], (" Low-poly models only: up to %s triangles." % AssetTags._k(AssetTags.max_tris(style, "models"))) if AssetTags.max_tris(style, "models") > 0 else ""], 12))
 	if not mine.is_empty() or not _style_props().is_empty():
-		b.add_child(UIK.btn("Manage imported models", func(): hud.push_view("imports"), false, "trash"))
+		b.add_child(UIK.btn("Manage imports", func(): hud.push_view("imports"), false, "folder"))
 
 
 ## Imported characters and objects that belong to this world's style.
@@ -242,7 +243,7 @@ func _add_char(look: Dictionary, p: Dictionary) -> void:
 	var name: String = p.get("label", "Someone") if group != "people" else U.pick(Rigs.NAMES)
 	var s := studio.spawn_near()
 	studio.checkpoint()
-	var a := studio.add_actor({"name": name, "look": look, "behavior": p.get("beh", "idle"), "lines": (p.get("lines", []) as Array).duplicate(), "x": s.x, "z": s.y, "yaw": randf() * TAU})
+	var a := studio.add_actor({"name": studio.free_name(name), "look": look, "behavior": p.get("beh", "idle"), "lines": (p.get("lines", []) as Array).duplicate(), "x": s.x, "z": s.y, "yaw": randf() * TAU})
 	if a:
 		studio.capture_start()
 		studio.mark_dirty()
@@ -320,11 +321,11 @@ func v_imports(_a, b: VBoxContainer) -> String:
 				hud.toast("Removed " + SpriteImport.display_name(sid))
 				_rerender()))
 		if chars.is_empty() and objs.is_empty():
-			return "Imported models"
+			return "Your imports"
 	b.add_child(UIK.para("The library for %s worlds. Each world style keeps its own imports." % Styles.get_style(style)["name"], 12))
 	if chars.is_empty() and objs.is_empty():
 		b.add_child(UIK.para("Nothing imported yet.", 14))
-		return "Imported models"
+		return "Your imports"
 	if not chars.is_empty():
 		_section(b, "Characters")
 		for id in chars:
@@ -348,7 +349,7 @@ func v_imports(_a, b: VBoxContainer) -> String:
 				hud.toast("Removed " + AssetLib.display_name(key))
 				_rerender()))
 	b.add_child(UIK.para("Removing a model deletes its copy from the app's library, not your original file. Characters or objects in saved scenes that use it appear as grey placeholders until you import it again.", 12))
-	return "Imported models"
+	return "Your imports"
 
 
 func _import_row(tex: Texture2D, title: String, id: String, in_use: int, on_delete: Callable) -> Control:
@@ -451,6 +452,7 @@ func _tile_sets(b: VBoxContainer) -> void:
 				studio.tools.set_tool("tiles", {"tile": id, "mode": "place"})
 				hud.close_sheet(), true, 56))
 	b.add_child(UIK.para("Import a .png or .webp grid of 16, 32 or 8 px tiles; empty cells are skipped. Tile sets stay in %s worlds." % Styles.get_style(studio.style_key).get("view_name", "this kind of"), 12))
+	_manage_sprites(b)
 
 
 func _import_tileset() -> void:
@@ -487,7 +489,18 @@ func v_pprefabs(_a, b: VBoxContainer) -> String:
 			studio.tools.set_tool("pprefab", {"pprefab": key})
 			hud.close_sheet(), true))
 	b.add_child(UIK.para("Import pixel objects from .png, .webp, .ase or .aseprite files. %s They stay in %s worlds." % ["They stand on the ground and block walking." if studio.is_top() else "They stand behind the characters.", Styles.get_style(studio.style_key).get("view_name", "")], 12))
+	_manage_sprites(b)
 	return "Objects" if studio.is_top() else "Buildings"
+
+
+## A way to the imports page (to remove sprites and tile sets), once
+## something has been imported.
+func _manage_sprites(b: VBoxContainer) -> void:
+	if not AssetTags.can_import_sprites(studio.style_key):
+		return
+	if _style_sprites("char").is_empty() and _style_sprites("object").is_empty() and _style_sprites("tileset").is_empty():
+		return
+	b.add_child(UIK.btn("Manage imports", func(): hud.push_view("imports"), false, "folder"))
 
 
 ## Imported pixel sprites of a kind that belong to this world's view.
@@ -600,7 +613,7 @@ func v_objects(_a, b: VBoxContainer) -> String:
 			hud.close_sheet()))
 	b.add_child(UIK.para("Import trees, rocks, buildings or whole asset packs (.glb, .gltf, .fbx — pick many files at once). Objects imported here stay in %s worlds.%s" % [Styles.get_style(studio.style_key)["name"], " They get cel shading, and leaves sway in the wind." if studio.style_key == "anime" else ""], 12))
 	if not _style_props().is_empty() or not _style_models().is_empty():
-		b.add_child(UIK.btn("Manage imported models", func(): hud.push_view("imports"), false, "trash"))
+		b.add_child(UIK.btn("Manage imports", func(): hud.push_view("imports"), false, "folder"))
 	b.add_child(UIK.btn("Edit placed objects", func():
 		studio.tools.set_tool("objects", {"prop": ""})
 		hud.close_sheet(), false, "pickI"))
@@ -714,7 +727,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 	thumb.custom_minimum_size = Vector2(UIK.px(72), UIK.px(72))
 	hero.add_child(thumb)
 	var name_edit := UIK.line_edit(a.name, "Name", func(t: String):
-		studio.rename_actor(a, t.strip_edges().left(24) if t.strip_edges() != "" else "Someone"))
+		studio.rename_actor(a, studio.free_name(t.strip_edges().left(24) if t.strip_edges() != "" else "Someone", a)))
 	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_edit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hero.add_child(name_edit)
@@ -760,7 +773,7 @@ func v_actor(id: Variant, b: VBoxContainer) -> String:
 		b.add_child(UIK.para(_feelings_text(a), 12))
 		b.add_child(UIK.btn("Friends, rivals and fears", func(): hud.push_view("feelings", a.id), false, "heart"))
 	if a != studio.player:
-		b.add_child(UIK.toggle("Notice the player (turn to look)", a.notice, func(on: bool): a.notice = on; studio.mark_dirty()))
+		b.add_child(UIK.toggle("Notice you (turn to look)", a.notice, func(on: bool): a.notice = on; studio.mark_dirty()))
 		b.add_child(UIK.toggle("Chat while doing a task", a.chat_busy, func(on: bool): a.chat_busy = on; studio.mark_dirty()))
 	_section(b, "Lines (one per line, said when chatting%s)" % (" and while busy" if a.chat_busy else ""))
 	var te := TextEdit.new()
@@ -1007,8 +1020,9 @@ func v_pose(id: Variant, b: VBoxContainer) -> String:
 			nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			lr.add_child(nl)
 			lr.add_child(UIK.icon_btn("trash", func():
-				Poses.delete_pose(str(p["name"]))
-				_rerender(), "Delete pose", 36, false))
+				hud.ask("Delete the pose “%s” from your library? Every scene shares it." % p["name"], "Delete", func():
+					Poses.delete_pose(str(p["name"]))
+					_rerender()), "Delete pose", 36, false))
 			b.add_child(lr)
 	if a.rig.get("kind", "") == "sprite":
 		b.add_child(UIK.para("Pixel 2D characters show the nearest picture they have (arms up, pointing, crouching, sitting).", 12))
@@ -1051,9 +1065,10 @@ func v_script(_a, b: VBoxContainer) -> String:
 		v.add_child(dl)
 		h.add_child(v)
 		h.add_child(UIK.icon_btn("trash", func():
-			studio.cues.erase(c)
-			studio.mark_dirty()
-			_rerender(), "Delete", 38, false))
+			hud.ask("Delete this moment from the story?", "Delete", func():
+				studio.cues.erase(c)
+				studio.mark_dirty()
+				_rerender()), "Delete", 38, false))
 		row.add_child(h)
 		b.add_child(row)
 	_section(b, "Add a moment")
@@ -1090,11 +1105,12 @@ func v_script(_a, b: VBoxContainer) -> String:
 			new_trig = tg.duplicate(true)
 			hud.push_view("trigger", i), "Change", 38, false))
 		h.add_child(UIK.icon_btn("trash", func():
-			studio.triggers.list.remove_at(i)
-			studio.triggers.reset()
-			studio.triggers.refresh()
-			studio.mark_dirty()
-			_rerender(), "Delete", 38, false))
+			hud.ask("Delete this trigger?", "Delete", func():
+				studio.triggers.list.remove_at(i)
+				studio.triggers.reset()
+				studio.triggers.refresh()
+				studio.mark_dirty()
+				_rerender()), "Delete", 38, false))
 		row.add_child(h)
 		b.add_child(row)
 	b.add_child(UIK.btn("Add a trigger", func():
@@ -1296,13 +1312,16 @@ func v_camera(_a, b: VBoxContainer) -> String:
 				hud.toast("Point %d added." % (cam.cine["points"] as Array).size())
 				_rerender(), true, "pin"))
 			pr.add_child(UIK.btn("Clear", func():
-				cam.cine["points"] = []
-				studio.mark_dirty()
-				_rerender()))
+				if (cam.cine.get("points", []) as Array).is_empty():
+					return
+				hud.ask("Clear every point of the camera path?", "Clear", func():
+					cam.cine["points"] = []
+					studio.mark_dirty()
+					_rerender())))
 			b.add_child(pr)
 		_section(b, "Subject")
 		var who := UIK.flow()
-		who.add_child(UIK.chip("Player", int(cam.cine.get("target", 0)) == 0, func(): cam.cine["target"] = 0; cam.cine_reset(); _rerender()))
+		who.add_child(UIK.chip("You", int(cam.cine.get("target", 0)) == 0, func(): cam.cine["target"] = 0; cam.cine_reset(); _rerender()))
 		for a in studio.actors:
 			if a == studio.player:
 				continue
@@ -1537,7 +1556,7 @@ func v_shot(i: Variant, b: VBoxContainer) -> String:
 			_rerender()))
 	_section(b, "Subject")
 	var who := UIK.flow()
-	who.add_child(UIK.chip("Player", str(s.get("target", "")) == "", func(): s["target"] = ""; studio.mark_dirty(); _rerender()))
+	who.add_child(UIK.chip("You", str(s.get("target", "")) == "", func(): s["target"] = ""; studio.mark_dirty(); _rerender()))
 	for a in studio.actors:
 		if a != studio.player:
 			who.add_child(UIK.chip(a.name, str(s.get("target", "")) == a.name, func(): s["target"] = a.name; studio.mark_dirty(); _rerender()))
@@ -1558,9 +1577,10 @@ func v_shot(i: Variant, b: VBoxContainer) -> String:
 			hud.view_stack[-1][1] = idx - 1
 			_rerender(), false, "up"))
 	r.add_child(UIK.danger("Delete", func():
-		studio.shots.remove_at(idx)
-		studio.mark_dirty()
-		hud.back_view()))
+		hud.ask("Delete the shot “%s”?" % s.get("name", "Shot"), "Delete", func():
+			studio.shots.remove_at(idx)
+			studio.mark_dirty()
+			hud.back_view())))
 	b.add_child(r)
 	return s.get("name", "Shot")
 
@@ -1843,7 +1863,7 @@ func _subtitle_options(b: VBoxContainer) -> void:
 	# A centring box gives a wrapping label no width (one letter per line):
 	# the short preview line doesn't need to wrap.
 	sl.autowrap_mode = TextServer.AUTOWRAP_OFF
-	sl.text = Recorder.subtitle_text("Vaibh", "Shall we go see the lake?")
+	sl.text = Recorder.subtitle_text(studio.player.name if studio.player else "Mira", "Shall we go see the lake?")
 	center.add_child(sl)
 	box.add_child(center)
 	frame.add_child(box)

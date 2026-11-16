@@ -117,9 +117,12 @@ static func import_file(path: String) -> String:
 		scene.free()
 		if err != OK:
 			return ""
-	if _load_scene(id) == null:
+	# Check the stored copy opens (the scene made for the check isn't kept).
+	var check := _load_scene(id)
+	if check == null:
 		DirAccess.remove_absolute(DIR + id)
 		return ""
+	check.free()
 	return id
 
 

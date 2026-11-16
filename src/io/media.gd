@@ -210,9 +210,10 @@ static func rename(item: Dictionary, new_name: String) -> String:
 	return ""
 
 
-static func remove(item: Dictionary) -> void:
+static func remove(item: Dictionary) -> bool:
 	var p := str(item["path"])
 	if item["kind"] == "frames":
 		Recorder._rm_dir(p)
+		return not DirAccess.dir_exists_absolute(p)
 	else:
-		DirAccess.remove_absolute(p)
+		return DirAccess.remove_absolute(p) == OK

@@ -265,7 +265,8 @@ func _ready() -> void:
 	# A click or tap on the shade, outside the dialog, closes it (= Cancel).
 	modal_shade.gui_input.connect(func(e: InputEvent):
 		var tap: bool = (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed)
-		if tap and modal_open():
+		# Not an export in progress: its card is the only way to pause or cancel.
+		if tap and modal_open() and modal.get_node_or_null("progress") == null:
 			UIK.clear(modal)
 			modal_shade.accept_event())
 	add_child(modal_shade)
@@ -279,6 +280,9 @@ func _ready() -> void:
 	studio.tools.tool_changed.connect(render_toolbar)
 	studio.recording_changed.connect(_on_recording)
 	studio.recorder.finished.connect(_on_take_done)
+	studio.recorder.stopped.connect(func():
+		if modal.get_node_or_null("progress") != null:
+			UIK.clear(modal))
 	studio.recorder.progress.connect(_on_progress)
 	studio.cast_changed.connect(_on_cast_changed)
 	get_viewport().size_changed.connect(layout)
@@ -290,6 +294,28 @@ func _on_cast_changed() -> void:
 		render_sheet()
 	if timeline_panel.visible:
 		timeline_panel.rebuild_bar()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo:
+		return
+	if modal_open():
+		if k.keycode == KEY_ESCAPE:
+			if studio and studio.recorder and studio.recorder.active:
+				return
+			UIK.clear(modal)
+			get_viewport().set_input_as_handled()
+			return
+		elif k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER:
+			var focus := get_viewport().gui_get_focus_owner()
+			if not (focus is LineEdit or focus is TextEdit):
+				for b in modal.find_children("*", "Button", true, false):
+					var btn := b as Button
+					if btn and not btn.disabled and btn.get_meta("primary", false):
+						btn.pressed.emit()
+						get_viewport().set_input_as_handled()
+						return
 
 
 ## Narrows a bar's buttons (down to 44 px) so the bar fits `avail` wide.
@@ -901,7 +927,9 @@ func toggle_record() -> void:
 	if _counting:
 		return
 	if studio.recorder.active:
-		studio.stop_take()
+		# An export ends from its own card (Pause, Finish later, Cancel).
+		if not studio.recorder.film:
+			studio.stop_take()
 		return
 	close_sheet()
 	var n: int = int(App.settings["countdown"])
@@ -1095,7 +1123,7 @@ func _start_film(resume: bool, j: Dictionary) -> void:
 		Recorder.discard_job(str(studio.project_id))
 	close_sheet()
 	if studio.export_film(j):
-		show_progress("Carrying on the export" if resume else "Exporting film")
+		show_progress("Carrying on the export" if resume else "Exporting video")
 
 
 ## A list of actions for one thing (a scene, a recording): a sheet along the
@@ -1449,7 +1477,7 @@ func set_clean(on: bool) -> void:
 func toast(msg: String) -> void:
 	toast_label.text = msg
 	toast_panel.visible = true
-	_toast_t = 3.2
+	_toast_t = clampf(2.5 + msg.length() * 0.05, 3.2, 8.0)
 	layout()
 
 
@@ -1480,7 +1508,7 @@ func export_project(id: String, scene_name: String) -> void:
 		else:
 			toast("Couldn’t make the scene file.")
 		return
-	save_file(fname, PackedStringArray(["*.json ; GameScene project"]), func(path: String):
+	save_file(fname, PackedStringArray(["*.json ; GameScene scene file"]), func(path: String):
 		if ProjectStore.export_to(id, path):
 			toast("Exported " + path.get_file())
 		else:

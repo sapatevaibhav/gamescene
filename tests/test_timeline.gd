@@ -22,6 +22,7 @@ func _ready() -> void:
 	studio.in_studio = true
 	await _studio(studio)
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

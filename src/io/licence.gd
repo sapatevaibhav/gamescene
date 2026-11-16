@@ -61,7 +61,10 @@ static func payload(lic: Dictionary) -> PackedByteArray:
 ## {} (with last_error saying why).
 static func read(text: String) -> Dictionary:
 	last_error = ""
-	var d: Variant = JSON.parse_string(text)
+	# JSON.parse (not parse_string): a file that isn't JSON is refused
+	# quietly, without an engine error in the log.
+	var json := JSON.new()
+	var d: Variant = json.data if json.parse(text) == OK else null
 	if not d is Dictionary or not d.get("licence") is Dictionary or not d.get("sig") is String:
 		last_error = "That isn’t a GameScene licence file."
 		return {}

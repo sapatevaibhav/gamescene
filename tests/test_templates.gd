@@ -134,4 +134,5 @@ func _ready() -> void:
 			var err := studio.load_data(JSON.parse_string(JSON.stringify(d)))
 			ok(err == "" and studio.actors.size() == (d["cast"] as Array).size() and studio.fx.items.size() == (d["fx"] as Array).size(), "%s: saves and loads" % what)
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)

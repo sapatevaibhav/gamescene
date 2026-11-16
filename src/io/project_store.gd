@@ -51,7 +51,7 @@ static func save(id: String, data: Dictionary, thumb: Image = null) -> bool:
 	var idx := index()
 	var rest: Array = idx.filter(func(p): return p.get("id") != id)
 	rest.push_front({"id": id, "name": data.get("name", "Scene"), "style": data.get("style", "blocky"), "updated": Time.get_unix_time_from_system()})
-	_save_index(rest.slice(0, 64))
+	_save_index(rest)
 	return ok
 
 
@@ -78,12 +78,20 @@ static func delete(id: String) -> void:
 	_save_index(index().filter(func(p): return p.get("id") != id))
 
 
-static func rename(id: String, name: String) -> void:
+static func rename(id: String, name: String) -> bool:
 	var d := load_project(id)
 	if d.is_empty():
-		return
+		return false
 	d["name"] = name
-	save(id, d)
+	if not _write_atomic(DIR + id + ".json", JSON.stringify(d)):
+		return false
+	var idx := index()
+	for p in idx:
+		if p.get("id") == id:
+			p["name"] = name
+			break
+	_save_index(idx)
+	return true
 
 
 static func duplicate_project(id: String) -> String:
@@ -91,8 +99,10 @@ static func duplicate_project(id: String) -> String:
 	if d.is_empty():
 		return ""
 	var nid := new_id()
-	d["name"] = str(d.get("name", "Scene")) + " copy"
-	save(nid, d)
+	var base_name := str(d.get("name", "Scene"))
+	d["name"] = unique_name(base_name + " copy")
+	if not save(nid, d):
+		return ""
 	if FileAccess.file_exists(DIR + id + ".png"):
 		DirAccess.copy_absolute(DIR + id + ".png", DIR + nid + ".png")
 	return nid
@@ -142,10 +152,10 @@ static func import_from(path: String) -> String:
 	var text := FileAccess.get_file_as_string(path)
 	var d: Variant = JSON.parse_string(text)
 	if not d is Dictionary:
-		return "!That file isn’t a GameScene project."
+		return "!That file isn’t a GameScene scene file."
 	d = migrate(d)
 	if d.is_empty() or not Styles.STYLES.has(d.get("style", "")) or not d.has("world"):
-		return "!That file isn’t a GameScene project."
+		return "!That file isn’t a GameScene scene file."
 	var assets: Dictionary = d.get("assets", {})
 	var style: String = d["style"]
 	for m in (assets.get("models", {}) as Dictionary):
@@ -216,6 +226,10 @@ static func migrate(d: Dictionary) -> Dictionary:
 		if not d.has("triggers"):
 			d["triggers"] = []
 		d["v"] = 7
+	if int(d.get("v", 7)) < 8:
+		# v8: blocky worlds may list shallow (run-out) water ("shallow" in the
+		# world data); optional, older worlds have full blocks everywhere.
+		d["v"] = 8
 	return d
 
 

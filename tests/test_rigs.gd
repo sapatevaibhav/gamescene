@@ -56,4 +56,5 @@ func _ready() -> void:
 	print("validate 40x40: ", Rigs.validate_skin(Image.create_empty(40, 40, false, Image.FORMAT_RGBA8)))
 	print("validate ok: '", Rigs.validate_skin(img), "'")
 	print("RIGS built=%d problems=%d" % [total, bad])
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if bad else 0)

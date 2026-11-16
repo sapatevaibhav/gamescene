@@ -431,6 +431,11 @@ class TimelineView:
 			var txt: String = c.get("action", "")
 			if txt == "say":
 				txt = "“%s”" % str(c.get("text", ""))
+			else:
+				for ca in Sheets.CUE_ACTIONS:
+					if ca[0] == txt:
+						txt = ca[1]
+						break
 			draw_string(font, Vector2(x0 + 5, y + rh * 0.5 + UIK.px(4)), txt, HORIZONTAL_ALIGNMENT_LEFT, maxf(0.0, r.size.x - 8), UIK.px(11), Color.WHITE)
 
 	func _draw_clips(y: float, font: Font) -> void:

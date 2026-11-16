@@ -48,4 +48,5 @@ func _ready() -> void:
 		sk.free()
 		k += 1
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails else 0)

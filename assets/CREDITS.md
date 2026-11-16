@@ -21,4 +21,4 @@ ambientCG: https://ambientcg.com (Lennart Demes), CC0.
 |---|---|---|
 | `styles/*.webp` | Home screen cover art for the four world styles | AI-generated for GameScene Studio |
 | Music, ambience and sound effects (no files) | Built-in tunes, ambiences, footsteps and effects | Generated in code by the app's own synthesizer (`src/audio/synth.gd`); no recorded or downloaded samples |
-| `brand/*` | Logo, app icon and splash | Made for GameScene Studio |
+| `brand/*` | Logo, app icon and splash | Made for GameScene Studio; all rights reserved, not for use by other apps |

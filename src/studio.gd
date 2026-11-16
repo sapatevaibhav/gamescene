@@ -77,6 +77,7 @@ func _ready() -> void:
 	recorder.studio = self
 	add_child(recorder)
 	recorder.finished.connect(func(_p, _s): recording_changed.emit(false))
+	recorder.stopped.connect(func(): recording_changed.emit(false))
 	sound.studio = self
 	add_child(sound)
 	fx.studio = self
@@ -408,6 +409,9 @@ func find_spot(x: float, z: float) -> Vector2:
 				if spot_ok(nx, z):
 					return Vector2(nx, z)
 		return Vector2(x, z)
+	# Top view, in a house: stay in the room (the search below keeps to the map).
+	if is_top() and PixelTopWorld.slot_at(Vector3(x, 0, z)) >= 0:
+		return Vector2(x, z)
 	var size := float(Styles.SIZE)
 	var r := 0.8
 	while r < 8:
@@ -472,6 +476,17 @@ func remove_actor(a: Actor) -> void:
 		camera.cine["target"] = 0
 	mark_dirty()
 	cast_changed.emit()
+
+
+## `name`, or "name 2", "name 3"… when someone else (not `me`) has it: story
+## moments, triggers and feelings find characters by name.
+func free_name(name: String, me: Actor = null) -> String:
+	var out := name
+	var k := 2
+	while actors.any(func(a): return a != me and a.name == out):
+		out = "%s %d" % [name, k]
+		k += 1
+	return out
 
 
 ## Renames a character and everything that refers to them by name (script
@@ -542,6 +557,15 @@ func set_player(a: Actor) -> void:
 
 func spawn_near() -> Vector2:
 	var b := player.pos if player else Vector3(40, 0, 40)
+	# Top view, indoors: somewhere free in the room you're in.
+	var slot := PixelTopWorld.slot_at(b) if is_top() else -1
+	if slot >= 0:
+		var o := PixelTopWorld.room_origin(slot)
+		for i in 24:
+			var p := Vector2(o.x + 0.6 + randf() * (PixelTopWorld.ROOM_W - 1.2), o.y + 0.6 + randf() * (PixelTopWorld.ROOM_D - 1.2))
+			if spot_ok(p.x, p.y) and p.distance_to(Vector2(b.x, b.z)) > 0.9:
+				return p
+		return Vector2(b.x + 0.8, b.z)
 	var ang := randf() * TAU
 	var d := 2.0 + randf() * 2.5
 	var size := float(Styles.SIZE)
@@ -760,6 +784,7 @@ func capture_start() -> void:
 ## Puts the cast back where the scene starts and reseeds the simulation so
 ## every take of the same scene plays out identically.
 func reset_to_start() -> void:
+	_door = {}
 	for s in start_state:
 		var a := actor_by_id(int(s.get("id", -1)))
 		if a == null:
@@ -1130,7 +1155,37 @@ func _update_player_top(a: Actor, dt: float) -> void:
 				b.pos = dest + Vector3(0.9 * (1 if k % 2 else -1), 0, 0.2)
 				b.vel = Vector3.ZERO
 				b.home = b.pos
+		# Followers too far behind to come along walk to this door and step
+		# through it when they get there (see follow_goal).
+		_door = {"from": from, "to": dest}
 		camera.snap_to(a.pos)
+	elif not _door.is_empty():
+		var k2 := 0
+		for b in actors:
+			if b == a or b.behavior != "follow" or PixelTopWorld.slot_at(b.pos) == PixelTopWorld.slot_at(a.pos):
+				continue
+			var df: Vector3 = _door["from"]
+			if Vector2(b.pos.x - df.x, b.pos.z - df.z).length() < 1.1:
+				k2 += 1
+				b.pos = (_door["to"] as Vector3) + Vector3(0.9 * (1 if k2 % 2 else -1), 0, 0.2)
+				b.vel = Vector3.ZERO
+				b.home = b.pos
+
+
+## The door the player last went through in the top view: {from, to}.
+var _door := {}
+
+
+## Where someone following the player should head: the player, or, when a
+## house door is between them (top view), that door.
+func follow_goal(a: Actor) -> Vector3:
+	if player == null:
+		return a.pos
+	if is_top() and not _door.is_empty():
+		var mine := PixelTopWorld.slot_at(a.pos)
+		if mine != PixelTopWorld.slot_at(player.pos) and mine == PixelTopWorld.slot_at(_door["from"]):
+			return _door["from"]
+	return player.pos
 
 
 ## One simulation tick: script clock, keyframes, player, NPCs, crowding.
@@ -1149,8 +1204,14 @@ func _sim_step(dt: float) -> void:
 
 func _hide_actors_near_camera() -> void:
 	var cp := camera.global_position
+	# Top view: indoors only that room is drawn, so only the people in it
+	# show; outdoors, nobody who is inside a house.
+	var slot := PixelTopWorld.slot_at(player.pos) if is_top() and player else -2
 	for a in actors:
 		if a.rig.is_empty() or (a == player and camera.mode == "first"):
+			continue
+		if slot != -2 and PixelTopWorld.slot_at(a.pos) != slot:
+			a.root().visible = false
 			continue
 		var dx := cp.x - a.pos.x
 		var dz := cp.z - a.pos.z

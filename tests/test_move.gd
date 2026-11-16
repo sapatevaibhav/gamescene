@@ -99,4 +99,5 @@ func _ready() -> void:
 	ok(npc.hurt_t > 0.0, "attack hits the NPC in front")
 	App.fixed_dt = 0.0
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails else 0)

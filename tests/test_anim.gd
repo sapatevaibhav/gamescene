@@ -47,6 +47,7 @@ func _ready() -> void:
 	_save(st, a, key)
 	_dances_and_chat(st)
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

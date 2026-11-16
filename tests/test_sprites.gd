@@ -22,6 +22,7 @@ func _ready() -> void:
 	await _use()
 	await _tilesets()
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

@@ -54,6 +54,7 @@ func _ready() -> void:
 	_open_and_share()
 	st.in_studio = false
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

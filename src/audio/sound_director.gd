@@ -45,6 +45,7 @@ static func ensure_buses() -> void:
 
 
 func _ready() -> void:
+	add_to_group("sound_directors")
 	ensure_buses()
 	for i in 12:
 		var p := AudioStreamPlayer.new()
@@ -107,6 +108,8 @@ func speech(a: Actor) -> void:
 
 ## Called every frame by the studio after the simulation and animation.
 func tick(dt: float) -> void:
+	if _hushed:
+		return
 	_bus_volumes()
 	_footsteps(dt)
 	_ambience(dt)
@@ -308,7 +311,7 @@ static func clip_gain(c: Dictionary, local: float) -> float:
 
 func _start_voice(name: String, key: String, bus: String, from: float, vol: float, loop: bool, fi := 0.0) -> void:
 	var st := Sounds.stream(key)
-	if st == null:
+	if st == null or _hushed:
 		return
 	var p := AudioStreamPlayer.new()
 	p.bus = bus
@@ -426,6 +429,35 @@ func stop_preview() -> void:
 
 func previewing(key: String) -> bool:
 	return _preview != null and _preview.playing and _preview_key == key
+
+
+## Set by hush(): nothing starts playing once the app is closing.
+static var _hushed := false
+
+
+## Stops every scene's sounds for good and gives the audio thread time to
+## let go of them. Await it just before quitting: a sound still playing (or
+## only just stopped) when the app closes is leaked, a warning at exit.
+static func hush(tree: SceneTree) -> void:
+	_hushed = true
+	for n in tree.get_nodes_in_group("sound_directors"):
+		(n as SoundDirector).stop_all()
+	for i in 2:
+		await tree.process_frame
+	OS.delay_msec(60)
+
+
+## Playing sounds are stopped when the scene goes away. The audio thread
+## lets go of a stopped sound on its next mix, so wait for one: closing the
+## app with a sound still held leaked it (a warning at exit).
+func _exit_tree() -> void:
+	var live := false
+	for c in get_children():
+		if c is AudioStreamPlayer and (c as AudioStreamPlayer).playing:
+			live = true
+	stop_all()
+	if live:
+		OS.delay_msec(80)
 
 
 func stop_all() -> void:

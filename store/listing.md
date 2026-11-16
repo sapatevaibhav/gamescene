@@ -12,11 +12,13 @@ Make animated game-style videos: build a scene, direct characters, export video.
 
 Make your own animated videos in a game-style world, right on your phone or computer.
 
-**Build a scene.** Pick a look (Blocky, Anime fantasy, Pixel 2D or Low-poly), then shape the world with blocks, terrain, props and tiles.
+**Build a scene.** Pick a look (Blocky, Anime fantasy, Pixel 2D side-on or top-down or Low-poly), shape the world with blocks, terrain, props and tiles or start from a ready-made 30-second story template.
 
-**Direct your cast.** Place characters and give them something to do: wander, chat, dance, follow, chase, flee, sit, sleep, fight or celebrate. Type their lines and they say them in speech bubbles, with their mouths moving.
+**Direct your cast.** Place characters and give them something to do: wander, chat, dance, follow, chase, flee, sit, sleep, fight or celebrate. Held poses with a pose library, triggers (when someone enters an area, X speaks), and reactions to nearby events. Type their lines and they say them in speech bubbles, with their mouths moving.
 
 **Set up the shots.** Follow cam, first person, free camera or cinematic moves (orbit, dolly, crane, push-in), plus your own camera paths and keyframes on a timeline.
+
+**Living scenes and effects.** Campfires, sparkles, smoke and dust; flowing water; weather and a day/night cycle; interiors you can enter in 2D.
 
 **Add sound.** Music, ambience and footsteps made in the app, or your own music and sound effects on the timeline.
 
@@ -47,7 +49,7 @@ Capture with `godot --path . -- --smoke` (desktop) or a phone build, then crop. 
 | App Store, 13" iPad | 2064 × 2752 or 2752 × 2064 | 3–10 |
 | Microsoft Store | 1920 × 1080 | 1–10 |
 
-Suggested set: home screen with the four styles; a Blocky village in third person; the anime style at sunset in a cinematic shot; Pixel 2D side view; the timeline with keyframes; the Film panel exporting 9:16.
+Suggested set: home screen with the four style cards; a Blocky village in third person; the anime style at sunset in a cinematic shot; Pixel 2D side view; Pixel 2D top view; the timeline with keyframes; the Film panel exporting 9:16.
 
 ## Icons
 

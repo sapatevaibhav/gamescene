@@ -50,6 +50,7 @@ func _ready() -> void:
 	ok(t.contains("ambientCG") and t.contains("CC0") and not t.contains("|"), "credits list the bundled assets")
 	await _ui()
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

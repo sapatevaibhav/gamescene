@@ -118,6 +118,7 @@ func _ready() -> void:
 		var hit := studio.tools.tap(center)
 		ok(hit == a.id, "%s tap selects actor" % style)
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails else 0)
 
 

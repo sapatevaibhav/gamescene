@@ -27,6 +27,9 @@ extends Node
 
 signal started
 signal finished(path: String, secs: float)
+## The recording ended without a video: cancelled, saved to finish later,
+## or failed.
+signal stopped
 signal progress(frac: float)
 
 const SEG_SECONDS := 10.0
@@ -581,10 +584,12 @@ func stop() -> void:
 			DirAccess.remove_absolute(_job_path(str(job.get("id", ""))))
 		job = {}
 		App.toast("Export cancelled.")
+		stopped.emit()
 		return
 	if _suspend:
 		_save_job()
-		App.toast("Export saved at %d%%. Export the film again to carry on." % int(100.0 * float(job.get("done", frames)) / maxf(1, total_frames)))
+		App.toast("Export saved at %d%%. Export the video again to carry on." % int(100.0 * float(job.get("done", frames)) / maxf(1, total_frames)))
+		stopped.emit()
 		return
 	match kind:
 		"mp4", "mov":
@@ -597,6 +602,15 @@ func stop() -> void:
 		"png":
 			if not sound_events.is_empty():
 				AudioMixer.save_wav(out_path + "/sound.wav", _mix(secs))
+	# No file: the encoder failed or couldn't start. Don't call it saved; a
+	# resumable export keeps its finished parts to carry on from.
+	if kind in ["mp4", "mov", "avi"] and _enc != "native" and not FileAccess.file_exists(out_path):
+		if not job.is_empty():
+			_save_job()
+		job = {}
+		App.toast("The video couldn’t be made. Check there’s free space, then export again.")
+		stopped.emit()
+		return
 	if not job.is_empty():
 		DirAccess.remove_absolute(_job_path(str(job.get("id", ""))))
 	job = {}

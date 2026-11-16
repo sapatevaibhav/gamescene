@@ -5,8 +5,8 @@ extends Node
 func _ready() -> void:
 	var m: Node = load("res://src/main.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(m)
-	await get_tree().process_frame
-	await get_tree().process_frame
+	while not m.is_inside_tree() or not m.hud:
+		await get_tree().process_frame
 	var n := 0
 	for style in Styles.STYLE_ORDER:
 		await m._new_scene(style)
@@ -65,4 +65,5 @@ func _ready() -> void:
 		hud.close_sheet()
 		await m._go_home()
 	print("UI OK: rendered %d panels" % n)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(0)

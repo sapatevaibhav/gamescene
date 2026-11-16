@@ -109,6 +109,8 @@ static func launch_files(args: PackedStringArray) -> PackedStringArray:
 func open_files(paths: PackedStringArray) -> void:
 	var props := PackedStringArray()
 	var sounds := 0
+	var sound_fails := 0
+	var chars_or_sprites := 0
 	var other := 0
 	var project := ""
 	for p in paths:
@@ -117,11 +119,13 @@ func open_files(paths: PackedStringArray) -> void:
 				project = p
 			"glb", "gltf", "fbx":
 				props.append(p)
+			"vrm", "png", "ase", "aseprite":
+				chars_or_sprites += 1
 			"ogg", "mp3", "wav":
 				if studio.in_studio and AudioFiles.import_file(p) != "":
 					sounds += 1
 				else:
-					other += 1
+					sound_fails += 1
 			_:
 				other += 1
 	if project != "":
@@ -135,15 +139,22 @@ func open_files(paths: PackedStringArray) -> void:
 		await _open_project(id)
 		return
 	if not studio.in_studio:
-		if not props.is_empty() or other > 0 or sounds > 0:
+		if not props.is_empty() or other > 0 or sounds > 0 or sound_fails > 0 or chars_or_sprites > 0:
 			App.toast("Open a scene first, then drop objects or sounds on it.")
 		return
 	if not props.is_empty():
 		hud.sheets.import_props(props)
-	elif sounds > 0:
-		App.toast("Added %d sound%s to the library (Sound panel)." % [sounds, "" if sounds == 1 else "s"])
-	elif other > 0:
-		App.toast("GameScene opens scene files (.json), 3D objects (.glb, .gltf, .fbx) and sounds (.ogg, .mp3, .wav).")
+	var notes := PackedStringArray()
+	if sounds > 0:
+		notes.append("Added %d sound%s to the library (Sound panel)." % [sounds, "" if sounds == 1 else "s"])
+	if sound_fails > 0:
+		notes.append("Couldn’t add %d sound%s." % [sound_fails, "" if sound_fails == 1 else "s"])
+	if chars_or_sprites > 0:
+		notes.append("Import 3D characters (.vrm) and sprites (.png, .ase) from the Add panel.")
+	if other > 0:
+		notes.append("GameScene Studio opens scene files (.json), 3D objects (.glb, .gltf, .fbx) and sounds (.ogg, .mp3, .wav).")
+	if not notes.is_empty():
+		App.toast(" ".join(notes))
 
 
 func _hide_busy() -> void:
@@ -151,10 +162,12 @@ func _hide_busy() -> void:
 	busy_bg.visible = false
 
 
-func _show_busy(on: bool) -> void:
+func _show_busy(on: bool, text := "Building your scene…") -> void:
+	if busy.get_child_count() > 0 and busy.get_child(0) is Label:
+		busy.get_child(0).text = text
 	busy.visible = on
 	busy_bg.visible = on
-	if on:
+	if on and busy.is_inside_tree():
 		busy.size = busy.get_combined_minimum_size()
 		busy.position = (busy.get_viewport_rect().size - busy.size) / 2
 	await get_tree().process_frame
@@ -196,11 +209,15 @@ func _new_scene(style: String, scene_name := "", template := "") -> void:
 
 
 func _open_project(id: String) -> void:
-	var d := ProjectStore.load_project(id)
-	if d.is_empty():
+	var path := ProjectStore.DIR + id + ".json"
+	if not FileAccess.file_exists(path):
 		App.toast("That scene couldn’t be found on this device.")
 		return
-	await _show_busy(true)
+	var d := ProjectStore.load_project(id)
+	if d.is_empty():
+		App.toast("That scene’s file is damaged and can’t be opened.")
+		return
+	await _show_busy(true, "Opening your scene…")
 	var err := studio.load_data(d)
 	if err != "":
 		_hide_busy()
@@ -228,7 +245,8 @@ static func _orient(home: bool) -> void:
 func _enter_studio() -> void:
 	_orient(false)
 	_hide_busy()
-	home.visible = false
+	if home:
+		home.visible = false
 	studio.in_studio = true
 	hud.set_home_mode(false)
 	hud.take = 1
@@ -276,12 +294,18 @@ func _notification(what: int) -> void:
 			if studio.recorder.active:
 				await studio.recorder.stop()
 			await studio.save_now(true)
+		await SoundDirector.hush(get_tree())
 		get_tree().quit()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		if studio.in_studio and studio.dirty:
 			studio.save_now()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if not studio.in_studio and home._settings:
+		if hud.modal_open():
+			UIK.clear(hud.modal)
+		elif not studio.in_studio and home._sub != "":
+			home._sub = ""
+			home.refresh()
+		elif not studio.in_studio and home._settings:
 			home._open_settings(false)
 		elif hud.sheet.visible:
 			hud.back_view()
@@ -352,16 +376,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if _typing():
 		return
-	if k.ctrl_pressed and k.keycode == KEY_Z:
+	if k.is_command_or_control_pressed() and k.keycode == KEY_Z:
 		if k.shift_pressed:
 			studio.redo()
 		else:
 			studio.undo()
 		return
-	if k.ctrl_pressed and k.keycode == KEY_Y:
+	if k.is_command_or_control_pressed() and k.keycode == KEY_Y:
 		studio.redo()
 		return
-	if k.ctrl_pressed and k.keycode == KEY_S:
+	if k.is_command_or_control_pressed() and k.keycode == KEY_S:
 		studio.save_now(true)
 		App.toast("Saved.")
 		return
@@ -511,7 +535,10 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 	var center := get_viewport().get_visible_rect().size / 2
 	# Pixel 2D is pointed at, never mouse-looked.
 	if App.device["mouse_look"] == "capture" and not studio.is_flat():
-		if e.pressed and not captured and e.button_index == MOUSE_BUTTON_LEFT:
+		# With a build tool picked (from a panel, so the cursor is free), clicks
+		# act where the cursor points: the first click places, instead of only
+		# grabbing the mouse and leaving the preview behind. Dragging looks.
+		if e.pressed and not captured and e.button_index == MOUSE_BUTTON_LEFT and studio.tools.kind == "":
 			hud.close_sheet()
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
@@ -542,6 +569,9 @@ func _mouse_button(e: InputEventMouseButton) -> void:
 func _mouse_motion(e: InputEventMouseMotion) -> void:
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_look(e.relative.x, e.relative.y, 0.0024)
+		# The preview follows the crosshair.
+		if studio.tools.kind != "":
+			studio.tools.hover(get_viewport().get_visible_rect().size / 2)
 		return
 	studio.tools.hover(e.position)
 	if _mouse_drag.is_empty():

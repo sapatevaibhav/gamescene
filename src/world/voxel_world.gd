@@ -90,6 +90,10 @@ const FLOW_SPREAD := 5
 const FLOW_MAX := 3000
 ## The flow's edge: block -> how far it may still spread sideways.
 var _flow := {}
+## How deep water that ran sideways is: cell index -> how far it could still
+## spread (FLOW_SPREAD - 1 next to its source, 0 at the far edge). Water not
+## listed (lakes, placed blocks, falls) is a full block.
+var _depth := {}
 var _flow_t := 0.0
 var _flow_n := 0
 var _flowing := false
@@ -129,12 +133,43 @@ func flow_step() -> void:
 			var nb: Vector3i = c + d
 			if inside(nb.x, nb.y, nb.z) and get_b(nb.x, nb.y, nb.z) == 0:
 				set_b(nb.x, nb.y, nb.z, wid)
+				_depth[idx(nb.x, nb.y, nb.z)] = left - 1
 				_flow[nb] = left - 1
 				_flow_n += 1
 		if _flow_n > FLOW_MAX:
 			_flow.clear()
 			break
 	_flowing = false
+
+
+## How high the water in a cell stands (0..1), or -1 where there's none.
+## Water that ran sideways gets shallower with every block from its source.
+func water_height(x: int, y: int, z: int) -> float:
+	if not _is_water(x, y, z):
+		return -1.0
+	if _is_water(x, y + 1, z):
+		return 1.0
+	var left: int = _depth.get(idx(x, y, z), -1)
+	return 1.0 if left < 0 else 0.15 + 0.7 * float(left) / float(FLOW_SPREAD)
+
+
+## The water surface's height at a block corner: the highest of the (up to
+## four) water cells that meet there, so neighbours join in one slope.
+func _corner_height(x: int, y: int, z: int) -> float:
+	var h := 0.0
+	for dz in [-1, 0]:
+		for dx in [-1, 0]:
+			h = maxf(h, water_height(x + dx, y, z + dz))
+	return h
+
+
+## Whether one of the cells meeting at a block corner has water on top of it.
+func _corner_has_fall(x: int, y: int, z: int) -> bool:
+	for dz in [-1, 0]:
+		for dx in [-1, 0]:
+			if _is_water(x + dx, y, z + dz) and _is_water(x + dx, y + 1, z + dz):
+				return true
+	return false
 
 
 func _wake_water(x: int, y: int, z: int, v: int) -> void:
@@ -174,6 +209,7 @@ func set_b(x: int, y: int, z: int, v: int) -> void:
 	if data[i] == v:
 		return
 	data[i] = v
+	_depth.erase(i)
 	_mark(x, z)
 	if not _flowing:
 		_wake_water(x, y, z, v)
@@ -299,7 +335,7 @@ func water_surface(p: Vector3) -> float:
 		return -1.0e9
 	while y < WY - 1 and _is_water(x, y + 1, z):
 		y += 1
-	return float(y + 1)
+	return float(y) + water_height(x, y, z)
 
 
 ## Top of the first solid block below `p` (the bed under the water).
@@ -433,6 +469,7 @@ func _fill_raw(x0: int, y0: int, z0: int, x1: int, y1: int, z1: int, v: int) -> 
 ## "plaza" or "flat". Call rebuild() afterwards (new_world does both).
 func generate(kind: String, p_seed := -1) -> void:
 	_flow.clear()
+	_depth.clear()
 	data.fill(0)
 	_mark_all()
 	var seed_v := p_seed if p_seed >= 0 else randi() % 1000
@@ -809,11 +846,20 @@ var load_offset := 0.0
 
 
 func serialize() -> Dictionary:
-	return {"v3": true, "size": WX, "rle": U.rle_encode(data), "custom": Blocks.custom_sources()}
+	var d := {"v3": true, "size": WX, "rle": U.rle_encode(data), "custom": Blocks.custom_sources()}
+	if not _depth.is_empty():
+		# Shallow (run-out) water: [cell index, depth step, ...].
+		var flat := []
+		for i in _depth:
+			flat.append(i)
+			flat.append(_depth[i])
+		d["shallow"] = flat
+	return d
 
 
 func load_data(d: Dictionary) -> void:
 	_flow.clear()
+	_depth.clear()
 	Blocks.reset_custom()
 	for src in d.get("custom", []):
 		if src is Dictionary and not src.get("deleted", false):
@@ -830,6 +876,11 @@ func load_data(d: Dictionary) -> void:
 	load_offset = 0.0
 	if n == WX:
 		data = arr
+		var flat: Array = d.get("shallow", [])
+		for j in range(0, flat.size() - 1, 2):
+			var ci := int(flat[j])
+			if ci >= 0 and ci < data.size():
+				_depth[ci] = clampi(int(flat[j + 1]), 0, FLOW_SPREAD - 1)
 	else:
 		# Older, smaller world: centre it and extend its edge columns outward.
 		var off := (WX - n) / 2
@@ -970,7 +1021,10 @@ func _mesh_chunk(k: Vector2i) -> void:
 					var surf_top := gi == G_WATER and get_b(x, y + 1, z) != water_id
 					for kk in 4:
 						var c: Vector3i = corners[kk]
-						g["p"].append(Vector3(x + c.x, y + c.y, z + c.z))
+						var vy := float(y + c.y)
+						if surf_top and c.y == 1:
+							vy = y + _corner_height(x + c.x, y, z + c.z)
+						g["p"].append(Vector3(x + c.x, vy, z + c.z))
 						g["n"].append(nf)
 						g["u"].append(uvs[kk])
 						if gi == G_OPAQUE:
@@ -989,6 +1043,10 @@ func _mesh_chunk(k: Vector2i) -> void:
 							ao[kk] = 0 if (s1 and s2) else 3 - (s1 + s2 + s3)
 						var sh: float = AO[ao[kk]]
 						var alpha := 1.0 if (surf_top and c.y == 1) else 0.0
+						# Where the surface meets falling water it stays put (no
+						# drop, no waves), so there's no gap under the fall.
+						if alpha > 0.5 and _corner_has_fall(x + c.x, y, z + c.z):
+							alpha = 0.0
 						if gi != G_WATER:
 							alpha = 1.0
 						g["c"].append(Color(sh, sh, sh, alpha))

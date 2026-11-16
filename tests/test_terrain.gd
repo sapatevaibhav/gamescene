@@ -52,4 +52,5 @@ func _ready() -> void:
 		w.queue_free()
 		w2.queue_free()
 	print("DONE fails=", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(fails)

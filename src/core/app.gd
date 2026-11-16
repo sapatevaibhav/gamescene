@@ -4,7 +4,7 @@ extends Node
 signal toast_requested(msg: String)
 signal settings_changed
 
-const SCHEMA_VERSION := 7
+const SCHEMA_VERSION := 8
 
 ## Per-scene settings are saved with the project; device settings are not.
 var settings := {

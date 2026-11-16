@@ -10,7 +10,7 @@ Update this file in the same change as the code: add entries under
 
 ---
 
-## What's supported (as of 0.23.0)
+## What's supported (as of 0.24.0)
 
 ### Platforms and engine
 
@@ -146,6 +146,41 @@ Opening files: drop a scene file (`.json`) on the window to open it; inside a sc
 ---
 
 ## [Unreleased]
+
+## [0.24.0] - 2026-11-16
+
+Open-source release terms, keyboard and macOS shortcuts, a round of fixes, and the showcase website.
+
+### Added
+- **Showcase website** (`showcase/`): a static site for creators (home, features, how it works, privacy) built from real app screenshots in every style, set in the Goeist typeface (SIL OFL, bundled in `showcase/fonts/`). Screenshots open in a popup with a close button. Search and AI-answer data: per-page titles and descriptions, share tags, structured data (app, FAQ, how-to, feature list), a visible FAQ, `robots.txt` and `llms.txt`. The pages are written by `tools/showcase_build.py` (set `SITE_URL` there for canonical links and `sitemap.xml`); the site itself has no build step and makes no outside requests.
+- **Open-source release terms**: GNU General Public License v3 (`LICENSE`) with `NOTICE` requirements under Section 7 (attribution to original repository and disallowing use of the GameScene Studio trademark/logo for forks; see `TRADEMARKS.md`).
+- **Keyboard navigation for the tour and dialogs**: Enter/Right advances the first-run tour, Left steps back, and Esc skips it. Esc closes open modal dialogs on desktop, and Enter confirms the primary action in modals.
+- **macOS shortcut support**: Command+Z, Command+Shift+Z, Command+Y, and Command+S now work alongside Ctrl. Tour cards dynamically show Cmd on macOS.
+
+### Changed
+- **Touch target sizing**: buttons, chips, sliders and links meet or exceed 44 dp on touch devices.
+- **Home screen timestamps**: dates now compute day boundaries and display hours using the device's local timezone bias, and show the year when it differs from the current year.
+- **Selection bar & narrow screens**: selection bar clamps to screen width and offsets bottom padding so tiles are not obscured. Tab headers and selection buttons adapt to narrow screens.
+- **Tour instructions**: card 0 controls reflect the actual scene style (side-view walk/jump, top-view walk without jump/look, 3D controls for third/first-person styles).
+- **Toast duration**: scales dynamically with message length (3.2 to 8.0 seconds) so longer hints can be read.
+- **Android back handling**: dismisses modals and settings sub-pages first before backgrounding the app.
+- **Scene duplicate & rename**: duplicating a scene assigns a unique copy name; renaming preserves the scene's updated timestamp and list order without jumping to the top.
+- **Scene index capacity**: dropped the 64-scene cap in `ProjectStore` so all scenes remain visible in the library.
+- **File handling feedback**: distinct error message for damaged scene files vs missing files; dropped file imports report specific counts for sounds, 3D props, and instructions for VRM characters/sprites.
+
+### Fixed
+- **First click with a build tool**: after picking a block or object from a panel, the first click now places it where the cursor points. It used to only grab the mouse for looking around, leaving the white preview behind and the aim on the crosshair (behind your own character in third person). While a tool is picked, clicks place at the cursor and dragging looks; with the mouse already grabbed, the preview follows the crosshair.
+- **Pixel 2D top view, houses**: someone following you who was too far behind to come through the door with you now walks to that door and steps through (in and out), and a character added while you're indoors appears in the room with you instead of out on the map.
+- **Blocky water gets shallower as it runs**: water that spreads sideways drops a step with every block from where it started (about 0.8 of a block beside the source down to 0.15 at the far edge) and the surface slopes between them; lakes, placed blocks and falling water stay full. Where the surface meets falling water it stays level with the bottom of the fall, so there is no gap under it. The depths are saved with the scene (schema `v: 8`).
+- **Exports that end without a video**: cancelling an export, choosing Finish later, or an encoder failure now brings the buttons back and resets the Record button (they stayed hidden, with Record stuck red). An export whose file was never written says so and keeps its finished parts, instead of showing "Saved" with a Play button for a file that isn't there.
+- **Export progress card**: tapping outside it no longer dismisses it while the export carries on, and R or the Record button no longer cuts an export short; it ends from its own Pause, Finish later and Cancel buttons.
+- **Pixel 2D top view, indoors**: inside a house only the people in that room show (characters in other houses and out on the map were drawn over the dark around the room); outdoors, people inside houses are hidden.
+- **Character names stay unique**: adding a second "Zombie" makes "Zombie 2", and renaming to a name someone else has adds a number, since story moments, triggers and feelings find characters by name.
+- **Pixel 2D imports can be removed**: Add a character, Buildings / Objects and the tile panels get a "Manage imports" button once something is imported (the imports page was only reachable in the 3D styles).
+- **Deletes ask first** where there is no undo: story moments, triggers, shots, the camera path's Clear and saved poses.
+- **Memory leak on model import**: importing a 3D character left a second copy of the model in memory until the app closed.
+- **Clean exit**: sounds are stopped and released before the app closes (a sound still playing at exit was reported as leaked), and a licence file that isn't JSON is refused without an engine error in the log. The full test run now ends with no leak warnings or errors.
+- **Wording**: the timeline's story blocks use the Story page's words ("Walk to", "Hang out", "Run away" instead of walkto, group, flee); the player's character is "You" in the Camera and Shot subject chips; exports are called "video" throughout; the subtitle preview speaks with the scene's main character.
 
 ## [0.23.0] - 2026-11-15
 

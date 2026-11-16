@@ -1,6 +1,6 @@
 # GameScene Studio: plan to production
 
-## Where it stands today (15 Nov 2026, v0.23.0)
+## Where it stands today (16 Nov 2026, v0.24.0)
 
 **The app runs natively on Godot 4.7 (GDScript).** The old web build is archived in `legacy/` for reference only.
 
@@ -56,6 +56,7 @@
 | 0.21 | Living scenes: hang-out circles, reactions, feelings, running from monsters, pose library, campfires and other effects (Phases E, F and G) | Done |
 | 0.22 | Templates (worlds and ready-made scenes), first-run tour, credits and licence (Phases G, J and K) | Done |
 | 0.23 | Triggers, flowing water in every world, going inside side-view houses, 30-second template stories, the camera following the speaker (Phases F and G) | Done |
+| 0.24 | Open-source release terms (GPL v3, NOTICE, trademarks), keyboard and macOS shortcuts, fixes, and the showcase website | Done |
 | 1.0 | QA on the device matrix and launch (Phase K) | |
 
 ## Phase A: Foundation (done)

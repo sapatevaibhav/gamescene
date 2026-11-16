@@ -105,10 +105,36 @@ func go(i: int) -> void:
 	step = i
 	var s: Array = STEPS[i]
 	_title.text = s[1]
-	_text.text = s[3] if App.is_touch else s[2]
+	if i == 0 and "studio" in hud and hud.studio:
+		if hud.studio.is_top():
+			_text.text = "Walk with the thumbstick. Everything here can be changed." if App.is_touch else "Walk with W A S D (Shift runs). Everything here can be changed."
+		elif hud.studio.is_side():
+			_text.text = "Walk with the thumbstick and jump. Everything here can be changed." if App.is_touch else "Walk with A and D, jump with W or Space (Shift runs). Everything here can be changed."
+		else:
+			_text.text = s[3] if App.is_touch else s[2]
+	elif i == 1:
+		var cmd := "Cmd" if OS.get_name() == "macOS" else "Ctrl"
+		_text.text = s[3] if App.is_touch else ("Home saves the scene and goes back to your scenes. Undo and redo any change (%s+Z, %s+Shift+Z)." % [cmd, cmd])
+	else:
+		_text.text = s[3] if App.is_touch else s[2]
 	_count.text = "%d of %d" % [i + 1, STEPS.size()]
 	_next.text = "Done" if i == STEPS.size() - 1 else "Next"
 	_place()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo:
+		return
+	if k.keycode == KEY_ESCAPE:
+		close()
+		get_viewport().set_input_as_handled()
+	elif k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER or k.keycode == KEY_RIGHT:
+		go(step + 1)
+		get_viewport().set_input_as_handled()
+	elif k.keycode == KEY_LEFT and step > 0:
+		go(step - 1)
+		get_viewport().set_input_as_handled()
 
 
 func close() -> void:

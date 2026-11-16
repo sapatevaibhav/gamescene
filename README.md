@@ -94,4 +94,16 @@ Use **Add → Objects → Import** to bring in trees, rocks or whole asset packs
 
 ## Project files
 
-Projects are JSON at schema `v: 5`, and older saves are migrated when they load. Files exported from the old web build (`v: 2` and the earlier "blockset" format) open directly through **Open a file** on the home screen. Exported project files carry any imported 3D models, objects and sounds inside them, so they open on another device.
+Projects are JSON at schema `v: 8`, and older saves are migrated when they load. Files exported from the old web build (`v: 2` and the earlier "blockset" format) open directly through **Open a file** on the home screen. Exported project files carry any imported 3D models, objects and sounds inside them, so they open on another device.
+
+## Licence
+
+GameScene Studio is free software under the [GNU General Public License, version 3 or later](LICENSE), with the additional terms in [NOTICE](NOTICE). Copyright © 2026 Vaibhav Sapate.
+
+You can use, study, share and change it. If you pass on a copy or a fork:
+
+- **Keep it open.** Your version stays under the GPL, with its source available.
+- **Keep the credit.** Leave `NOTICE` and the copyright notices in place, and keep the line "Based on GameScene Studio by Vaibhav Sapate" with a link to [this repository](https://github.com/sapatevaibhav/gamescene) on the app's "Credits and licences" page.
+- **Say it's changed, and rename it.** The name "GameScene Studio" and the logo, icon and splash in `assets/brand/` are not part of the licence. A fork you distribute needs its own name and artwork; see [TRADEMARKS.md](TRADEMARKS.md).
+
+What you make with the app (scenes, videos, screenshots) is yours, with no conditions. Bundled assets and their licences are listed in [assets/CREDITS.md](assets/CREDITS.md); the engine's and its libraries' licences are on the app's credits page.

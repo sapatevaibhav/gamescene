@@ -21,6 +21,7 @@ func _ready() -> void:
 	_tris()
 	_names()
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 

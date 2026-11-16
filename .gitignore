@@ -10,3 +10,5 @@ graphify-out/
 CLAUDE.md
 /build/
 /android/
+.agents/
+.gravitas/

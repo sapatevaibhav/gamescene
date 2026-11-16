@@ -28,12 +28,15 @@ func _ready() -> void:
 	var m5 := ProjectStore.migrate({"app": "gamescene", "v": 5, "style": "anime", "world": {}, "audio": []})
 	ok(int(m5["v"]) == App.SCHEMA_VERSION and m5["fx"] == [], "migrate v5 -> v6 (effects, feelings, poses)")
 	var m6 := ProjectStore.migrate({"app": "gamescene", "v": 6, "style": "anime", "world": {}, "fx": []})
-	ok(int(m6["v"]) == 7 and m6["triggers"] == [], "migrate v6 -> v7 (triggers)")
+	ok(int(m6["v"]) == App.SCHEMA_VERSION and m6["triggers"] == [], "migrate v6 -> v7 (triggers)")
+	var m7 := ProjectStore.migrate({"app": "gamescene", "v": 7, "style": "blocky", "world": {}, "triggers": []})
+	ok(int(m7["v"]) == 8, "migrate v7 -> v8 (shallow water)")
 	var m2 := ProjectStore.migrate({"app": "gamescene", "v": 2, "style": "anime", "world": {}, "settings": {"quality": "high", "fog": 80}})
 	ok(m2["shots"] == [] and not m2["settings"].has("quality") and m2["settings"]["fog"] == 80, "migrate web v2")
 	await get_tree().process_frame
 	await _sim()
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails else 0)
 
 

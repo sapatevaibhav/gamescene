@@ -71,4 +71,5 @@ func _ready() -> void:
 		await get_tree().process_frame
 	ok(home._recent.get_child_count() == 1 and done[0], "the Screenshots tab shows them, with a thumbnail")
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)

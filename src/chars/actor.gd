@@ -922,7 +922,11 @@ func update_npc(dt: float) -> void:
 					look_at = player
 		"follow":
 			if player and player != self:
-				if pd > 2.6:
+				# The player, or the house door they went through (top view).
+				var goal: Vector3 = studio.follow_goal(self)
+				if goal != player.pos:
+					steer(goal.x, goal.z, 4.2, dt)
+				elif pd > 2.6:
 					steer(player.pos.x, player.pos.z, 4.2 if pd > 6 else 2.4, dt)
 				else:
 					face_to(player.pos.x, player.pos.z, dt)

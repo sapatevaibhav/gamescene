@@ -1,0 +1,141 @@
+# GameScene Studio
+
+> GameScene Studio is a free, open-source, fully offline app for making game-style animated story videos (machinima). It is made for creators who narrate their own videos about games: you build a scene, direct characters, set up cameras and export footage. Version 0.24, GPL-3.0-or-later, by Vaibhav Sapate.
+
+## Key facts
+
+- Category: machinima and animation video maker (desktop and phone app, made with Godot 4.7)
+- Price: free, open source (GNU GPL version 3 or later); no ads, no account, no watermark
+- Platforms: tested on Linux and Android; Windows and macOS builds exist and are still being tested; no iOS build yet
+- Network: none; the app never connects to the internet
+- Voice: no voice recording and no text-to-speech; voiceover files (.wav, .mp3, .ogg, up to 60 MB) are imported onto the timeline
+- Styles: Blocky, Anime fantasy, Low-poly, Pixel 2D side view, Pixel 2D top view
+- Export: H.264 MP4, 720p to 4K, 24/30/60 fps, 16:9, 9:16 or 1:1; green screen, blue screen or transparent (ProRes 4444 or PNG sequence)
+
+## Features
+
+### Build: Sets you shape by hand.
+
+Each look has a builder that suits it, and the same Add, Remove and Copy bar on every tool.
+- Blocky: about 190 blocks, your own custom blocks and seven ready buildings.
+- Anime and low-poly: raise hills, dig valleys, pour water that runs downhill, and place trees, houses and props.
+- Pixel 2D: paint tiles and ground, add buildings and objects, and bring your own tile sets.
+- Starting points: forest, mountain pass, night town and great hall layouts, or a ready-made scene to take apart.
+
+### Cast: Characters that know what to do.
+
+Pick a preset or import your own model, then choose a behaviour. They keep it up while you film.
+- 19 behaviours: stand, wander, chat, hang out, dance, wave, sit, follow, chase, run away, gather, patrol, sleep, celebrate, laugh, cry, point, fight and hold a pose.
+- Feelings: mark pairs as friends, rivals or scared of. Friends defend each other, rivals laugh, the scared run.
+- Reactions: people nearby look, gasp, point or join in when something happens.
+- Triggers: when someone walks into an area or touches something, another character speaks, acts or walks over.
+
+### Poses: Hold the exact pose a line needs.
+
+For thumbnails, reaction beats and stills, set a pose and keep it.
+- 14 built-in poses from hands on hips to a victory fist.
+- A pose editor with ten joints, a crouch slider and mirror.
+- A pose library that every scene on the device shares.
+
+### Camera: Four cameras and a shot list.
+
+Film a live take through the camera you're looking through, or let the shot list cut for you.
+- Follow, first person and free camera for live takes.
+- Cinematic moves: orbit, dolly, crane and push in, aimed at any character, with shot length and distance.
+- Camera paths you lay out point by point, and camera keyframes on the timeline.
+- Shot list: name each shot, add fades and title cards, and export plays them in order.
+
+### Mood: Light and weather in one tap.
+
+Seven moods set the time of day, the sky, the fog and the weather together. Sliders fine-tune them.
+- Moods: daylight, cinematic sunset, dreamy morning, fantasy glow, horror night, stormy weather and snowfall.
+- Weather: clear, rain and storm, or snow, in every look.
+- Effects: campfires with firelight, magic sparkles, smoke and dust.
+- Music follows the mood unless you choose a tune yourself.
+
+### Timeline: Keyframes for people, camera and sound.
+
+Press T and the scene becomes a timeline. Scrub it, loop it, and key whoever you have selected.
+- A row per character for walks, actions, poses and lines.
+- A camera row for keyed moves with easing.
+- A sound row for music, effects and your own audio files.
+- Director mode: pause the scene, move people or change what they do, and carry on from that moment.
+
+### Sound: A soundtrack that is already there.
+
+Every built-in sound is made by the app itself, so nothing needs a licence or a download.
+- 11 looping tunes and ambience for birds, crickets, rain, wind and water.
+- Footsteps by surface: grass, dirt, stone, wood, sand, snow and water.
+- Your own files: .ogg, .mp3 and .wav up to 60 MB, shared by every scene.
+- Separate volumes for music, effects and ambience, mixed into the export.
+
+### Export: Footage in the shape you publish.
+
+H.264 MP4 with sound on desktop when ffmpeg is installed and on Android through the phone's encoder.
+- Size: 720p, 1080p, 1440p or 4K at 24, 30 or 60 fps.
+- Frame: 16:9, 9:16 for Shorts and Reels, or 1:1, with a guide in the studio while you set up.
+- Background: the scene, green screen, blue screen or transparent (ProRes 4444 or a PNG sequence).
+- Subtitles: burned in as a box, an outline or cinema yellow, in three sizes, or left off.
+- Long exports render in 10-second parts, so they pause, finish later and survive a crash.
+
+## How a scene is made
+
+1. Pick a look: The home screen asks one thing: what are you making? Choose Blocky, Anime fantasy, Pixel 2D or Low-poly, name the scene, and start empty or from a template. Your scenes, recordings and screenshots sit below.
+2. Build the set: The Add menu holds everything that goes into a scene: characters, objects, ground tools and effects. Place a few trees, shape a hill, light a campfire. Undo covers all of it.
+3. Cast the scene: Add people, monsters and animals from the presets or import your own model. Tap a character to choose what they do, who their friends are and which pose they hold.
+4. Time the beats: Open the timeline and key the moments your narration calls for: a walk at four seconds, a wave at ten, a camera push at fourteen. Put your voiceover file on the sound row to time against it.
+5. Set the light and the shot: Choose a mood for the time of day and weather, then pick a camera. Cinematic shots orbit, dolly, crane or push in on any character.
+6. Export: Choose the frame, the size and the background, then export. The whole scene plays through its shot list and lands in your Videos folder, or your gallery on a phone.
+
+## Questions and answers
+
+### What is GameScene Studio?
+
+GameScene Studio is an offline app for making game-style animated videos, often called machinima. You build a scene, place characters, give them behaviours, set up cameras and export a video. It is made with the Godot engine and is at version 0.24.
+
+### Who is GameScene Studio for?
+
+It is for creators who make story videos about games and narrate them with their own voice: lore explainers, recaps, skits and series episodes. The app supplies the picture and the creator supplies the story and the voice.
+
+### Does GameScene Studio record voiceovers or generate voices?
+
+No. The app has no voice recording and no text-to-speech. You import your recorded voiceover as a .wav, .mp3 or .ogg file (up to 60 MB) onto the timeline's sound row, or you add it later in a video editor.
+
+### Is GameScene Studio free?
+
+Yes. It is free, open-source software under the GNU General Public License, version 3 or later. It has no ads, no account and no watermark, and nothing in the app is locked.
+
+### Which platforms does GameScene Studio run on?
+
+It is tested on Linux desktops and Android phones. Windows and macOS builds exist and are still being tested. An iOS build is not available yet.
+
+### Which visual styles can I make videos in?
+
+Five: Blocky (voxel block building), Anime fantasy (cel-shaded 3D), Low-poly (faceted 3D), Pixel 2D side view and Pixel 2D top view. Each has its own world builder and characters.
+
+### What video formats and sizes does it export?
+
+H.264 MP4 with AAC sound at 720p, 1080p, 1440p or 4K, at 24, 30 or 60 frames per second, in 16:9, 9:16 or 1:1. Backgrounds can be the scene, green screen, blue screen or transparent (ProRes 4444 MOV or a PNG sequence). MP4 export uses ffmpeg on desktop and the phone's own encoder on Android; without ffmpeg the app writes Motion-JPEG AVI.
+
+### Can I import my own characters and models?
+
+Yes. The anime style imports .glb, .vrm, .gltf and .fbx characters and the low-poly style imports .glb, .gltf and .fbx. Bones are matched across 12 rig conventions, including Mixamo, VRoid, Unreal and Blender. Pixel 2D imports .png and .webp sprite sheets and Aseprite files, and Blocky imports 64 × 64 skins.
+
+### Does GameScene Studio need an internet connection?
+
+No. The app never connects to the internet. It has no accounts, analytics, telemetry or crash reporting, and everything you make stays on your device.
+
+### Who owns the videos I make with it?
+
+You do. What you make with the app (scenes, videos and screenshots) is yours, with no conditions.
+
+## Pages
+
+- [GameScene Studio: the offline studio for game story videos](index.html): Build a game-style scene, direct the cast, move the camera and export clean footage to narrate over. Free, open source and fully offline.
+- [Features | GameScene Studio](features.html): World building in five looks, 19 character behaviours, cinematic cameras, a keyframe timeline, built-in sound and export up to 4K.
+- [How it works | GameScene Studio](how-it-works.html): Six steps from a blank scene to an exported video: pick a look, build the set, cast it, time the beats, light it and export.
+- [Privacy | GameScene Studio](privacy.html): GameScene Studio is an offline app. It collects nothing, has no accounts and never connects to the internet.
+
+## Source
+
+- [Source code and changelog](https://github.com/sapatevaibhav/gamescene)

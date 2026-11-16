@@ -24,6 +24,7 @@ func _ready() -> void:
 	for style in ["anime", "lowpoly"]:
 		await _terrain(studio, style)
 	print("FAILS: ", fails)
+	await SoundDirector.hush(get_tree())
 	get_tree().quit(1 if fails > 0 else 0)
 
 
@@ -43,6 +44,16 @@ func _voxel(studio: Studio) -> void:
 	ok(w.get_b(45, top, 40) == water and w.get_b(40, top, 35) == water, "blocky: and spreads 5 blocks across the ground")
 	ok(w.get_b(46, top, 40) == 0 and w.get_b(40, top, 46) == 0, "blocky: but no further")
 	ok(w.get_b(40, top + 1, 41) == 0, "blocky: nothing spreads in mid-air")
+	# It gets shallower with every block it runs; the fall itself stays full.
+	var hs := [w.water_height(40, top, 40), w.water_height(41, top, 40), w.water_height(43, top, 40), w.water_height(45, top, 40)]
+	ok(hs[0] == 1.0 and hs[1] < 1.0 and hs[1] > hs[2] and hs[2] > hs[3] and hs[3] > 0.1, "blocky: the water gets shallower as it runs (%s)" % [hs])
+	ok(absf(w.water_surface(Vector3(45.5, top, 40.5)) - (top + hs[3])) < 0.001, "blocky: and its surface is where it shows")
+	var saved: Dictionary = JSON.parse_string(JSON.stringify(w.serialize()))
+	w.load_data(saved)
+	ok(absf(w.water_height(43, top, 40) - hs[2]) < 0.001 and not w.flowing(), "blocky: the depths are saved and loaded")
+	w.set_b(60, top, 60, water)
+	w.settle_water()
+	ok(w.water_height(60, top, 60) == 1.0 and w.water_height(61, top, 60) < 1.0, "blocky: a block of water placed by hand is full")
 	# A walled pool: open the wall and the water runs out of the gap.
 	w.generate("flat")
 	w.rebuild()
