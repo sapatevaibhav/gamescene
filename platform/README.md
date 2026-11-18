@@ -23,7 +23,7 @@ adb install -r build/android/GameSceneStudio.apk
 | iOS | a Mac with Xcode, an Apple team id in the preset | Exports an Xcode project / .ipa. The iOS plugin in `platform/ios/` is not built yet, so iOS falls back as described below |
 
 **Release signing** is never stored in the repo:
-- Android: create a keystore once (`keytool -genkeypair -v -keystore gamescene-release.keystore -alias gamescene -keyalg RSA -keysize 4096 -validity 10000`), then export with `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`, `GODOT_ANDROID_KEYSTORE_RELEASE_USER` and `GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD` set. Keep the keystore safe: Play Store updates must be signed with it, or use Play App Signing.
+- Android: the keystore and its password stay out of the repo. Put the keystore in `platform/android/` and fill in `platform/android/keystore.properties` (`storeFile`, `keyAlias`, `storePassword`; both are ignored by git). `platform/export.sh android` reads it, and makes a key under `keyAlias` the first time if the keystore doesn't have one yet (other keys in it are left alone). To make a keystore from scratch: `keytool -genkeypair -v -keystore platform/android/upload-keystore.jks -alias gamescene -keyalg RSA -keysize 4096 -validity 10000`. Setting `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`, `GODOT_ANDROID_KEYSTORE_RELEASE_USER` and `GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD` yourself overrides the file. Keep the keystore safe: Play Store updates must be signed with the same key, or use Play App Signing.
 - Apple: set `application/app_store_team_id` and the signing identities in the editor's export dialog (they are saved to `.godot/export_credentials.cfg`, which is not committed).
 
 ## The Android plugin

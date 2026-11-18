@@ -7,11 +7,20 @@ Set SITE_URL to the address the site is published at (no trailing slash) and
 run it again: canonical links, og:url, absolute share images and sitemap.xml
 are only written when it is set.
 """
-import sys, pathlib, json, html, datetime
+import sys, pathlib, json, html, datetime, os
 
-SITE_URL = ""
-OUT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parent.parent / "showcase")
+SITE_URL = os.environ.get("SITE_URL", "https://gamescene.ekaai.tech").rstrip("/")
+args = [a for a in sys.argv[1:]]
+if "--site-url" in args:
+    idx = args.index("--site-url")
+    if idx + 1 < len(args):
+        SITE_URL = args[idx + 1].rstrip("/")
+        args = args[:idx] + args[idx + 2:]
+
+OUT = pathlib.Path(args[0] if len(args) > 0 else pathlib.Path(__file__).resolve().parent.parent / "showcase")
 REPO = "https://github.com/sapatevaibhav/gamescene"
+RELEASES = "https://github.com/sapatevaibhav/gamescene/releases"
+PLAY_STORE = "https://groups.google.com/g/brainroll/c/-8ieRednknI"
 NAV = [("index.html", "Home"), ("features.html", "Features"), ("how-it-works.html", "How it works"), ("privacy.html", "Privacy")]
 
 
@@ -62,7 +71,13 @@ def page(file, title, desc, body, extra_head="", page_type="software"):
 <link rel="alternate" type="text/markdown" href="llms.txt" title="Plain-text summary of this site">
 {extra_head}
 <meta name="theme-color" content="#10131c">
-<link rel="icon" type="image/png" href="screenshots/icon.png">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
+<link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
 <link rel="preload" href="fonts/Goeist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-NMQBMV78"></script>
@@ -84,7 +99,7 @@ def page(file, title, desc, body, extra_head="", page_type="software"):
     <nav class="nav-links" id="nav-links" aria-label="Main">{links}</nav>
     <div class="nav-tools">
       <button class="icon-btn" type="button" data-theme-btn aria-label="Change theme"></button>
-      <a class="btn btn-primary btn-small nav-cta" href="{REPO}">Get the app</a>
+      <a class="btn btn-primary btn-small nav-cta" href="{RELEASES}">Get the app</a>
       <button class="icon-btn menu-btn" type="button" data-menu-btn aria-label="Menu" aria-expanded="false" aria-controls="nav-links">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
@@ -116,12 +131,14 @@ def page(file, title, desc, body, extra_head="", page_type="software"):
         <h3>Project</h3>
         <ul>
           <li><a href="{REPO}">Source code</a></li>
+          <li><a href="{RELEASES}">Downloads &amp; Releases</a></li>
+          <li><a href="{PLAY_STORE}" target="_blank" rel="noopener">Google Play (Closed Testing)</a></li>
           <li><a href="{REPO}/blob/master/CHANGELOG.md">Changelog</a></li>
           <li><a href="{REPO}/blob/master/LICENSE">Licence</a></li>
         </ul>
       </div>
     </div>
-    <p class="credits">© 2026 Vaibhav Sapate. Every picture on this site is a frame from the app, version 0.24. Set in Goeist, used under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
+    <p class="credits" style="text-align: center;" >© 2026 Vaibhav Sapate. Every picture on this site is a frame from the app, version 0.23.</br>Set in Goeist, used under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
   </div>
 </footer>
 <script src="script.js"></script>
@@ -153,7 +170,8 @@ home = f"""
       <h1>The offline studio for game story videos.</h1>
       <p class="lede">Build the set, place the cast, move the camera and export clean footage to narrate over. GameScene Studio is free, open source and never goes online.</p>
       <div class="btn-row">
-        <a class="btn btn-primary" href="{REPO}"><span class="rec"></span>Get the app</a>
+        <a class="btn btn-primary" href="{RELEASES}"><span class="rec"></span>Download Releases</a>
+        <a class="btn btn-ghost" href="{PLAY_STORE}" target="_blank" rel="noopener">Google Play (Closed Testing)</a>
         <a class="btn btn-ghost" href="features.html">See every feature</a>
       </div>
       <ul class="facts" aria-label="Key facts">
@@ -270,7 +288,8 @@ home = f"""
   <div class="wrap">
     <h2>Set up your next episode tonight.</h2>
     <div class="btn-row">
-      <a class="btn btn-primary" href="{REPO}"><span class="rec"></span>Get the app</a>
+      <a class="btn btn-primary" href="{RELEASES}"><span class="rec"></span>Download Releases</a>
+      <a class="btn btn-ghost" href="{PLAY_STORE}" target="_blank" rel="noopener">Google Play (Closed Testing)</a>
       <a class="btn btn-ghost" href="how-it-works.html">See how a scene is made</a>
     </div>
   </div>
@@ -288,7 +307,7 @@ FAQ = [
     ("Is GameScene Studio free?",
      "Yes. It is free, open-source software under the GNU General Public License, version 3 or later. It has no ads, no account and no watermark, and nothing in the app is locked."),
     ("Which platforms does GameScene Studio run on?",
-     "It is tested on Linux desktops and Android phones. Windows and macOS builds exist and are still being tested. An iOS build is not available yet."),
+     "It is tested on Linux desktops and Android phones. Pre-built Linux binaries and Android APKs are available on GitHub Releases. Android is also in closed testing on Google Play: joining the Google Group grants access, and the group announcement contains the direct Play Store install link. Windows and macOS builds exist and are still being tested. An iOS build is not available yet."),
     ("Which visual styles can I make videos in?",
      "Five: Blocky (voxel block building), Anime fantasy (cel-shaded 3D), Low-poly (faceted 3D), Pixel 2D side view and Pixel 2D top view. Each has its own world builder and characters."),
     ("What video formats and sizes does it export?",
@@ -312,6 +331,8 @@ APP_LD = {
     "softwareVersion": "0.24.0",
     "license": "https://www.gnu.org/licenses/gpl-3.0.html",
     "isAccessibleForFree": True,
+    "downloadUrl": RELEASES,
+    "installUrl": PLAY_STORE,
     "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
     "author": {"@type": "Person", "name": "Vaibhav Sapate"},
     "codeRepository": REPO,
@@ -458,7 +479,8 @@ features = f"""
     <h2>See the tools used in order.</h2>
     <div class="btn-row">
       <a class="btn btn-primary" href="how-it-works.html">Follow one scene</a>
-      <a class="btn btn-ghost" href="{REPO}">Get the app</a>
+      <a class="btn btn-ghost" href="{RELEASES}">Download Releases</a>
+      <a class="btn btn-ghost" href="{PLAY_STORE}" target="_blank" rel="noopener">Google Play (Closed Testing)</a>
     </div>
   </div>
 </section>
@@ -506,7 +528,8 @@ how = f"""
   <div class="wrap">
     <h2>Your turn to build a scene.</h2>
     <div class="btn-row">
-      <a class="btn btn-primary" href="{REPO}"><span class="rec"></span>Get the app</a>
+      <a class="btn btn-primary" href="{RELEASES}"><span class="rec"></span>Download Releases</a>
+      <a class="btn btn-ghost" href="{PLAY_STORE}" target="_blank" rel="noopener">Google Play (Closed Testing)</a>
       <a class="btn btn-ghost" href="features.html">See every feature</a>
     </div>
   </div>
@@ -613,6 +636,65 @@ for i, k, h, l, t, m in F:
 llms += ["## How a scene is made", ""] + [f"{n + 1}. {h}: {p}" for n, (h, p, _, _) in enumerate(W)] + ["", "## Questions and answers", ""]
 for q, a in FAQ:
     llms += [f"### {q}", "", a, ""]
-llms += ["## Pages", ""] + [f"- [{t}]({absu(f)}): {d}" for f, t, d, *_ in PAGES] + ["", "## Source", "", f"- [Source code and changelog]({REPO})", ""]
+llms += ["## Pages", ""] + [f"- [{t}]({absu(f)}): {d}" for f, t, d, *_ in PAGES] + [
+    "", "## Downloads & Stores", "",
+    f"- [GitHub Releases (Linux, Android APK, Desktop builds)]({RELEASES})",
+    f"- [Google Play Closed Testing Group (Android)]({PLAY_STORE}): Joining grants closed testing access and contains the Play Store download link.",
+    "", "## Source", "", f"- [Source code and changelog]({REPO})", ""
+]
 (OUT / "llms.txt").write_text("\n".join(llms), encoding="utf-8")
-print("wrote robots.txt, llms.txt" + (", sitemap.xml" if SITE_URL else " (no sitemap: SITE_URL is empty)"))
+
+# ------------------------------------------------- redirects
+def redirect_page(title, target_url, target_label, extra_info="", prefix=""):
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta http-equiv="refresh" content="0; url={target_url}">
+<link rel="canonical" href="{target_url}">
+<meta name="robots" content="noindex, follow">
+<meta name="theme-color" content="#10131c">
+<link rel="icon" href="{prefix}favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="48x48" href="{prefix}favicon-48x48.png">
+<link rel="icon" type="image/png" sizes="96x96" href="{prefix}favicon-96x96.png">
+<link rel="icon" type="image/png" sizes="192x192" href="{prefix}favicon-192x192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="{prefix}favicon-32x32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="{prefix}apple-touch-icon.png">
+<link rel="manifest" href="{prefix}site.webmanifest">
+<link rel="stylesheet" href="{prefix}styles.css">
+<script>window.location.replace("{target_url}");</script>
+</head>
+<body style="min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;background:var(--bg);color:var(--ink);">
+<div style="max-width:540px;">
+  <h1 style="font-size:1.8rem;margin-bottom:12px;">Redirecting...</h1>
+  <p style="color:var(--muted);margin-bottom:24px;">If you are not redirected automatically, please use the button below:</p>
+  <div class="btn-row" style="justify-content:center;margin-bottom:20px;">
+    <a class="btn btn-primary" href="{target_url}">{target_label}</a>
+  </div>
+  {extra_info}
+  <p style="margin-top:24px;"><a class="text-link" href="{prefix}index.html">Back to GameScene Studio</a></p>
+</div>
+</body>
+</html>
+"""
+
+dl_info = f'<p style="color:var(--muted);font-size:0.92rem;margin-top:16px;">Looking for Android? GameScene Studio is in closed testing on Google Play: <a class="text-link" href="{PLAY_STORE}" target="_blank" rel="noopener">Join the Google Play testing group</a>.</p>'
+(OUT / "download.html").write_text(redirect_page("Downloading GameScene Studio...", RELEASES, "Go to GitHub Releases", dl_info), encoding="utf-8")
+(OUT / "download").mkdir(exist_ok=True)
+(OUT / "download" / "index.html").write_text(redirect_page("Downloading GameScene Studio...", RELEASES, "Go to GitHub Releases", dl_info, prefix="../"), encoding="utf-8")
+
+play_info = '<p style="color:var(--muted);font-size:0.92rem;margin-top:16px;">Joining this Google Group grants immediate testing access to the Google Play Store closed beta, and the announcement message contains the direct opt-in &amp; download link.</p>'
+(OUT / "play.html").write_text(redirect_page("Joining GameScene Studio Closed Beta...", PLAY_STORE, "Open Google Play Testing Group", play_info), encoding="utf-8")
+(OUT / "play").mkdir(exist_ok=True)
+(OUT / "play" / "index.html").write_text(redirect_page("Joining GameScene Studio Closed Beta...", PLAY_STORE, "Open Google Play Testing Group", play_info, prefix="../"), encoding="utf-8")
+
+redirects_txt = f"""/download    {RELEASES}    302
+/releases    {RELEASES}    302
+/play        {PLAY_STORE}   302
+/google-play {PLAY_STORE}   302
+"""
+(OUT / "_redirects").write_text(redirects_txt, encoding="utf-8")
+
+print("wrote robots.txt, llms.txt, redirects" + (", sitemap.xml" if SITE_URL else " (no sitemap: SITE_URL is empty)"))

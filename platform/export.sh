@@ -17,7 +17,42 @@ MODE=--export-release
 [ $# -eq 0 ] && set -- linux windows android
 mkdir -p build && touch build/.gdignore
 
+# Release signing: Godot reads the keystore from these three variables. When
+# they aren't set, they come from platform/android/keystore.properties (not
+# committed). A key under that alias is made on first use.
+sign_android() {
+	[ "$MODE" = --export-release ] || return 0
+	[ -n "${GODOT_ANDROID_KEYSTORE_RELEASE_PATH:-}" ] && return 0
+	props=platform/android/keystore.properties
+	if [ ! -f "$props" ]; then
+		echo "Android release builds need $props (or the GODOT_ANDROID_KEYSTORE_RELEASE_* variables); see platform/README.md"
+		exit 1
+	fi
+	prop() { grep "^$1=" "$props" | head -1 | cut -d= -f2-; }
+	store=platform/android/$(prop storeFile)
+	alias=$(prop keyAlias)
+	KS_PASS=$(prop storePassword)
+	if [ -z "$KS_PASS" ]; then
+		echo "Fill in storePassword in $props first."
+		exit 1
+	fi
+	export KS_PASS
+	if ! keytool -list -keystore "$store" -storepass:env KS_PASS -alias "$alias" >/dev/null 2>&1; then
+		if ! keytool -list -keystore "$store" -storepass:env KS_PASS >/dev/null 2>&1; then
+			echo "Couldn't open $store: wrong storePassword in $props?"
+			exit 1
+		fi
+		echo "== making the signing key '$alias' in $store"
+		keytool -genkeypair -keystore "$store" -storepass:env KS_PASS -alias "$alias" \
+			-keyalg RSA -keysize 4096 -validity 10000 -dname "CN=GameScene Studio"
+	fi
+	export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$PWD/$store"
+	export GODOT_ANDROID_KEYSTORE_RELEASE_USER="$alias"
+	export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$KS_PASS"
+}
+
 need_android() {
+	sign_android
 	if [ ! -f addons/gamescene_native/bin/GameSceneNative-release.aar ]; then
 		platform/android/build.sh
 	fi

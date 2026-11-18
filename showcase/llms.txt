@@ -107,7 +107,7 @@ Yes. It is free, open-source software under the GNU General Public License, vers
 
 ### Which platforms does GameScene Studio run on?
 
-It is tested on Linux desktops and Android phones. Windows and macOS builds exist and are still being tested. An iOS build is not available yet.
+It is tested on Linux desktops and Android phones. Pre-built Linux binaries and Android APKs are available on GitHub Releases. Android is also in closed testing on Google Play: joining the Google Group grants access, and the group announcement contains the direct Play Store install link. Windows and macOS builds exist and are still being tested. An iOS build is not available yet.
 
 ### Which visual styles can I make videos in?
 
@@ -131,10 +131,15 @@ You do. What you make with the app (scenes, videos and screenshots) is yours, wi
 
 ## Pages
 
-- [GameScene Studio: the offline studio for game story videos](index.html): Build a game-style scene, direct the cast, move the camera and export clean footage to narrate over. Free, open source and fully offline.
-- [Features | GameScene Studio](features.html): World building in five looks, 19 character behaviours, cinematic cameras, a keyframe timeline, built-in sound and export up to 4K.
-- [How it works | GameScene Studio](how-it-works.html): Six steps from a blank scene to an exported video: pick a look, build the set, cast it, time the beats, light it and export.
-- [Privacy | GameScene Studio](privacy.html): GameScene Studio is an offline app. It collects nothing, has no accounts and never connects to the internet.
+- [GameScene Studio: the offline studio for game story videos](https://gamescene.ekaai.tech/index.html): Build a game-style scene, direct the cast, move the camera and export clean footage to narrate over. Free, open source and fully offline.
+- [Features | GameScene Studio](https://gamescene.ekaai.tech/features.html): World building in five looks, 19 character behaviours, cinematic cameras, a keyframe timeline, built-in sound and export up to 4K.
+- [How it works | GameScene Studio](https://gamescene.ekaai.tech/how-it-works.html): Six steps from a blank scene to an exported video: pick a look, build the set, cast it, time the beats, light it and export.
+- [Privacy | GameScene Studio](https://gamescene.ekaai.tech/privacy.html): GameScene Studio is an offline app. It collects nothing, has no accounts and never connects to the internet.
+
+## Downloads & Stores
+
+- [GitHub Releases (Linux, Android APK, Desktop builds)](https://github.com/sapatevaibhav/gamescene/releases)
+- [Google Play Closed Testing Group (Android)](https://groups.google.com/g/brainroll/c/-8ieRednknI): Joining grants closed testing access and contains the Play Store download link.
 
 ## Source
 

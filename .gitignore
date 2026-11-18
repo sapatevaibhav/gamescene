@@ -12,3 +12,4 @@ CLAUDE.md
 /android/
 .agents/
 .gravitas/
+platform/android/upload-keystore.jks

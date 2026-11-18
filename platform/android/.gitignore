@@ -2,3 +2,6 @@
 build/
 plugin/build/
 local.properties
+keystore.properties
+*.jks
+*.keystore
